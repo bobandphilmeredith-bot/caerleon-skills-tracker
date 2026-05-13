@@ -22,3 +22,4 @@ node node_modules/next/dist/bin/next dev --webpack
 This app uses Local curriculum data. It is a curriculum mapping and visibility tool for Literacy, Numeracy, Digital Competence Framework and cross-cutting themes.
 
 It intentionally does not include pupil tracking, grades, assessment, behaviour, personnel evaluation or AI features.
+# caerleon-skills-tracker

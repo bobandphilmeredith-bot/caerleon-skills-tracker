@@ -1,0 +1,25 @@
+{
+  "name": "caerleon-skills-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "16.2.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@next/swc-wasm-nodejs": "^16.2.6",
+    "@tailwindcss/postcss": "4.3.0",
+    "@types/node": "^25.6.2",
+    "@types/react": "^19.2.14",
+    "lightningcss-darwin-arm64": "^1.32.0",
+    "tailwindcss": "4.3.0",
+    "typescript": "6.0.3"
+  }
+}

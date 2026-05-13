@@ -1,0 +1,5 @@
+id,name,short_name,colour_key,display_order,is_active
+literacy,Literacy,Literacy,literacy,1,true
+numeracy,Numeracy,Numeracy,numeracy,2,true
+dcf,Digital Competence Framework,DCF,dcf,3,true
+cct,Cross-cutting Themes,Themes,themes,4,true

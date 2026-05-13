@@ -1,0 +1,22 @@
+id,department_id,aole_id,name,display_order,is_active,appears_in_mapping_dropdowns
+maths,mathematics,mathematics_numeracy,Maths,1,true,true
+english,english,languages_literacy_communication,English,2,true,true
+french,languages,languages_literacy_communication,French,3,true,true
+german,languages,languages_literacy_communication,German,4,true,true
+welsh,languages,languages_literacy_communication,Welsh,5,true,true
+geography,humanities,humanities,Geography,6,true,true
+history,humanities,humanities,History,7,true,true
+pe,health_wellbeing,health_wellbeing,PE,8,true,true
+business,humanities,humanities,Business,9,true,true
+chemistry,science,science_technology,Chemistry,10,true,true
+biology,science,science_technology,Biology,11,true,true
+physics,science,science_technology,Physics,12,true,true
+sociology,humanities,humanities,Sociology,13,true,true
+rse,health_wellbeing,health_wellbeing,RSE,14,true,true
+skills,,,"Skills",15,true,true
+dt,technology,science_technology,DT,16,true,true
+ict,technology,science_technology,ICT,17,true,true
+kings_trust,,,"King's Trust",18,true,true
+pse,health_wellbeing,health_wellbeing,PSE,19,true,true
+art,expressive_arts,expressive_arts,Art,20,true,true
+music,expressive_arts,expressive_arts,Music,21,true,true

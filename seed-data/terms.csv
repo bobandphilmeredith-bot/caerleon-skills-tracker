@@ -1,0 +1,4 @@
+id,name,display_order,is_active
+autumn,Autumn,1,true
+spring,Spring,2,true
+summer,Summer,3,true

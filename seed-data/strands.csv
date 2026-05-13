@@ -1,0 +1,16 @@
+id,framework_id,name,display_order,is_active
+literacy_oracy,literacy,Oracy,1,true
+literacy_reading,literacy,Reading,2,true
+literacy_writing,literacy,Writing,3,true
+numeracy_number,numeracy,Using number skills,1,true
+numeracy_measuring,numeracy,Using measuring skills,2,true
+numeracy_data,numeracy,Using data skills,3,true
+numeracy_reasoning,numeracy,Developing numerical reasoning,4,true
+dcf_citizenship,dcf,Citizenship,1,true
+dcf_collaborating,dcf,Interacting and collaborating,2,true
+dcf_producing,dcf,Producing,3,true
+dcf_data_thinking,dcf,Data and computational thinking,4,true
+cct_rse,cct,Relationships and sexuality education,1,true
+cct_human_rights,cct,Human rights,2,true
+cct_diversity,cct,Diversity,3,true
+cct_careers,cct,Careers and work-related experiences,4,true

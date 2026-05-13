@@ -1,0 +1,7 @@
+id,name,display_order,is_active
+expressive_arts,Expressive Arts,1,true
+health_wellbeing,Health and Well-being,2,true
+humanities,Humanities,3,true
+languages_literacy_communication,"Languages, Literacy and Communication",4,true
+mathematics_numeracy,Mathematics and Numeracy,5,true
+science_technology,Science and Technology,6,true

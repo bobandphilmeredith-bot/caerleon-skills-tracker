@@ -1,0 +1,9 @@
+id,faculty_id,name,display_order
+english,languages_literacy_communication,English,1
+languages,languages_literacy_communication,Languages,2
+mathematics,stem,Mathematics,1
+science,stem,Science,2
+technology,stem,Technology,3
+humanities,humanities_wellbeing,Humanities,1
+health_wellbeing,humanities_wellbeing,Health and Well-being,2
+expressive_arts,expressive_creative_arts,Expressive Arts,1

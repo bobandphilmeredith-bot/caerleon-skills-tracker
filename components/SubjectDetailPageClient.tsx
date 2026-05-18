@@ -15,7 +15,7 @@ export function SubjectDetailPageClient({ subjectName }: { subjectName: string }
   const detail = subjectDetails[subject];
   const [query, setQuery] = useState("");
   const [selectedMapping, setSelectedMapping] = useState<MappingEntry | null>(null);
-  const subjectMappings = useMemo(() => mappings.filter((entry) => entry.subject === subject), [subject]);
+  const subjectMappings = useMemo(() => mappings.filter((entry) => entry.subject === subject), [mappings, subject]);
   const filteredMappings = useMemo(() => {
     const term = query.trim().toLowerCase();
     if (!term) return subjectMappings;

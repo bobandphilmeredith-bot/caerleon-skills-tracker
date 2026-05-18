@@ -56,7 +56,7 @@ export default function CurriculumExplorerPage() {
       if (sortBy === "Framework") return a.framework.localeCompare(b.framework);
       return b.lastMappedDate.localeCompare(a.lastMappedDate);
     });
-  }, [element, framework, keyword, progressionReference, sortBy, strand, subject, term, yearGroup]);
+  }, [element, framework, keyword, mappings, progressionReference, sortBy, strand, subject, term, yearGroup]);
 
   const popularElements = topCounts(mappings.map((entry) => entry.element)).slice(0, 5);
   const representedStrands = topCounts(mappings.map((entry) => entry.strand)).slice(0, 5);

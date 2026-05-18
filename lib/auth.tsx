@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { isDemoLoginEnabled, isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 export type UserRole = "platform_admin" | "school_admin" | "teacher" | "subject_lead" | "viewer";
 
@@ -17,6 +18,11 @@ export type AppUser = {
 type AuthContextValue = {
   currentUser: AppUser | null;
   users: AppUser[];
+  isDemoMode: boolean;
+  isSupabaseConfigured: boolean;
+  authLoading: boolean;
+  accessDeniedMessage: string;
+  sendSignInLink: (email: string) => Promise<string>;
   loginAs: (userId: string) => void;
   logout: () => void;
   createUser: (user: Omit<AppUser, "id">) => void;
@@ -99,13 +105,19 @@ const defaultUsers: AppUser[] = [
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<AppUser[]>(defaultUsers);
   const [currentUserId, setCurrentUserId] = useState(defaultUsers[1].id);
+  const [liveUser, setLiveUser] = useState<AppUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(!isDemoLoginEnabled && isSupabaseConfigured);
+  const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
 
   useEffect(() => {
+    if (!isDemoLoginEnabled) return;
+
     const savedUsers = window.localStorage.getItem(usersKey);
     const savedCurrentUser = window.localStorage.getItem(currentUserKey);
+
     if (savedUsers) {
       try {
         setUsers(mergeDefaultUsers(JSON.parse(savedUsers) as AppUser[]));
@@ -113,18 +125,113 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUsers(defaultUsers);
       }
     }
+
     if (savedCurrentUser) setCurrentUserId(savedCurrentUser);
   }, []);
 
   useEffect(() => {
+    if (!isDemoLoginEnabled) return;
     window.localStorage.setItem(usersKey, JSON.stringify(users));
   }, [users]);
 
   useEffect(() => {
+    if (!isDemoLoginEnabled) return;
     window.localStorage.setItem(currentUserKey, currentUserId);
   }, [currentUserId]);
 
-  const currentUser = users.find((user) => user.id === currentUserId && user.active) ?? users.find((user) => user.active) ?? null;
+  useEffect(() => {
+    if (isDemoLoginEnabled) return;
+
+    if (!supabase) {
+      setLiveUser(null);
+      setAuthLoading(false);
+      setAccessDeniedMessage(
+        "Supabase environment variables are missing. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY."
+      );
+      return;
+    }
+
+    const client = supabase;
+    let mounted = true;
+
+    async function loadStaffProfile(userId: string) {
+      const { data: profile, error } = await client
+        .from("staff_profiles")
+        .select("id,email,display_name,role,school_id,assigned_subjects,active")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (!mounted) return;
+
+      if (error) {
+        setLiveUser(null);
+        setAccessDeniedMessage("Staff profile could not be checked. Please contact your school administrator.");
+        return;
+      }
+
+      if (!profile || profile.active === false) {
+        setLiveUser(null);
+        setAccessDeniedMessage("Access denied. Your staff profile is missing or inactive.");
+        return;
+      }
+
+      setLiveUser({
+        id: profile.id,
+        name: profile.display_name || profile.email || "Staff user",
+        email: profile.email || "",
+        role: profile.role as UserRole,
+        schoolId: profile.school_id,
+        assignedSubjects: Array.isArray(profile.assigned_subjects) ? profile.assigned_subjects : [],
+        active: profile.active
+      });
+      setAccessDeniedMessage("");
+    }
+
+    async function loadUser() {
+      setAuthLoading(true);
+
+      const { data, error } = await client.auth.getUser();
+
+      if (!mounted) return;
+
+      if (error || !data.user) {
+        setLiveUser(null);
+        setAccessDeniedMessage("");
+        setAuthLoading(false);
+        return;
+      }
+
+      await loadStaffProfile(data.user.id);
+
+      if (mounted) setAuthLoading(false);
+    }
+
+    loadUser();
+
+    const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) {
+        setLiveUser(null);
+        setAccessDeniedMessage("");
+        setAuthLoading(false);
+        return;
+      }
+
+      setAuthLoading(true);
+      loadStaffProfile(session.user.id).finally(() => {
+        if (mounted) setAuthLoading(false);
+      });
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const currentUser = isDemoLoginEnabled
+    ? users.find((user) => user.id === currentUserId && user.active) ?? users.find((user) => user.active) ?? null
+    : liveUser;
+
   const canManagePlatform = currentUser?.role === "platform_admin";
   const canManageSchool = currentUser?.role === "platform_admin" || currentUser?.role === "school_admin";
   const canManageUsers = canManageSchool;
@@ -134,18 +241,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       currentUser,
       users,
+      isDemoMode: isDemoLoginEnabled,
+      isSupabaseConfigured,
+      authLoading,
+      accessDeniedMessage,
+      sendSignInLink: async (email) => {
+        if (!supabase) return "Supabase environment variables are missing.";
+
+        const client = supabase;
+        const { error } = await client.auth.signInWithOtp({
+          email,
+          options: {
+            emailRedirectTo: typeof window === "undefined" ? undefined : `${window.location.origin}/login`
+          }
+        });
+
+        return error?.message ?? "";
+      },
       loginAs: (userId) => {
+        if (!isDemoLoginEnabled) return;
+
         const nextUser = users.find((user) => user.id === userId && user.active);
         if (nextUser) setCurrentUserId(nextUser.id);
       },
-      logout: () => setCurrentUserId(""),
+      logout: () => {
+        if (isDemoLoginEnabled) {
+          setCurrentUserId("");
+          return;
+        }
+
+        supabase?.auth.signOut();
+        setLiveUser(null);
+      },
       createUser: (user) => {
+        if (!isDemoLoginEnabled) return;
         setUsers((current) => [...current, { ...user, id: `user-${Date.now()}` }]);
       },
       updateUser: (userId, patch) => {
+        if (!isDemoLoginEnabled) return;
         setUsers((current) => current.map((user) => (user.id === userId ? { ...user, ...patch } : user)));
       },
       deactivateUser: (userId) => {
+        if (!isDemoLoginEnabled) return;
         setUsers((current) => current.map((user) => (user.id === userId ? { ...user, active: false } : user)));
       },
       canManagePlatform,
@@ -161,7 +298,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       canAccessRole: (roles) => !!currentUser && roles.includes(currentUser.role)
     }),
-    [canEditMappings, canManagePlatform, canManageSchool, canManageUsers, currentUser, users]
+    [accessDeniedMessage, authLoading, canEditMappings, canManagePlatform, canManageSchool, canManageUsers, currentUser, users]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,12 +1,79 @@
 "use client";
 
+import { useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { roleBadgeClass, roleDescriptions, roleLabels, useAuth } from "@/lib/auth";
 import { areaThemes } from "@/lib/theme";
 
 export default function LoginPage() {
-  const { currentUser, users, loginAs, logout } = useAuth();
+  const { accessDeniedMessage, authLoading, currentUser, isDemoMode, isSupabaseConfigured, sendSignInLink, users, loginAs, logout } = useAuth();
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
   const activeUsers = users.filter((user) => user.active);
+
+  async function submitSignIn() {
+    setMessage("");
+    if (!email.trim()) {
+      setMessage("Enter your school email address.");
+      return;
+    }
+    setSending(true);
+    const error = await sendSignInLink(email.trim());
+    setSending(false);
+    setMessage(error || "Check your email for a secure sign-in link.");
+  }
+
+  if (!isDemoMode) {
+    return (
+      <section className="space-y-6">
+        <PageHeader title="Staff sign in" eyebrow="Staff access" description="Use your school email address to receive a secure sign-in link." accent={areaThemes.overview.accent} />
+
+        {!isSupabaseConfigured ? (
+          <article className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm font-semibold leading-6 text-red-800 shadow-sm">
+            Supabase is not configured. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to the environment before using staff sign-in.
+          </article>
+        ) : null}
+
+        {accessDeniedMessage ? <article className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm font-semibold leading-6 text-amber-900 shadow-sm">{accessDeniedMessage}</article> : null}
+
+        {currentUser ? (
+          <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <p className="text-sm font-bold uppercase tracking-[0.14em] text-gray-500">Signed in as</p>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-950">{currentUser.name}</h2>
+                <p className="mt-1 text-sm font-semibold text-gray-600">{currentUser.email}</p>
+              </div>
+              <span className={`rounded-full px-3 py-1 text-xs font-bold ${roleBadgeClass(currentUser.role)}`}>{roleLabels[currentUser.role]}</span>
+            </div>
+            <button className="focus-ring btn btn-muted mt-4" type="button" onClick={logout}>
+              Sign out
+            </button>
+          </article>
+        ) : (
+          <article className="max-w-xl rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <label>
+              <span className="mb-1 block text-sm font-semibold text-gray-700">School email address</span>
+              <input
+                className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="name@school.org"
+                autoComplete="email"
+              />
+            </label>
+            <p className="mt-3 text-sm leading-6 text-gray-600">Staff should use their school email address. Roles are managed by the school administrator and cannot be chosen on this page.</p>
+            <button className="focus-ring btn btn-primary mt-4" type="button" onClick={submitSignIn} disabled={!isSupabaseConfigured || sending || authLoading}>
+              {sending ? "Sending..." : "Send sign-in link"}
+            </button>
+            {message ? <p className="mt-3 text-sm font-semibold text-gray-700">{message}</p> : null}
+          </article>
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-6">

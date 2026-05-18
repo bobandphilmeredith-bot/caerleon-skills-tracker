@@ -5,6 +5,7 @@
 alter table public.schools enable row level security;
 alter table public.users enable row level security;
 alter table public.school_users enable row level security;
+alter table public.staff_profiles enable row level security;
 alter table public.subjects enable row level security;
 alter table public.aoles enable row level security;
 alter table public.frameworks enable row level security;
@@ -154,6 +155,30 @@ with check (public.current_user_is_school_admin(school_id));
 
 create policy "school admins can delete school memberships"
 on public.school_users for delete
+to authenticated
+using (public.current_user_is_school_admin(school_id));
+
+create policy "staff can read their own profile"
+on public.staff_profiles for select
+to authenticated
+using (
+  id = auth.uid()
+  or public.current_user_has_school_access(school_id)
+);
+
+create policy "school admins can create staff profiles"
+on public.staff_profiles for insert
+to authenticated
+with check (public.current_user_is_school_admin(school_id));
+
+create policy "school admins can update staff profiles"
+on public.staff_profiles for update
+to authenticated
+using (public.current_user_is_school_admin(school_id))
+with check (public.current_user_is_school_admin(school_id));
+
+create policy "school admins can delete staff profiles"
+on public.staff_profiles for delete
 to authenticated
 using (public.current_user_is_school_admin(school_id));
 

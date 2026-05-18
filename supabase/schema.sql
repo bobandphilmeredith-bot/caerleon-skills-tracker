@@ -65,6 +65,18 @@ create table public.school_users (
   unique (school_id, user_id)
 );
 
+create table public.staff_profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  school_id uuid not null references public.schools(id) on delete cascade,
+  email text not null unique,
+  display_name text,
+  role public.school_user_role not null default 'viewer',
+  assigned_subjects text[] not null default '{}',
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table public.aoles (
   id uuid primary key default gen_random_uuid(),
   school_id uuid not null references public.schools(id) on delete cascade,
@@ -245,6 +257,8 @@ create table public.audit_logs (
 
 create index school_users_school_idx on public.school_users(school_id);
 create index school_users_user_idx on public.school_users(user_id);
+create index staff_profiles_school_idx on public.staff_profiles(school_id);
+create index staff_profiles_role_idx on public.staff_profiles(role);
 create index subjects_school_idx on public.subjects(school_id);
 create index subjects_aole_idx on public.subjects(aole_id);
 create index aoles_school_idx on public.aoles(school_id);

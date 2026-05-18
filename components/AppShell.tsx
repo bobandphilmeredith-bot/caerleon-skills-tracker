@@ -55,7 +55,7 @@ const navGroups = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { settings } = useSchoolSettings();
-  const { currentUser, users, loginAs } = useAuth();
+  const { currentUser, isDemoMode, users, loginAs } = useAuth();
   const shortSchoolName = settings.branding.schoolName.replace(" Comprehensive School", "");
   const activeUsers = users.filter((user) => user.active);
 
@@ -124,13 +124,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {currentUser ? (
                 <>
                   <span className={`rounded-full px-3 py-1 text-xs font-bold ${roleBadgeClass(currentUser.role)}`}>{roleLabels[currentUser.role]}</span>
-                  <select className="focus-ring rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-700" value={currentUser.id} onChange={(event) => loginAs(event.target.value)} aria-label="Staff profile switcher">
-                    {activeUsers.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.name} - {roleLabels[user.role]}
-                      </option>
-                    ))}
-                  </select>
+                  {isDemoMode ? (
+                    <select className="focus-ring rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-700" value={currentUser.id} onChange={(event) => loginAs(event.target.value)} aria-label="Staff profile switcher">
+                      {activeUsers.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.name} - {roleLabels[user.role]}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-xs font-bold text-gray-600">{currentUser.name}</span>
+                  )}
                 </>
               ) : (
                 <Link className="focus-ring btn btn-primary text-xs" href="/login">

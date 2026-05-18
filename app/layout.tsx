@@ -3,6 +3,7 @@ import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { SchoolSettingsProvider } from "@/lib/schoolSettings";
 import { CurrentSchoolProvider } from "@/lib/currentSchool";
+import { AuthProvider } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "Caerleon Skills Tracker",
@@ -19,7 +20,9 @@ export default function RootLayout({
       <body>
         <SchoolSettingsProvider>
           <CurrentSchoolProvider>
-            <AppShell>{children}</AppShell>
+            <AuthProvider>
+              <AppShell>{children}</AppShell>
+            </AuthProvider>
           </CurrentSchoolProvider>
         </SchoolSettingsProvider>
       </body>

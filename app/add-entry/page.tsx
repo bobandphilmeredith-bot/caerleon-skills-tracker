@@ -1,19 +1,24 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { AccessDenied } from "@/components/AccessDenied";
 import { PageHeader } from "@/components/PageHeader";
-import { useCurrentSchoolData } from "@/lib/currentSchool";
+import { useAuth } from "@/lib/auth";
+import { useCurrentSchool } from "@/lib/currentSchool";
 import { descriptorForReference, secondaryProgressionReferences, suggestedProgressionForYear } from "@/lib/progression";
-import type { ElementDefinition, FrameworkDefinition, ProgressionReference, StrandDefinition } from "@/lib/types";
+import type { ElementDefinition, FrameworkDefinition, MappingEntry, ProgressionReference, StrandDefinition } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
 export default function AddEntryPage() {
-  const { frameworkLibrary, frameworkMap, subjectConfigs, subjectAoleMap, terms, yearGroups } = useCurrentSchoolData();
+  const { canEditMappings, currentUser } = useAuth();
+  const { currentSchoolId, data, addMapping } = useCurrentSchool();
+  const { frameworkLibrary, frameworkMap, subjectConfigs, subjectAoleMap, terms, yearGroups } = data;
   const frameworkNames = Object.keys(frameworkMap);
   const [framework, setFramework] = useState(frameworkNames[0]);
   const activeSubjects = subjectConfigs
     .filter((subject) => subject.active && subject.appearsInMappingDropdowns)
     .map((subject) => subject.name)
+    .filter((subjectName) => currentUser?.role !== "subject_lead" || currentUser.assignedSubjects.includes(subjectName))
     .sort((a, b) => a.localeCompare(b));
   const [subject, setSubject] = useState("");
   const selectedFrameworkName = frameworkMap[framework] ? framework : frameworkNames[0];
@@ -26,6 +31,8 @@ export default function AddEntryPage() {
   const selectedElementName = elements.includes(element) ? element : elements[0];
   const [yearGroup, setYearGroup] = useState("Year 7");
   const [term, setTerm] = useState("Autumn");
+  const [unit, setUnit] = useState("");
+  const [schemeReference, setSchemeReference] = useState("");
   const [progressionReference, setProgressionReference] = useState<ProgressionReference>("Not specified");
   const [activityDescription, setActivityDescription] = useState("");
   const [showValidation, setShowValidation] = useState(false);
@@ -37,6 +44,10 @@ export default function AddEntryPage() {
   const selectedAole = selectedSubjectName ? subjectAoleMap[selectedSubjectName] : undefined;
   const suggestedProgression = suggestedProgressionForYear(yearGroup);
   const progressionDescriptor = descriptorForReference(selectedElement, progressionReference);
+
+  if (!canEditMappings) {
+    return <AccessDenied title="Add mapping restricted" message="Your current role is read-only. Switch to a teacher, subject lead or school admin account to add curriculum mapping entries." />;
+  }
 
   function updateFramework(nextFramework: string) {
     const nextStrands = Object.keys(frameworkMap[nextFramework]);
@@ -52,6 +63,8 @@ export default function AddEntryPage() {
   }
 
   const trimmedActivity = activityDescription.trim();
+  const trimmedUnit = unit.trim();
+  const trimmedSchemeReference = schemeReference.trim();
   const activityError =
     trimmedActivity.length === 0
       ? "Learning Activity / Task Description cannot be blank."
@@ -60,11 +73,40 @@ export default function AddEntryPage() {
         : trimmedActivity.length > 250
           ? "Use 250 characters or fewer."
           : "";
+  const formError =
+    !selectedSubjectName
+      ? "Select a subject."
+      : !trimmedUnit
+        ? "Unit/topic cannot be blank."
+        : !trimmedSchemeReference
+          ? "Scheme of learning reference cannot be blank."
+          : activityError;
+
+  function buildMappingEntry(): MappingEntry {
+    return {
+      schoolId: currentSchoolId,
+      id: `map-${currentSchoolId}-${Date.now()}`,
+      subject: selectedSubjectName,
+      framework: selectedFrameworkName,
+      strand: selectedStrandName,
+      element: selectedElementName,
+      context: trimmedUnit,
+      year: yearGroup,
+      term,
+      unit: trimmedUnit,
+      activityDescription: trimmedActivity,
+      schemeReference: trimmedSchemeReference,
+      progressionReference,
+      note: "",
+      lastMappedDate: new Date().toISOString().slice(0, 10)
+    };
+  }
 
   function handleSave() {
     setShowValidation(true);
-    if (!activityError) {
-      setSaveMessage("Draft mapping saved.");
+    if (!formError) {
+      addMapping(buildMappingEntry());
+      setSaveMessage("Mapping saved.");
     } else {
       setSaveMessage("");
     }
@@ -74,6 +116,8 @@ export default function AddEntryPage() {
     setSubject("");
     setYearGroup("Year 7");
     setTerm("Autumn");
+    setUnit("");
+    setSchemeReference("");
     setProgressionReference("Not specified");
     setActivityDescription("");
     setShowValidation(false);
@@ -87,8 +131,9 @@ export default function AddEntryPage() {
 
   function saveAndAddNew() {
     setShowValidation(true);
-    if (!activityError) {
-      resetForm("Draft mapping saved. Ready for a new entry.");
+    if (!formError) {
+      addMapping(buildMappingEntry());
+      resetForm("Mapping saved. Ready for a new entry.");
     } else {
       setSaveMessage("");
     }
@@ -131,7 +176,7 @@ export default function AddEntryPage() {
                   <SegmentedButtons options={terms} value={term} onChange={setTerm} />
                 </Field>
                 <Field label="Unit/topic">
-                  <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" />
+                  <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={unit} onChange={(event) => setUnit(event.target.value)} />
                 </Field>
               </div>
             </FormSection>
@@ -209,7 +254,7 @@ export default function AddEntryPage() {
 
             <FormSection number="3" title="Activity and progression reference" description="Add the planned activity and optional curriculum progression reference.">
               <Field label="Scheme of learning reference">
-                <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" />
+                <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={schemeReference} onChange={(event) => setSchemeReference(event.target.value)} />
               </Field>
               <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -286,7 +331,7 @@ export default function AddEntryPage() {
 
           <div className="sticky bottom-0 -mx-5 mt-5 flex flex-wrap gap-3 border-t border-gray-200 bg-white/95 px-5 py-4 backdrop-blur">
             <button className="focus-ring btn btn-primary" type="button" onClick={handleSave}>
-              Save draft mapping
+              Save mapping
             </button>
             <button className="focus-ring btn btn-secondary" type="button" onClick={saveAndAddNew}>
               Save and add new
@@ -296,6 +341,7 @@ export default function AddEntryPage() {
             </button>
           </div>
           {saveMessage ? <div className="mt-4 rounded-md border border-[#e8cfe0] bg-[#f7edf3] px-4 py-3 text-sm font-bold text-[#571435]">{saveMessage}</div> : null}
+          {showValidation && formError ? <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{formError}</div> : null}
         </form>
 
         <aside className="rounded-lg border p-5" style={{ borderColor: theme.border, backgroundColor: theme.soft }}>

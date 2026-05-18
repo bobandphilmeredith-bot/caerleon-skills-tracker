@@ -2,8 +2,8 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useSchoolSettings } from "@/lib/schoolSettings";
-import { createEmptySchoolData, defaultSchoolId, sampleSchools, schoolDataById, type SchoolDataBundle } from "@/lib/multiSchoolData";
-import type { School, SubjectConfig } from "@/lib/types";
+import { buildBundle, createEmptySchoolData, defaultSchoolId, sampleSchools, schoolDataById, type SchoolDataBundle } from "@/lib/multiSchoolData";
+import type { MappingEntry, School, SubjectConfig } from "@/lib/types";
 
 type CurrentSchoolContextValue = {
   schools: School[];
@@ -15,6 +15,9 @@ type CurrentSchoolContextValue = {
   updateSchool: (schoolId: string, patch: Partial<School>) => void;
   toggleSchoolActive: (schoolId: string) => void;
   resolveSchoolBySlug: (slug: string) => School | undefined;
+  addMapping: (entry: MappingEntry) => void;
+  updateMapping: (entryId: string, patch: Partial<MappingEntry>) => void;
+  deleteMapping: (entryId: string) => void;
 };
 
 const CurrentSchoolContext = createContext<CurrentSchoolContextValue | null>(null);
@@ -24,6 +27,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   const [schools, setSchools] = useState<School[]>(sampleSchools);
   const [currentSchoolId, setCurrentSchoolId] = useState(defaultSchoolId);
   const [customData, setCustomData] = useState<Record<string, SchoolDataBundle>>({});
+  const [mappingOverrides, setMappingOverrides] = useState<Record<string, MappingEntry[]>>({});
 
   useEffect(() => {
     const savedSchools = window.localStorage.getItem("skills-tracker-schools");
@@ -39,7 +43,30 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const currentSchool = schools.find((school) => school.id === currentSchoolId) ?? schools[0] ?? sampleSchools[0];
-  const data = customData[currentSchool.id] ?? schoolDataById[currentSchool.id] ?? createEmptySchoolData(currentSchool.id);
+  const baseData = customData[currentSchool.id] ?? schoolDataById[currentSchool.id] ?? createEmptySchoolData(currentSchool.id);
+  const currentMappings = mappingOverrides[currentSchool.id] ?? baseData.mappings;
+  const data = useMemo(
+    () =>
+      buildBundle({
+        schoolId: currentSchool.id,
+        subjectConfigs: baseData.subjectConfigs,
+        aoleConfigs: baseData.aoleConfigs,
+        frameworkLibrary: baseData.frameworkLibrary,
+        mappings: currentMappings
+      }),
+    [baseData, currentMappings, currentSchool.id]
+  );
+
+  useEffect(() => {
+    const savedMappings = window.localStorage.getItem(mappingStorageKey(currentSchool.id));
+    if (!savedMappings) return;
+    try {
+      const parsed = JSON.parse(savedMappings) as MappingEntry[];
+      setMappingOverrides((current) => ({ ...current, [currentSchool.id]: parsed }));
+    } catch {
+      window.localStorage.removeItem(mappingStorageKey(currentSchool.id));
+    }
+  }, [currentSchool.id]);
 
   useEffect(() => {
     window.localStorage.setItem("skills-tracker-schools", JSON.stringify(schools));
@@ -55,6 +82,11 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
       logoDataUrl: currentSchool.logoUrl
     });
   }, [currentSchool.id, currentSchool.name, currentSchool.motto, currentSchool.primaryColour, currentSchool.secondaryColour, currentSchool.logoUrl]);
+
+  useEffect(() => {
+    const mappings = mappingOverrides[currentSchool.id];
+    if (mappings) window.localStorage.setItem(mappingStorageKey(currentSchool.id), JSON.stringify(mappings));
+  }, [currentSchool.id, mappingOverrides]);
 
   const value = useMemo<CurrentSchoolContextValue>(
     () => ({
@@ -92,12 +124,34 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
       toggleSchoolActive: (schoolId) => {
         setSchools((current) => current.map((school) => (school.id === schoolId ? { ...school, active: !school.active } : school)));
       },
-      resolveSchoolBySlug: (slug) => schools.find((school) => school.slug === slug)
+      resolveSchoolBySlug: (slug) => schools.find((school) => school.slug === slug),
+      addMapping: (entry) => {
+        setMappingOverrides((current) => {
+          const existing = current[currentSchool.id] ?? data.mappings;
+          return { ...current, [currentSchool.id]: [{ ...entry, schoolId: currentSchool.id }, ...existing] };
+        });
+      },
+      updateMapping: (entryId, patch) => {
+        setMappingOverrides((current) => {
+          const existing = current[currentSchool.id] ?? data.mappings;
+          return { ...current, [currentSchool.id]: existing.map((entry) => (entry.id === entryId ? { ...entry, ...patch, schoolId: currentSchool.id } : entry)) };
+        });
+      },
+      deleteMapping: (entryId) => {
+        setMappingOverrides((current) => {
+          const existing = current[currentSchool.id] ?? data.mappings;
+          return { ...current, [currentSchool.id]: existing.filter((entry) => entry.id !== entryId) };
+        });
+      }
     }),
     [currentSchool, data, schools]
   );
 
   return <CurrentSchoolContext.Provider value={value}>{children}</CurrentSchoolContext.Provider>;
+}
+
+function mappingStorageKey(schoolId: string) {
+  return `skills-tracker-mappings-${schoolId}`;
 }
 
 export function useCurrentSchool() {

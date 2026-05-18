@@ -76,7 +76,7 @@ const newportMappings: MappingEntry[] = [
   entry("school_newportsample", "Humanities", "Cross-cutting Themes", "Human rights", "Voice and participation", "Year 9", "Summer", "Community decision-making", "Pupils review consultation examples and plan how young people can contribute views.", "HUM-Y9-SU1", "2026-05-11"),
   entry("school_newportsample", "Languages", "Literacy", "Writing", "Audience and purpose", "Year 10", "Autumn", "Cultural exchange email", "Pupils write for a partner school audience and adapt language to purpose.", "LAN-Y10-A1", "2026-02-17"),
   entry("school_newportsample", "Technology", "Digital Competence Framework", "Producing", "Planning digital products", "Year 7", "Autumn", "App wireframe", "Pupils create wireframes for a school information app and annotate audience needs.", "TEC-Y7-A1", "2026-03-22"),
-  entry("school_newportsample", "Technology", "Digital Competence Framework", "Producing", "Evaluating outputs", "Year 10", "Spring", "Prototype review", "Pupils test digital products against audience needs and record iteration notes.", "TEC-Y10-S2", "2026-05-03"),
+  entry("school_newportsample", "Technology", "Digital Competence Framework", "Producing", "Evaluating outputs", "Year 10", "Spring", "Technology review", "Pupils test digital products against audience needs and record iteration notes.", "TEC-Y10-S2", "2026-05-03"),
   entry("school_newportsample", "Expressive Arts", "Cross-cutting Themes", "Diversity", "Culture and community", "Year 7", "Spring", "Community performance", "Pupils research local cultural influences and use them in a performance response.", "ART-Y7-S1", "2026-04-26"),
   entry("school_newportsample", "Health and Well-being", "Cross-cutting Themes", "Relationships and sexuality education", "Healthy relationships", "Year 8", "Spring", "Respectful communication", "Pupils discuss scenario cards and identify respectful communication choices.", "HWB-Y8-S1", "2026-03-28"),
   entry("school_newportsample", "Health and Well-being", "Numeracy", "Using measuring skills", "Time and scale", "Year 11", "Autumn", "Training plan review", "Pupils compare training schedules and use time data to plan progression.", "HWB-Y11-A1", "2026-02-24")
@@ -113,7 +113,7 @@ export function createEmptySchoolData(schoolId: string, subjectConfigs: SubjectC
   });
 }
 
-function buildBundle(input: { schoolId: string; subjectConfigs: SubjectConfig[]; aoleConfigs: AoleConfig[]; frameworkLibrary: FrameworkDefinition[]; mappings: MappingEntry[] }): SchoolDataBundle {
+export function buildBundle(input: { schoolId: string; subjectConfigs: SubjectConfig[]; aoleConfigs: AoleConfig[]; frameworkLibrary: FrameworkDefinition[]; mappings: MappingEntry[] }): SchoolDataBundle {
   const subjects = input.subjectConfigs
     .filter((subjectItem) => subjectItem.active && subjectItem.appearsInMappingDropdowns)
     .map((subjectItem) => subjectItem.name)

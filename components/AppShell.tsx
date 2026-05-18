@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 import { useSchoolSettings } from "@/lib/schoolSettings";
+import { roleBadgeClass, roleLabels, type UserRole, useAuth } from "@/lib/auth";
 
 const navGroups = [
   {
@@ -35,21 +36,28 @@ const navGroups = [
   {
     title: "Tools",
     items: [
-      { href: "/add-entry", label: "Add Mapping Entry", icon: "+", theme: areaThemes.overview },
+      { href: "/add-entry", label: "Add Mapping Entry", icon: "+", theme: areaThemes.overview, roles: ["platform_admin", "school_admin", "teacher", "subject_lead"] as UserRole[] },
       { href: "/recent-mapping", label: "Recent Updates", icon: "RU", theme: areaThemes.overview },
       { href: "/review-summary", label: "Review Summary", icon: "RS", theme: areaThemes.overview }
     ]
   },
   {
     title: "Setup",
-    items: [{ href: "/admin", label: "Admin Setup", icon: "Ad", theme: areaThemes.overview }]
+    items: [
+      { href: "/admin", label: "Admin Setup", icon: "Ad", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
+      { href: "/user-management", label: "User Management", icon: "UM", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
+      { href: "/platform-admin", label: "Platform Admin", icon: "PA", theme: areaThemes.overview, roles: ["platform_admin"] as UserRole[] },
+      { href: "/login", label: "Sign In", icon: "In", theme: areaThemes.overview }
+    ]
   }
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { settings } = useSchoolSettings();
+  const { currentUser, users, loginAs } = useAuth();
   const shortSchoolName = settings.branding.schoolName.replace(" Comprehensive School", "");
+  const activeUsers = users.filter((user) => user.active);
 
   return (
     <div className="min-h-screen bg-white lg:grid lg:grid-cols-[310px_1fr]">
@@ -71,7 +79,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {navGroups.map((group) => (
             <div key={group.title} className="flex min-w-max gap-2 lg:block lg:min-w-0 lg:space-y-2">
               <div className="hidden px-2 text-[0.68rem] font-bold uppercase tracking-[0.18em] text-[#f1d8e6] lg:block">{group.title}</div>
-              {group.items.map((item) => {
+              {group.items.filter((item) => !("roles" in item) || !item.roles || (currentUser && item.roles.includes(currentUser.role))).map((item) => {
                 const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
                 return (
                   <Link
@@ -112,8 +120,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <img src={settings.branding.logoDataUrl} alt="" className="h-8 w-8 object-contain" />
               <span>{settings.branding.schoolName} curriculum mapping system</span>
             </div>
-            <div className="rounded-full border bg-[#fff8fb] px-3 py-1 text-xs font-bold" style={{ borderColor: settings.branding.primaryColour, color: settings.branding.primaryColour }}>
-              Curriculum mapping only
+            <div className="flex flex-wrap items-center gap-2">
+              {currentUser ? (
+                <>
+                  <span className={`rounded-full px-3 py-1 text-xs font-bold ${roleBadgeClass(currentUser.role)}`}>{roleLabels[currentUser.role]}</span>
+                  <select className="focus-ring rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-700" value={currentUser.id} onChange={(event) => loginAs(event.target.value)} aria-label="Staff profile switcher">
+                    {activeUsers.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name} - {roleLabels[user.role]}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <Link className="focus-ring btn btn-primary text-xs" href="/login">
+                  Sign in
+                </Link>
+              )}
+              <div className="rounded-full border bg-[#fff8fb] px-3 py-1 text-xs font-bold" style={{ borderColor: settings.branding.primaryColour, color: settings.branding.primaryColour }}>
+                Curriculum mapping only
+              </div>
             </div>
           </div>
         </div>

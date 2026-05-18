@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { AccessDenied } from "@/components/AccessDenied";
 import { PageHeader } from "@/components/PageHeader";
 import { progressionSteps } from "@/lib/progression";
 import type { AoleConfig, ElementDefinition, SubjectConfig } from "@/lib/types";
 import { areaThemes } from "@/lib/theme";
 import { useSchoolSettings } from "@/lib/schoolSettings";
 import { useCurrentSchool } from "@/lib/currentSchool";
+import { useAuth } from "@/lib/auth";
 
 type AdminFramework = { name: string; shortName: string; active: boolean; strands: AdminStrand[] };
 type AdminStrand = { name: string; active: boolean; elements: AdminElement[] };
@@ -16,6 +18,7 @@ type AdminTab = "School" | "Branding" | "Subjects" | "AoLE" | "Frameworks" | "Re
 const adminTabs: AdminTab[] = ["School", "Branding", "Subjects", "AoLE", "Frameworks", "Records"];
 
 export default function AdminPage() {
+  const { canManageSchool } = useAuth();
   const { settings, updateBranding, updateFrameworkTheme, resetBranding, resetAllSettings } = useSchoolSettings();
   const { schools, currentSchool, currentSchoolId, data, switchSchool, addSchool, updateSchool, toggleSchoolActive } = useCurrentSchool();
   const [subjects, setSubjects] = useState<SubjectConfig[]>(data.subjectConfigs);
@@ -30,6 +33,10 @@ export default function AdminPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
   const [activeTab, setActiveTab] = useState<AdminTab>("School");
+
+  if (!canManageSchool) {
+    return <AccessDenied title="Admin setup restricted" message="Only platform admins and school admins can manage school setup, users, frameworks, branding and practice records." />;
+  }
 
   useEffect(() => {
     setSubjects(data.subjectConfigs);

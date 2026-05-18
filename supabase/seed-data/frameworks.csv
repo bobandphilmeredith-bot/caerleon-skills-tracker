@@ -1,0 +1,9 @@
+id,school_id,name,short_name,description,display_order,active
+00000000-0000-4000-8400-000000000001,00000000-0000-4000-8000-000000000001,Literacy,Literacy,"Reading, writing and oracy opportunities across subjects.",1,true
+00000000-0000-4000-8400-000000000002,00000000-0000-4000-8000-000000000001,Numeracy,Numeracy,"Number, measurement, data and numerical reasoning opportunities.",2,true
+00000000-0000-4000-8400-000000000003,00000000-0000-4000-8000-000000000001,Digital Competence Framework,DCF,"Digital competence opportunities across curriculum planning.",3,true
+00000000-0000-4000-8400-000000000004,00000000-0000-4000-8000-000000000001,Cross-cutting Themes,Themes,"RSE, human rights, diversity and careers-related learning.",4,true
+00000000-0000-4000-8400-000000000101,00000000-0000-4000-8000-000000000002,Literacy,Literacy,"Reading, writing and oracy opportunities across subjects.",1,true
+00000000-0000-4000-8400-000000000102,00000000-0000-4000-8000-000000000002,Numeracy,Numeracy,"Number, measurement, data and numerical reasoning opportunities.",2,true
+00000000-0000-4000-8400-000000000103,00000000-0000-4000-8000-000000000002,Digital Competence Framework,DCF,"Digital competence opportunities across curriculum planning.",3,true
+00000000-0000-4000-8400-000000000104,00000000-0000-4000-8000-000000000002,Cross-cutting Themes,Themes,"RSE, human rights, diversity and careers-related learning.",4,true

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useCurrentSchoolData } from "@/lib/currentSchool";
+import { progressionSteps, visibleProgressionSteps } from "@/lib/progression";
 import { themeForFramework } from "@/lib/theme";
 
 export function FrameworkBrowser({ initialFramework, compact = false }: { initialFramework?: string; compact?: boolean }) {
@@ -12,6 +13,8 @@ export function FrameworkBrowser({ initialFramework, compact = false }: { initia
   const [strandFilter, setStrandFilter] = useState("All strands");
   const [search, setSearch] = useState("");
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
+  const [showAllProgressionSteps, setShowAllProgressionSteps] = useState(false);
+  const displayedSteps = showAllProgressionSteps ? progressionSteps : visibleProgressionSteps;
 
   const strands = useMemo(() => {
     const query = search.toLowerCase();
@@ -89,6 +92,23 @@ export function FrameworkBrowser({ initialFramework, compact = false }: { initia
                       </span>
                     ))}
                   </div>
+                  <div className="mt-4 rounded-md bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h4 className="text-xs font-bold uppercase tracking-[0.12em] text-gray-500">Progression descriptors</h4>
+                      <label className="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
+                        <input type="checkbox" checked={showAllProgressionSteps} onChange={(event) => setShowAllProgressionSteps(event.target.checked)} />
+                        Show all progression steps
+                      </label>
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      {displayedSteps.map((step) => (
+                        <div key={step} className="rounded-md border border-gray-100 bg-gray-50 p-3 text-sm leading-6">
+                          <span className="font-bold text-gray-950">{step}: </span>
+                          <span className="text-gray-700">{element.progressionDescriptors?.[step] ?? "Descriptor can be edited in Admin Setup."}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     <div className="rounded-md bg-white p-3">
                       <h4 className="text-xs font-bold uppercase tracking-[0.12em] text-gray-500">Suggested search keywords</h4>
@@ -121,7 +141,7 @@ export function FrameworkBrowser({ initialFramework, compact = false }: { initia
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 px-4 py-6" role="dialog" aria-modal="true">
           <div className="w-full max-w-xl rounded-lg bg-white p-5 shadow-xl">
             <h2 className="text-xl font-bold text-gray-950">{selectedElement}</h2>
-            <p className="mt-2 text-sm leading-6 text-gray-700">This element has been selected for curriculum mapping. In the live system this action will carry the framework, strand and element into a new mapping entry.</p>
+            <p className="mt-2 text-sm leading-6 text-gray-700">Open Add Mapping Entry to connect this element to a subject, year group and planned activity.</p>
             <div className="mt-5 flex flex-wrap gap-3">
               <a className="focus-ring rounded-md px-4 py-2 text-sm font-bold text-white" style={{ backgroundColor: theme.accent }} href="/add-entry">
                 Open Add Mapping Entry

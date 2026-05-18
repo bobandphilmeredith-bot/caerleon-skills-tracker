@@ -1,4 +1,5 @@
 import * as base from "@/lib/fakeData";
+import { suggestedProgressionForYear } from "@/lib/progression";
 import type { AoleConfig, Card, Dashboard, ElementCoverageRow, FrameworkCoverage, FrameworkDefinition, MappingEntry, School, SubjectConfig, SubjectDetail, SubjectOverview } from "@/lib/types";
 
 export type SchoolDataBundle = {
@@ -113,7 +114,10 @@ export function createEmptySchoolData(schoolId: string, subjectConfigs: SubjectC
 }
 
 function buildBundle(input: { schoolId: string; subjectConfigs: SubjectConfig[]; aoleConfigs: AoleConfig[]; frameworkLibrary: FrameworkDefinition[]; mappings: MappingEntry[] }): SchoolDataBundle {
-  const subjects = input.subjectConfigs.filter((subjectItem) => subjectItem.active && subjectItem.appearsInMappingDropdowns).sort((a, b) => a.displayOrder - b.displayOrder).map((subjectItem) => subjectItem.name);
+  const subjects = input.subjectConfigs
+    .filter((subjectItem) => subjectItem.active && subjectItem.appearsInMappingDropdowns)
+    .map((subjectItem) => subjectItem.name)
+    .sort((a, b) => a.localeCompare(b));
   const subjectAoleMap = Object.fromEntries(input.subjectConfigs.map((subjectItem) => [subjectItem.name, subjectItem.aole]));
   const frameworkMap = Object.fromEntries(
     input.frameworkLibrary.map((framework) => [framework.name, Object.fromEntries(framework.strands.map((strand) => [strand.name, strand.elements.map((elementItem) => elementItem.name)]))])
@@ -282,7 +286,7 @@ function makeSubjectProfiles(subjectDetails: Record<string, SubjectDetail>) {
         notes: [
           `${subjectName} has curriculum visibility through mapped opportunities without recording learner outcomes.`,
           "Subject discussion can focus on visibility, progression language and balance across year groups.",
-          `Review suggested: ${overview.lastReviewedDate}. The map is intentionally separate from assessment and behaviour records.`
+          `Review suggested: ${overview.lastReviewedDate}. Use the map to discuss curriculum visibility and planning connections.`
         ]
       }
     ])
@@ -295,7 +299,7 @@ function withSchoolFrameworks(frameworks: FrameworkDefinition[], schoolId: strin
 
 function entry(schoolId: string, subjectName: string, framework: string, strand: string, elementName: string, year: string, term: string, unit: string, activityDescription: string, schemeReference: string, lastMappedDate: string): MappingEntry {
   const id = `${schoolId}-${subjectName}-${framework}-${strand}-${elementName}-${year}-${unit}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  return { schoolId, id, subject: subjectName, framework, strand, element: elementName, context: unit, year, term, unit, activityDescription, schemeReference, note: "Curriculum mapping entry for visibility only.", lastMappedDate };
+  return { schoolId, id, subject: subjectName, framework, strand, element: elementName, context: unit, year, term, unit, activityDescription, schemeReference, progressionReference: suggestedProgressionForYear(year), note: "Curriculum mapping entry for visibility only.", lastMappedDate };
 }
 
 function subject(name: string, aole: string | undefined, displayOrder: number, schoolId: string): SubjectConfig {

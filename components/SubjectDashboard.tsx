@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { CoverageHeatmap } from "@/components/Heatmap";
 import { PageHeader } from "@/components/PageHeader";
 import { useCurrentSchoolData } from "@/lib/currentSchool";
+import { progressionReferenceForEntry, progressionSummary } from "@/lib/progression";
 import { areaThemes } from "@/lib/theme";
 
 export function SubjectDashboard() {
@@ -12,6 +13,7 @@ export function SubjectDashboard() {
   const selectedSubject = subjects.includes(subject) ? subject : subjects[0];
   const profile = useMemo(() => subjectProfiles[selectedSubject], [selectedSubject, subjectProfiles]);
   const subjectMappings = useMemo(() => mappings.filter((entry) => entry.subject === selectedSubject), [mappings, selectedSubject]);
+  const progressionTotals = progressionSummary(subjectMappings);
   const aole = subjectAoleMap[selectedSubject];
 
   return (
@@ -19,7 +21,7 @@ export function SubjectDashboard() {
       <PageHeader
         title="Subject Dashboard"
         eyebrow="Subject view"
-        description="Explore where a subject has mapped Literacy, Numeracy, DCF and cross-cutting themes. This is a curriculum visibility lens, not an assessment tool."
+        description="Explore where a subject has mapped Literacy, Numeracy, DCF and cross-cutting themes across planning."
         accent={areaThemes.overview.accent}
       />
 
@@ -54,6 +56,24 @@ export function SubjectDashboard() {
 
       <CoverageHeatmap title={`${selectedSubject} Coverage by Year Group`} rows={profile.rows} columns={profile.columns} values={profile.values} theme={areaThemes.overview} />
 
+      <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-bold text-gray-900">Progression Reference Summary</h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ["Step 3", progressionTotals["Step 3"]],
+            ["Step 4", progressionTotals["Step 4"]],
+            ["Step 5", progressionTotals["Step 5"]],
+            ["Step 3–4 / 4–5", progressionTotals.Bridging]
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-md bg-gray-50 p-4">
+              <p className="text-sm font-semibold text-gray-600">{label}</p>
+              <p className="mt-2 text-2xl font-bold text-[#741B47]">{value}</p>
+              <p className="mt-1 text-xs font-semibold text-gray-500">Mapped opportunities</p>
+            </div>
+          ))}
+        </div>
+      </article>
+
       <div className="grid gap-5 lg:grid-cols-2">
         <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-bold text-gray-900">Recent curriculum activity descriptions</h2>
@@ -64,7 +84,7 @@ export function SubjectDashboard() {
                   {entry.year} · {entry.term} · {entry.framework}
                 </div>
                 <div className="mt-1">{entry.activityDescription}</div>
-                <div className="mt-2 text-xs font-semibold text-gray-500">{entry.schemeReference}</div>
+                <div className="mt-2 text-xs font-semibold text-gray-500">{entry.schemeReference} · Progression reference: {progressionReferenceForEntry(entry)}</div>
               </div>
             ))}
             {!subjectMappings.length ? <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-600">No mapped activities recorded for this subject yet.</p> : null}

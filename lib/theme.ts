@@ -15,50 +15,80 @@ export const areaThemes: Record<string, AreaTheme> = {
     accent: "var(--school-primary, #741B47)",
     strong: "var(--school-secondary, #571435)",
     soft: "#F7EDF3",
-    border: "#DDD6FE",
-    text: "#4C1D95",
+    border: "color-mix(in srgb, var(--school-primary, #741B47) 24%, white)",
+    text: "var(--school-secondary, #571435)",
     contrast: "#FFFFFF",
-    heat: ["#F5F3FF", "#DDD6FE", "#A78BFA", "#7C3AED", "#4C1D95"]
+    heat: [
+      "#F7EDF3",
+      "color-mix(in srgb, var(--school-primary, #741B47) 18%, #F7EDF3)",
+      "color-mix(in srgb, var(--school-primary, #741B47) 42%, #F7EDF3)",
+      "var(--school-primary, #741B47)",
+      "color-mix(in srgb, var(--school-primary, #741B47) 78%, #111827)"
+    ]
   },
   literacy: {
     name: "Literacy",
     accent: "var(--literacy-accent, #EA580C)",
-    strong: "#9A3412",
+    strong: "var(--literacy-text, #9A3412)",
     soft: "var(--literacy-soft, #FFF7ED)",
-    border: "#FED7AA",
+    border: "color-mix(in srgb, var(--literacy-accent, #EA580C) 24%, white)",
     text: "var(--literacy-text, #9A3412)",
     contrast: "#FFFFFF",
-    heat: ["var(--literacy-soft, #FFF7ED)", "#FED7AA", "#FDBA74", "var(--literacy-chart, #EA580C)", "#9A3412"]
+    heat: [
+      "var(--literacy-soft, #FFF7ED)",
+      "color-mix(in srgb, var(--literacy-chart, #EA580C) 20%, var(--literacy-soft, #FFF7ED))",
+      "color-mix(in srgb, var(--literacy-chart, #EA580C) 48%, var(--literacy-soft, #FFF7ED))",
+      "var(--literacy-chart, #EA580C)",
+      "color-mix(in srgb, var(--literacy-chart, #EA580C) 78%, var(--literacy-text, #9A3412))"
+    ]
   },
   numeracy: {
     name: "Numeracy",
     accent: "var(--numeracy-accent, #2563EB)",
-    strong: "#1E3A8A",
+    strong: "var(--numeracy-text, #1E3A8A)",
     soft: "var(--numeracy-soft, #EFF6FF)",
-    border: "#BFDBFE",
+    border: "color-mix(in srgb, var(--numeracy-accent, #2563EB) 24%, white)",
     text: "var(--numeracy-text, #1E3A8A)",
     contrast: "#FFFFFF",
-    heat: ["var(--numeracy-soft, #EFF6FF)", "#BFDBFE", "#60A5FA", "var(--numeracy-chart, #2563EB)", "#1E3A8A"]
+    heat: [
+      "var(--numeracy-soft, #EFF6FF)",
+      "color-mix(in srgb, var(--numeracy-chart, #2563EB) 20%, var(--numeracy-soft, #EFF6FF))",
+      "color-mix(in srgb, var(--numeracy-chart, #2563EB) 48%, var(--numeracy-soft, #EFF6FF))",
+      "var(--numeracy-chart, #2563EB)",
+      "color-mix(in srgb, var(--numeracy-chart, #2563EB) 78%, var(--numeracy-text, #1E3A8A))"
+    ]
   },
   dcf: {
     name: "DCF",
     accent: "var(--dcf-accent, #CA8A04)",
-    strong: "#92400E",
+    strong: "var(--dcf-text, #854D0E)",
     soft: "var(--dcf-soft, #FEFCE8)",
-    border: "#FDE68A",
+    border: "color-mix(in srgb, var(--dcf-accent, #CA8A04) 24%, white)",
     text: "var(--dcf-text, #854D0E)",
-    contrast: "#111827",
-    heat: ["var(--dcf-soft, #FEFCE8)", "#FEF08A", "#FACC15", "var(--dcf-chart, #CA8A04)", "#854D0E"]
+    contrast: "#FFFFFF",
+    heat: [
+      "var(--dcf-soft, #FEFCE8)",
+      "color-mix(in srgb, var(--dcf-chart, #CA8A04) 20%, var(--dcf-soft, #FEFCE8))",
+      "color-mix(in srgb, var(--dcf-chart, #CA8A04) 48%, var(--dcf-soft, #FEFCE8))",
+      "var(--dcf-chart, #CA8A04)",
+      "color-mix(in srgb, var(--dcf-chart, #CA8A04) 78%, var(--dcf-text, #854D0E))"
+    ]
   },
   themes: {
     name: "CCT",
     accent: "var(--themes-accent, #15803D)",
-    strong: "#166534",
+    strong: "var(--themes-text, #166534)",
     soft: "var(--themes-soft, #F0FDF4)",
-    border: "#BBF7D0",
+    border: "color-mix(in srgb, var(--themes-accent, #15803D) 24%, white)",
     text: "var(--themes-text, #166534)",
     contrast: "#FFFFFF",
-    heat: ["var(--themes-soft, #F0FDF4)", "#BBF7D0", "#4ADE80", "var(--themes-chart, #15803D)", "#166534"]
+    heat: [
+      "var(--themes-soft, #F0FDF4)",
+      "color-mix(in srgb, var(--themes-chart, #15803D) 20%, var(--themes-soft, #F0FDF4))",
+      "color-mix(in srgb, var(--themes-chart, #15803D) 48%, var(--themes-soft, #F0FDF4))",
+      "var(--themes-chart, #15803D)",
+      "color-mix(in srgb, var(--themes-chart, #15803D) 78%, var(--themes-text, #166534))"
+    ]
   }
 };
 

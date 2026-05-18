@@ -3,23 +3,30 @@
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { useCurrentSchoolData } from "@/lib/currentSchool";
-import type { ElementDefinition, FrameworkDefinition, StrandDefinition } from "@/lib/types";
+import { descriptorForReference, secondaryProgressionReferences, suggestedProgressionForYear } from "@/lib/progression";
+import type { ElementDefinition, FrameworkDefinition, ProgressionReference, StrandDefinition } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
 export default function AddEntryPage() {
   const { frameworkLibrary, frameworkMap, subjectConfigs, subjectAoleMap, terms, yearGroups } = useCurrentSchoolData();
   const frameworkNames = Object.keys(frameworkMap);
   const [framework, setFramework] = useState(frameworkNames[0]);
-  const activeSubjects = subjectConfigs.filter((subject) => subject.active && subject.appearsInMappingDropdowns).sort((a, b) => a.displayOrder - b.displayOrder).map((subject) => subject.name);
-  const [subject, setSubject] = useState(activeSubjects[0]);
+  const activeSubjects = subjectConfigs
+    .filter((subject) => subject.active && subject.appearsInMappingDropdowns)
+    .map((subject) => subject.name)
+    .sort((a, b) => a.localeCompare(b));
+  const [subject, setSubject] = useState("");
   const selectedFrameworkName = frameworkMap[framework] ? framework : frameworkNames[0];
-  const selectedSubjectName = activeSubjects.includes(subject) ? subject : activeSubjects[0];
+  const selectedSubjectName = activeSubjects.includes(subject) ? subject : "";
   const strands = useMemo(() => Object.keys(frameworkMap[selectedFrameworkName]), [frameworkMap, selectedFrameworkName]);
   const [strand, setStrand] = useState(strands[0]);
   const selectedStrandName = frameworkMap[selectedFrameworkName][strand] ? strand : strands[0];
   const elements = frameworkMap[selectedFrameworkName][selectedStrandName];
   const [element, setElement] = useState(elements[0]);
   const selectedElementName = elements.includes(element) ? element : elements[0];
+  const [yearGroup, setYearGroup] = useState("Year 7");
+  const [term, setTerm] = useState("Autumn");
+  const [progressionReference, setProgressionReference] = useState<ProgressionReference>("Not specified");
   const [activityDescription, setActivityDescription] = useState("");
   const [showValidation, setShowValidation] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
@@ -27,7 +34,9 @@ export default function AddEntryPage() {
   const selectedFramework = frameworkLibrary.find((item: FrameworkDefinition) => item.name === selectedFrameworkName) ?? frameworkLibrary[0];
   const selectedElement = selectedFramework.strands.flatMap((item: StrandDefinition) => item.elements).find((item: ElementDefinition) => item.name === selectedElementName);
   const theme = themeForFramework(selectedFrameworkName);
-  const selectedAole = subjectAoleMap[selectedSubjectName];
+  const selectedAole = selectedSubjectName ? subjectAoleMap[selectedSubjectName] : undefined;
+  const suggestedProgression = suggestedProgressionForYear(yearGroup);
+  const progressionDescriptor = descriptorForReference(selectedElement, progressionReference);
 
   function updateFramework(nextFramework: string) {
     const nextStrands = Object.keys(frameworkMap[nextFramework]);
@@ -55,18 +64,34 @@ export default function AddEntryPage() {
   function handleSave() {
     setShowValidation(true);
     if (!activityError) {
-      setSaveMessage("Draft mapping saved locally for curriculum visibility.");
+      setSaveMessage("Draft mapping saved.");
     } else {
       setSaveMessage("");
     }
   }
 
-  function clearForm() {
-    setSubject(activeSubjects[0]);
+  function resetForm(message = "Form cleared.") {
+    setSubject("");
+    setYearGroup("Year 7");
+    setTerm("Autumn");
+    setProgressionReference("Not specified");
     setActivityDescription("");
     setShowValidation(false);
-    setSaveMessage("Form cleared.");
+    setSaveMessage(message);
     updateFramework(frameworkNames[0]);
+  }
+
+  function clearForm() {
+    resetForm();
+  }
+
+  function saveAndAddNew() {
+    setShowValidation(true);
+    if (!activityError) {
+      resetForm("Draft mapping saved. Ready for a new entry.");
+    } else {
+      setSaveMessage("");
+    }
   }
 
   return (
@@ -74,64 +99,166 @@ export default function AddEntryPage() {
       <PageHeader
         title="Add Curriculum Mapping Entry"
         eyebrow="Planning visibility"
-        description="Create a curriculum mapping entry showing where a skill appears in planned learning. No pupil data, assessment data, behaviour data or coverage quality ratings are used."
+        description="Create a curriculum mapping entry showing where a skill appears in planned learning."
         accent={areaThemes.overview.accent}
       />
 
       <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
         <form className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" onSubmit={(event) => event.preventDefault()}>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Subject">
-              <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" value={selectedSubjectName} onChange={(event) => setSubject(event.target.value)}>
-                {activeSubjects.map((subjectName) => (
-                  <option key={subjectName}>{subjectName}</option>
-                ))}
-              </select>
-              <div className="mt-2 rounded-md border border-[#e8cfe0] bg-[#f7edf3] px-3 py-2 text-sm font-semibold text-[#571435]">
-                AoLE: {selectedAole ?? "Not set"}
+          <div className="mb-5 grid gap-3 md:grid-cols-3">
+            <StepPill number="1" title="Context" />
+            <StepPill number="2" title="Framework link" />
+            <StepPill number="3" title="Activity and reference" />
+          </div>
+
+          <div className="space-y-5">
+            <FormSection number="1" title="Context" description="Choose the subject, year, term and planning reference before adding framework detail.">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Subject">
+                  <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" value={selectedSubjectName} onChange={(event) => setSubject(event.target.value)}>
+                    <option value="">Select a subject</option>
+                    {activeSubjects.map((subjectName) => (
+                      <option key={subjectName}>{subjectName}</option>
+                    ))}
+                  </select>
+                  {selectedSubjectName ? <div className="mt-2 rounded-md border border-[#e8cfe0] bg-[#f7edf3] px-3 py-2 text-sm font-semibold text-[#571435]">AoLE: {selectedAole ?? "Not set"}</div> : null}
+                </Field>
+                <Field label="Year group">
+                  <SegmentedButtons options={yearGroups} value={yearGroup} onChange={setYearGroup} />
+                  <p className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700">Suggested progression reference based on year group. This can be changed. Suggested: {suggestedProgression}</p>
+                </Field>
+                <Field label="Term">
+                  <SegmentedButtons options={terms} value={term} onChange={setTerm} />
+                </Field>
+                <Field label="Unit/topic">
+                  <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" />
+                </Field>
               </div>
-            </Field>
-            <Field label="Year group">
-              <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" defaultValue="Year 8">
-                {yearGroups.map((year) => (
-                  <option key={year}>{year}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Term">
-              <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" defaultValue="Spring">
-                {terms.map((term) => (
-                  <option key={term}>{term}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Unit/topic">
-              <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" defaultValue="Local enquiry project" />
-            </Field>
-            <Field label="Framework">
-              <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" value={selectedFrameworkName} onChange={(event) => updateFramework(event.target.value)}>
-                {frameworkNames.map((name) => (
-                  <option key={name}>{name}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Strand">
-              <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" value={selectedStrandName} onChange={(event) => updateStrand(event.target.value)}>
-                {strands.map((name) => (
-                  <option key={name}>{name}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Element">
-              <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" value={selectedElementName} onChange={(event) => setElement(event.target.value)}>
-                {elements.map((name) => (
-                  <option key={name}>{name}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Scheme of learning reference">
-              <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" defaultValue="HUM-Y8-S2" />
-            </Field>
+            </FormSection>
+
+            <FormSection number="2" title="Framework link" description="Choose Framework → Strand → Element using quick buttons. Each choice updates the next row.">
+              <div>
+                <span className="mb-2 block text-sm font-semibold text-gray-700">Framework</span>
+                <div className="flex flex-wrap gap-2">
+                  {frameworkNames.map((name) => {
+                    const frameworkItem = frameworkLibrary.find((item) => item.name === name);
+                    const buttonTheme = themeForFramework(name);
+                    const selected = selectedFrameworkName === name;
+                    return (
+                      <button
+                        key={name}
+                        className="focus-ring rounded-md border px-3 py-2 text-left text-sm font-bold transition hover:-translate-y-0.5 hover:shadow-sm"
+                        style={
+                          selected
+                            ? { borderColor: buttonTheme.accent, backgroundColor: buttonTheme.soft, color: buttonTheme.text, boxShadow: `inset 0 0 0 1px ${buttonTheme.accent}` }
+                            : { borderColor: "#e5e7eb", backgroundColor: "#ffffff" }
+                        }
+                        type="button"
+                        onClick={() => updateFramework(name)}
+                        aria-pressed={selected}
+                      >
+                        {frameworkItem?.shortName ?? name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <span className="mb-2 block text-sm font-semibold text-gray-700">Strand</span>
+                <div className="flex flex-wrap gap-2">
+                  {strands.map((name) => {
+                    const selected = selectedStrandName === name;
+                    return (
+                      <button
+                        key={name}
+                        className="focus-ring rounded-md border px-3 py-2 text-sm font-bold transition hover:-translate-y-0.5 hover:shadow-sm"
+                        style={selected ? { borderColor: theme.accent, backgroundColor: theme.soft, color: theme.text } : { borderColor: "#d1d5db", backgroundColor: "#ffffff", color: "#374151" }}
+                        type="button"
+                        onClick={() => updateStrand(name)}
+                        aria-pressed={selected}
+                      >
+                        {name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <span className="mb-2 block text-sm font-semibold text-gray-700">Element</span>
+                <div className="flex flex-wrap gap-2">
+                  {elements.map((name) => {
+                    const selected = selectedElementName === name;
+                    return (
+                      <button
+                        key={name}
+                        className="focus-ring rounded-md border px-3 py-2 text-sm font-bold transition hover:-translate-y-0.5 hover:shadow-sm"
+                        style={selected ? { borderColor: theme.accent, backgroundColor: theme.soft, color: theme.text } : { borderColor: "#d1d5db", backgroundColor: "#ffffff", color: "#374151" }}
+                        type="button"
+                        onClick={() => setElement(name)}
+                        aria-pressed={selected}
+                      >
+                        {name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </FormSection>
+
+            <FormSection number="3" title="Activity and progression reference" description="Add the planned activity and optional curriculum progression reference.">
+              <Field label="Scheme of learning reference">
+                <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" />
+              </Field>
+              <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-gray-950">Progression Step Reference</h2>
+                  <p className="mt-1 text-sm leading-6 text-gray-600">Optional curriculum reference for the selected framework element.</p>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-gray-700">Default: Not specified</span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {secondaryProgressionReferences.map((reference) => {
+                  const selected = progressionReference === reference;
+                  return (
+                    <button
+                      key={reference}
+                      className="focus-ring rounded-full border px-3 py-2 text-sm font-bold"
+                      style={selected ? { borderColor: theme.accent, backgroundColor: theme.soft, color: theme.text } : { borderColor: "#d1d5db", backgroundColor: "#ffffff", color: "#374151" }}
+                      type="button"
+                      onClick={() => setProgressionReference(reference)}
+                    >
+                      {reference}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="mt-4 rounded-lg border p-4" style={{ borderColor: theme.border, backgroundColor: theme.soft }}>
+              <h2 className="font-bold" style={{ color: theme.text }}>
+                Selected
+              </h2>
+              <p className="mt-2 text-sm font-semibold text-gray-800">
+                {selectedFrameworkName} → {selectedStrandName} → {selectedElementName} → {progressionReference}
+              </p>
+              <dl className="mt-4 space-y-3 text-sm">
+                <GuidanceRow label="Descriptor" value={progressionDescriptor} />
+                <GuidanceRow label="Teacher-friendly explanation" value={selectedElement?.explanation ?? "Select an element to see guidance."} />
+              </dl>
+              <div className="mt-4">
+                <h3 className="text-sm font-bold text-gray-900">Example classroom opportunities</h3>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {selectedElement?.examples.map((example) => (
+                    <span key={example} className="rounded-full bg-white px-3 py-1 text-xs font-semibold" style={{ color: theme.text }}>
+                      {example}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="mt-4">
             <Field label="Learning Activity / Task Description" wide>
               <textarea
                 className="focus-ring min-h-28 w-full rounded-md border px-3 py-2"
@@ -153,19 +280,18 @@ export default function AddEntryPage() {
                 </span>
               </div>
             </Field>
-            <Field label="Optional note" wide>
-              <textarea
-                className="focus-ring min-h-24 w-full rounded-md border border-gray-300 px-3 py-2"
-                defaultValue="Learners use evidence, discussion and digital presentation tools to communicate findings about a local issue."
-              />
-            </Field>
+            </div>
+            </FormSection>
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-3">
-            <button className="focus-ring rounded-md bg-[#741B47] px-4 py-2 font-semibold text-white" type="button" onClick={handleSave}>
+          <div className="sticky bottom-0 -mx-5 mt-5 flex flex-wrap gap-3 border-t border-gray-200 bg-white/95 px-5 py-4 backdrop-blur">
+            <button className="focus-ring btn btn-primary" type="button" onClick={handleSave}>
               Save draft mapping
             </button>
-            <button className="focus-ring rounded-md border border-gray-300 px-4 py-2 font-semibold text-gray-700" type="button" onClick={clearForm}>
+            <button className="focus-ring btn btn-secondary" type="button" onClick={saveAndAddNew}>
+              Save and add new
+            </button>
+            <button className="focus-ring btn btn-muted" type="button" onClick={clearForm}>
               Clear form
             </button>
           </div>
@@ -227,6 +353,59 @@ export default function AddEntryPage() {
         </aside>
       </div>
     </section>
+  );
+}
+
+function StepPill({ number, title }: { number: string; title: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+      <span className="grid h-7 w-7 place-items-center rounded-md bg-[#741B47] text-xs font-bold text-white">{number}</span>
+      <span className="text-sm font-bold text-gray-800">{title}</span>
+    </div>
+  );
+}
+
+function FormSection({ number, title, description, children }: { number: string; title: string; description: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-lg border border-gray-200 p-4">
+      <div className="mb-4 flex items-start gap-3">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#f7edf3] text-sm font-bold text-[#571435]">{number}</span>
+        <div>
+          <h2 className="font-bold text-gray-950">{title}</h2>
+          <p className="mt-1 text-sm leading-6 text-gray-600">{description}</p>
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function SegmentedButtons({ options, value, onChange }: { options: string[]; value: string; onChange: (value: string) => void }) {
+  return (
+    <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(options.length, 5)}, minmax(0, 1fr))` }}>
+      {options.map((option) => {
+        const selected = option === value;
+        return (
+          <button
+            key={option}
+            className={`focus-ring rounded-md border px-3 py-2 text-sm font-bold transition ${selected ? "border-[#741B47] bg-[#741B47] text-white shadow-sm" : "border-gray-300 bg-white text-gray-700 hover:bg-[#f7edf3]"}`}
+            type="button"
+            onClick={() => onChange(option)}
+          >
+            {option.replace("Year ", "Y")}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function GuidanceRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="font-bold text-gray-900">{label}</dt>
+      <dd className="mt-1 leading-6 text-gray-700">{value}</dd>
+    </div>
   );
 }
 

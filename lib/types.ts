@@ -22,6 +22,7 @@ export type ElementDefinition = {
   officialWording: string;
   explanation: string;
   examples: string[];
+  progressionDescriptors: Record<ProgressionStep, string>;
   searchKeywords: string[];
   relatedConnections: string[];
 };
@@ -52,9 +53,14 @@ export type MappingEntry = {
   unit: string;
   activityDescription: string;
   schemeReference: string;
+  progressionReference?: ProgressionReference;
   note?: string;
   lastMappedDate: string;
 };
+
+export type ProgressionStep = "Step 1" | "Step 2" | "Step 3" | "Step 4" | "Step 5";
+
+export type ProgressionReference = ProgressionStep | "Step 3–4" | "Step 4–5" | "Not specified";
 
 export type SubjectConfig = {
   schoolId?: string;

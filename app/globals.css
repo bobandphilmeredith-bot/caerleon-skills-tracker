@@ -31,10 +31,66 @@ button,
 select,
 input,
 textarea {
-  font: inherit;
+  font-family: inherit;
 }
 
 .focus-ring:focus-visible {
   outline: 3px solid rgba(116, 27, 71, 0.28);
   outline-offset: 2px;
+}
+
+.btn {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 0.375rem;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.2;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(31, 41, 55, 0.11);
+}
+
+.btn-primary {
+  border: 1px solid var(--caerleon-maroon-dark);
+  background: var(--caerleon-maroon);
+  color: #ffffff !important;
+}
+
+.btn-primary:hover {
+  background: var(--caerleon-maroon-dark);
+  color: #ffffff !important;
+}
+
+.btn-secondary {
+  border: 1px solid var(--caerleon-maroon);
+  background: #ffffff;
+  color: var(--caerleon-maroon) !important;
+}
+
+.btn-secondary:hover {
+  background: var(--caerleon-maroon-soft);
+  color: var(--caerleon-maroon-dark) !important;
+}
+
+.btn-muted {
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #374151 !important;
+}
+
+.btn-muted:hover {
+  background: #f9fafb;
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
+import { progressionSteps } from "@/lib/progression";
 import type { AoleConfig, ElementDefinition, SubjectConfig } from "@/lib/types";
 import { areaThemes } from "@/lib/theme";
 import { useSchoolSettings } from "@/lib/schoolSettings";
@@ -10,23 +11,16 @@ import { useCurrentSchool } from "@/lib/currentSchool";
 type AdminFramework = { name: string; shortName: string; active: boolean; strands: AdminStrand[] };
 type AdminStrand = { name: string; active: boolean; elements: AdminElement[] };
 type AdminElement = ElementDefinition & { active: boolean };
+type AdminTab = "School" | "Branding" | "Subjects" | "AoLE" | "Frameworks" | "Records";
+
+const adminTabs: AdminTab[] = ["School", "Branding", "Subjects", "AoLE", "Frameworks", "Records"];
 
 export default function AdminPage() {
   const { settings, updateBranding, updateFrameworkTheme, resetBranding, resetAllSettings } = useSchoolSettings();
   const { schools, currentSchool, currentSchoolId, data, switchSchool, addSchool, updateSchool, toggleSchoolActive } = useCurrentSchool();
   const [subjects, setSubjects] = useState<SubjectConfig[]>(data.subjectConfigs);
   const [aoles, setAoles] = useState<AoleConfig[]>(data.aoleConfigs);
-  const [frameworks, setFrameworks] = useState<AdminFramework[]>(() =>
-    data.frameworkLibrary.map((framework) => ({
-      ...framework,
-      active: true,
-      strands: framework.strands.map((strand) => ({
-        ...strand,
-        active: true,
-        elements: strand.elements.map((element) => ({ ...element, active: true }))
-      }))
-    }))
-  );
+  const [frameworks, setFrameworks] = useState<AdminFramework[]>(() => loadAdminFrameworks(data.frameworkLibrary, currentSchoolId));
   const [notice, setNotice] = useState("");
   const [reviewCycle, setReviewCycle] = useState("Termly curriculum review");
   const [academicYears, setAcademicYears] = useState(data.yearGroups.map((year, index) => ({ name: year, active: true, displayOrder: index + 1 })));
@@ -35,21 +29,12 @@ export default function AdminPage() {
   const [practiceMappings, setPracticeMappings] = useState(126);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
+  const [activeTab, setActiveTab] = useState<AdminTab>("School");
 
   useEffect(() => {
     setSubjects(data.subjectConfigs);
     setAoles(data.aoleConfigs);
-    setFrameworks(
-      data.frameworkLibrary.map((framework) => ({
-        ...framework,
-        active: true,
-        strands: framework.strands.map((strand) => ({
-          ...strand,
-          active: true,
-          elements: strand.elements.map((element) => ({ ...element, active: true }))
-        }))
-      }))
-    );
+    setFrameworks(loadAdminFrameworks(data.frameworkLibrary, currentSchoolId));
     setPracticeMappings(data.mappings.length);
   }, [currentSchoolId, data]);
 
@@ -131,6 +116,13 @@ export default function AdminPage() {
     );
   }
 
+  function saveFrameworksLocally() {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(`skills-tracker-admin-frameworks-${currentSchoolId}`, JSON.stringify(frameworks));
+    }
+    setNotice("Framework progression descriptors saved.");
+  }
+
   function addStrand(frameworkIndex: number) {
     setFrameworks((current) =>
       current.map((framework, currentFrameworkIndex) =>
@@ -206,14 +198,29 @@ export default function AdminPage() {
       ) : null}
 
       <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm font-semibold text-amber-900 shadow-sm">
-        Practice data is for testing only. Clear practice data before using the system with live school curriculum mappings.
+        Manage sample curriculum records used in dashboards, framework views and reports.
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="rounded-lg border border-gray-200 bg-white p-2 shadow-sm">
+        <div className="flex flex-wrap gap-2">
+          {adminTabs.map((tab) => (
+            <button
+              key={tab}
+              className={`focus-ring rounded-md px-4 py-2 text-sm font-bold ${activeTab === tab ? "bg-[#741B47] text-white" : "bg-gray-50 text-gray-700 hover:bg-[#f7edf3]"}`}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <section className={adminPanelClass(activeTab, "School")}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-gray-900">School Management</h2>
-            <p className="mt-1 text-sm text-gray-600">Switch schools locally to check that branding, subjects, mappings, frameworks and reports remain separated.</p>
+            <p className="mt-1 text-sm text-gray-600">Switch schools to check that branding, subjects, mappings, frameworks and reports remain separated.</p>
           </div>
           <div className="flex flex-wrap gap-3">
             <select className="focus-ring rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold" value={currentSchoolId} onChange={(event) => switchSchool(event.target.value)}>
@@ -223,10 +230,10 @@ export default function AdminPage() {
                 </option>
               ))}
             </select>
-            <button className="focus-ring rounded-md bg-[#741B47] px-4 py-2 text-sm font-bold text-white" type="button" onClick={() => { const school = addSchool(); setNotice(`${school.name} added locally. Use the fields below to edit its setup.`); }}>
+            <button className="focus-ring btn btn-primary" type="button" onClick={() => { const school = addSchool(); setNotice(`${school.name} added. Use the fields below to edit its setup.`); }}>
               Add school
             </button>
-            <button className="focus-ring rounded-md border border-[#741B47] px-4 py-2 text-sm font-bold text-[#741B47]" type="button" onClick={() => setWizardOpen(true)}>
+            <button className="focus-ring btn btn-secondary" type="button" onClick={() => setWizardOpen(true)}>
               New School Setup Wizard
             </button>
           </div>
@@ -253,10 +260,10 @@ export default function AdminPage() {
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-700">ID: {school.id}</span>
                 <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-700">Created: {school.createdAt}</span>
-                <button className="focus-ring rounded-md border border-gray-300 px-3 py-2 text-xs font-bold text-gray-700" type="button" onClick={() => toggleSchoolActive(school.id)}>
+                <button className="focus-ring btn btn-muted text-xs" type="button" onClick={() => toggleSchoolActive(school.id)}>
                   {school.active ? "Deactivate school" : "Reactivate school"}
                 </button>
-                <button className="focus-ring rounded-md border border-[#741B47] px-3 py-2 text-xs font-bold text-[#741B47]" type="button" onClick={() => switchSchool(school.id)} disabled={!school.active}>
+                <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => switchSchool(school.id)} disabled={!school.active}>
                   Switch to this school
                 </button>
               </div>
@@ -265,7 +272,7 @@ export default function AdminPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <section className={adminPanelClass(activeTab, "School")}>
         <h2 className="text-lg font-bold text-gray-900">Current School Context</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <ContextCard label="Current school" value={currentSchool.name} />
@@ -275,11 +282,11 @@ export default function AdminPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <section className={adminPanelClass(activeTab, "Branding")}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-gray-900">School Branding</h2>
-            <p className="mt-1 text-sm text-gray-600">Branding is stored locally and used across the sidebar, page headers and printable reports.</p>
+            <p className="mt-1 text-sm text-gray-600">Branding is used across the sidebar, page headers and printable reports.</p>
           </div>
           <div className="grid h-24 w-24 place-items-center rounded-md border border-gray-200 bg-white p-2">
             <img src={settings.branding.logoDataUrl} alt="School logo preview" className="h-full w-full object-contain" />
@@ -296,12 +303,12 @@ export default function AdminPage() {
             <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" type="file" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml" onChange={(event) => handleLogoUpload(event.target.files?.[0])} />
           </label>
         </div>
-        <button className="focus-ring mt-4 rounded-md border border-[#741B47] px-3 py-2 text-sm font-bold text-[#741B47]" type="button" onClick={resetBranding}>
+        <button className="focus-ring btn btn-secondary mt-4" type="button" onClick={resetBranding}>
           Reset to Caerleon branding
         </button>
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <section className={adminPanelClass(activeTab, "Branding")}>
         <h2 className="text-lg font-bold text-gray-900">Framework Colour Themes</h2>
         <div className="mt-4 grid gap-4 xl:grid-cols-2">
           {Object.entries(settings.frameworkThemes).map(([framework, theme]) => (
@@ -323,23 +330,23 @@ export default function AdminPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <section className={adminPanelClass(activeTab, "Records")}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Practice Data</h2>
+            <h2 className="text-lg font-bold text-gray-900">Curriculum Records</h2>
             <p className="mt-1 text-sm text-gray-600">{practiceMappings} curriculum mapping entries currently represented in planning.</p>
           </div>
-          <span className="rounded-full bg-[#f7edf3] px-3 py-1 text-xs font-bold text-[#571435]">Local storage only</span>
+          <span className="rounded-full bg-[#f7edf3] px-3 py-1 text-xs font-bold text-[#571435]">Planning records</span>
         </div>
         <div className="mt-4 flex flex-wrap gap-3">
-          <PracticeButton label="Add practice curriculum data" onClick={() => confirmPracticeAction("Add practice curriculum data", "This will add subjects, frameworks, strands, elements, curriculum entries, recent activity and review dates to local state.", () => { setPracticeMappings((value) => value + 48); setNotice("Practice curriculum data added locally."); })} />
-          <PracticeButton label="Clear practice curriculum data" onClick={() => confirmPracticeAction("Clear practice curriculum data", "This will remove curriculum mappings only and keep branding, subjects, frameworks and admin settings.", () => { setPracticeMappings(0); setNotice("Curriculum mappings cleared locally."); })} />
-          <PracticeButton label="Reset all practice data" onClick={() => confirmPracticeAction("Reset all practice data", "This will reset branding, framework colours and practice data to the current school sample state.", () => { resetAllSettings(); setSubjects(data.subjectConfigs); setAoles(data.aoleConfigs); setPracticeMappings(data.mappings.length); setNotice("All practice data reset."); })} />
-          <PracticeButton label="Restore default Caerleon sample data" onClick={() => confirmPracticeAction("Restore default Caerleon sample data", "This will switch back to the Caerleon school sample and reload its sample mappings.", () => { switchSchool("school_caerleon"); resetAllSettings(); setNotice("Default Caerleon sample data restored."); })} />
+          <PracticeButton label="Add curriculum records" onClick={() => confirmPracticeAction("Add curriculum records", "This will add subjects, frameworks, strands, elements, curriculum entries, recent activity and review dates.", () => { setPracticeMappings((value) => value + 48); setNotice("Curriculum records added."); })} />
+          <PracticeButton label="Clear curriculum records" onClick={() => confirmPracticeAction("Clear curriculum records", "This will remove curriculum mappings only and keep branding, subjects, frameworks and admin settings.", () => { setPracticeMappings(0); setNotice("Curriculum mappings cleared."); })} />
+          <PracticeButton label="Reset curriculum records" onClick={() => confirmPracticeAction("Reset curriculum records", "This will reset branding, framework colours and curriculum records to the current school setup.", () => { resetAllSettings(); setSubjects(data.subjectConfigs); setAoles(data.aoleConfigs); setPracticeMappings(data.mappings.length); setNotice("Curriculum records reset."); })} />
+          <PracticeButton label="Restore default Caerleon records" onClick={() => confirmPracticeAction("Restore default Caerleon records", "This will switch back to the Caerleon school and reload its curriculum mappings.", () => { switchSchool("school_caerleon"); resetAllSettings(); setNotice("Default Caerleon records restored."); })} />
         </div>
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <section className={adminPanelClass(activeTab, "Subjects")}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Subjects</h2>
@@ -347,7 +354,7 @@ export default function AdminPage() {
               {subjectCounts.active} active subjects · {subjectCounts.mapping} shown in curriculum mapping dropdowns
             </p>
           </div>
-          <button className="focus-ring rounded-md bg-[#741B47] px-4 py-2 text-sm font-bold text-white" type="button" onClick={addSubject}>
+          <button className="focus-ring btn btn-primary" type="button" onClick={addSubject}>
             Add subject
           </button>
         </div>
@@ -393,7 +400,7 @@ export default function AdminPage() {
                     </span>
                   </td>
                   <td className="py-3 pr-3">
-                    <button className="focus-ring rounded-md border border-[#741B47] px-3 py-2 text-xs font-bold text-[#741B47]" type="button" onClick={() => updateSubject(subject.id, { active: !subject.active })}>
+                    <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => updateSubject(subject.id, { active: !subject.active })}>
                       {subject.active ? "Archive" : "Reactivate"}
                     </button>
                   </td>
@@ -404,7 +411,7 @@ export default function AdminPage() {
         </div>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-2">
+      <section className={activeTab === "Subjects" ? "grid gap-5 xl:grid-cols-2" : "hidden"}>
         <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-bold text-gray-900">Review Cycle Settings</h2>
           <label className="mt-4 block">
@@ -415,7 +422,7 @@ export default function AdminPage() {
               <option>Annual curriculum review</option>
             </select>
           </label>
-          <button className="focus-ring mt-4 rounded-md border border-[#741B47] px-3 py-2 text-sm font-bold text-[#741B47]" type="button" onClick={() => setNotice(`${reviewCycle} saved locally.`)}>
+          <button className="focus-ring btn btn-secondary mt-4" type="button" onClick={() => setNotice(`${reviewCycle} saved.`)}>
             Save review cycle
           </button>
         </article>
@@ -439,13 +446,13 @@ export default function AdminPage() {
         </article>
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <section className={adminPanelClass(activeTab, "AoLE")}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-gray-900">AoLE Metadata</h2>
             <p className="mt-1 text-sm text-gray-600">AoLE is optional metadata for filtering and reports. It does not control the main app structure.</p>
           </div>
-          <button className="focus-ring rounded-md bg-[#741B47] px-4 py-2 text-sm font-bold text-white" type="button" onClick={addAole}>
+          <button className="focus-ring btn btn-primary" type="button" onClick={addAole}>
             Add AoLE
           </button>
         </div>
@@ -454,7 +461,7 @@ export default function AdminPage() {
             <article key={aole.id} className="rounded-lg border border-gray-200 p-4">
               <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                 <input className="focus-ring rounded-md border border-gray-300 px-3 py-2 font-semibold" value={aole.name} onChange={(event) => updateAole(aole.id, { name: event.target.value })} />
-                <button className="focus-ring rounded-md border border-[#741B47] px-3 py-2 text-xs font-bold text-[#741B47]" type="button" onClick={() => updateAole(aole.id, { active: !aole.active })}>
+                <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => updateAole(aole.id, { active: !aole.active })}>
                   {aole.active ? "Archive" : "Reactivate"}
                 </button>
               </div>
@@ -472,13 +479,13 @@ export default function AdminPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <section className={adminPanelClass(activeTab, "Frameworks")}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Framework Library</h2>
-            <p className="mt-1 text-sm text-gray-600">Edit frameworks, strands, elements, explanations and classroom opportunities in local system state.</p>
+            <p className="mt-1 text-sm text-gray-600">Edit frameworks, strands, elements, progression descriptors, explanations and classroom opportunities in local system state.</p>
           </div>
-          <button className="focus-ring rounded-md bg-[#741B47] px-4 py-2 text-sm font-bold text-white" type="button" onClick={addFramework}>
+          <button className="focus-ring btn btn-primary" type="button" onClick={addFramework}>
             Add framework
           </button>
         </div>
@@ -490,7 +497,7 @@ export default function AdminPage() {
               <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_160px_auto]">
                 <input className="focus-ring rounded-md border border-gray-300 px-3 py-2 font-semibold" value={framework.name} onChange={(event) => updateFramework(frameworkIndex, { name: event.target.value })} />
                 <input className="focus-ring rounded-md border border-gray-300 px-3 py-2" value={framework.shortName} onChange={(event) => updateFramework(frameworkIndex, { shortName: event.target.value })} />
-                <button className="focus-ring rounded-md border border-[#741B47] px-3 py-2 text-xs font-bold text-[#741B47]" type="button" onClick={() => updateFramework(frameworkIndex, { active: !framework.active })}>
+                <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => updateFramework(frameworkIndex, { active: !framework.active })}>
                   {framework.active ? "Archive" : "Reactivate"}
                 </button>
               </div>
@@ -500,10 +507,10 @@ export default function AdminPage() {
                   <div key={`${strand.name}-${strandIndex}`} className="rounded-lg bg-gray-50 p-4">
                     <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
                       <input className="focus-ring rounded-md border border-gray-300 px-3 py-2 font-semibold" value={strand.name} onChange={(event) => updateStrand(frameworkIndex, strandIndex, { name: event.target.value })} />
-                      <button className="focus-ring rounded-md border border-gray-300 px-3 py-2 text-xs font-bold text-gray-700" type="button" onClick={() => addElement(frameworkIndex, strandIndex)}>
+                      <button className="focus-ring btn btn-muted text-xs" type="button" onClick={() => addElement(frameworkIndex, strandIndex)}>
                         Add element
                       </button>
-                      <button className="focus-ring rounded-md border border-[#741B47] px-3 py-2 text-xs font-bold text-[#741B47]" type="button" onClick={() => updateStrand(frameworkIndex, strandIndex, { active: !strand.active })}>
+                      <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => updateStrand(frameworkIndex, strandIndex, { active: !strand.active })}>
                         {strand.active ? "Archive" : "Reactivate"}
                       </button>
                     </div>
@@ -518,7 +525,7 @@ export default function AdminPage() {
                               onChange={(event) => updateElement(frameworkIndex, strandIndex, elementIndex, { examples: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) })}
                               placeholder="Example classroom opportunities"
                             />
-                            <button className="focus-ring rounded-md border border-[#741B47] px-3 py-2 text-xs font-bold text-[#741B47]" type="button" onClick={() => updateElement(frameworkIndex, strandIndex, elementIndex, { active: !element.active })}>
+                            <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => updateElement(frameworkIndex, strandIndex, elementIndex, { active: !element.active })}>
                               {element.active ? "Archive" : "Reactivate"}
                             </button>
                           </div>
@@ -528,6 +535,22 @@ export default function AdminPage() {
                             onChange={(event) => updateElement(frameworkIndex, strandIndex, elementIndex, { explanation: event.target.value })}
                             placeholder="Teacher-friendly explanation"
                           />
+                          <div className="mt-3 grid gap-3 lg:grid-cols-5">
+                            {progressionSteps.map((step) => (
+                              <label key={step}>
+                                <span className="mb-1 block text-xs font-bold uppercase tracking-[0.12em] text-gray-500">{step} descriptor</span>
+                                <textarea
+                                  className="focus-ring min-h-28 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                                  value={element.progressionDescriptors?.[step] ?? ""}
+                                  onChange={(event) =>
+                                    updateElement(frameworkIndex, strandIndex, elementIndex, {
+                                      progressionDescriptors: { ...element.progressionDescriptors, [step]: event.target.value }
+                                    })
+                                  }
+                                />
+                              </label>
+                            ))}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -542,7 +565,7 @@ export default function AdminPage() {
         </div>
       </section>
 
-      <button className="focus-ring rounded-md border border-[#741B47] bg-white px-4 py-2 text-sm font-bold text-[#741B47]" type="button" onClick={() => setNotice("This system action will save to the database in the live version.")}>
+      <button className={activeTab === "Frameworks" ? "focus-ring btn btn-secondary" : "hidden"} type="button" onClick={saveFrameworksLocally}>
         Save system changes
       </button>
 
@@ -554,7 +577,7 @@ export default function AdminPage() {
                 <p className="text-sm font-bold uppercase tracking-[0.14em] text-[#741B47]">New School Setup Wizard</p>
                 <h2 className="mt-1 text-2xl font-bold text-gray-950">Step {wizardStep} of 6</h2>
               </div>
-              <button className="focus-ring rounded-md border border-gray-300 px-3 py-2 text-sm font-bold text-gray-700" type="button" onClick={() => setWizardOpen(false)}>
+              <button className="focus-ring btn btn-muted" type="button" onClick={() => setWizardOpen(false)}>
                 Close
               </button>
             </div>
@@ -562,10 +585,10 @@ export default function AdminPage() {
               <WizardStep step={wizardStep} />
             </div>
             <div className="mt-5 flex flex-wrap gap-3">
-              <button className="focus-ring rounded-md border border-gray-300 px-4 py-2 text-sm font-bold text-gray-700" type="button" onClick={() => setWizardStep((step) => Math.max(1, step - 1))}>
+              <button className="focus-ring btn btn-muted" type="button" onClick={() => setWizardStep((step) => Math.max(1, step - 1))}>
                 Previous
               </button>
-              <button className="focus-ring rounded-md bg-[#741B47] px-4 py-2 text-sm font-bold text-white" type="button" onClick={() => wizardStep < 6 ? setWizardStep((step) => step + 1) : (setWizardOpen(false), setWizardStep(1), setNotice("New school setup steps saved locally."))}>
+              <button className="focus-ring btn btn-primary" type="button" onClick={() => wizardStep < 6 ? setWizardStep((step) => step + 1) : (setWizardOpen(false), setWizardStep(1), setNotice("New school setup steps saved."))}>
                 {wizardStep < 6 ? "Next step" : "Finish setup"}
               </button>
             </div>
@@ -579,10 +602,10 @@ export default function AdminPage() {
             <h2 className="text-xl font-bold text-gray-950">{confirmAction.title}</h2>
             <p className="mt-2 text-sm leading-6 text-gray-700">{confirmAction.body}</p>
             <div className="mt-5 flex flex-wrap gap-3">
-              <button className="focus-ring rounded-md bg-[#741B47] px-4 py-2 text-sm font-bold text-white" type="button" onClick={runConfirmedAction}>
+              <button className="focus-ring btn btn-primary" type="button" onClick={runConfirmedAction}>
                 Confirm
               </button>
-              <button className="focus-ring rounded-md border border-gray-300 px-4 py-2 text-sm font-bold text-gray-700" type="button" onClick={() => setConfirmAction(null)}>
+              <button className="focus-ring btn btn-muted" type="button" onClick={() => setConfirmAction(null)}>
                 Cancel
               </button>
             </div>
@@ -602,6 +625,10 @@ function ContextCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+function adminPanelClass(activeTab: AdminTab, tab: AdminTab) {
+  return activeTab === tab ? "rounded-lg border border-gray-200 bg-white p-5 shadow-sm" : "hidden";
+}
+
 function WizardStep({ step }: { step: number }) {
   const content = [
     ["School details", "Enter the school name, slug and motto before creating the school record."],
@@ -609,13 +636,13 @@ function WizardStep({ step }: { step: number }) {
     ["Subject list", "Add the subjects used by the school. AoLE remains optional metadata."],
     ["Framework setup", "Choose the curriculum frameworks, strands and elements available for mapping."],
     ["Admin user", "Record who will manage school setup when database accounts are added."],
-    ["Practice data option", "Choose whether to add sample curriculum mappings or start with an empty school map."]
+    ["Sample records", "Choose whether to add sample curriculum mappings or start with an empty school map."]
   ][step - 1];
   return (
     <div>
       <h3 className="text-lg font-bold text-gray-900">{content[0]}</h3>
       <p className="mt-2 text-sm leading-6 text-gray-700">{content[1]}</p>
-      <p className="mt-4 rounded-md border border-[#e8cfe0] bg-white p-3 text-sm font-semibold text-[#571435]">This local setup step will save to the database in the live version.</p>
+      <p className="mt-4 rounded-md border border-[#e8cfe0] bg-white p-3 text-sm font-semibold text-[#571435]">These choices are kept with the current school setup.</p>
     </div>
   );
 }
@@ -643,7 +670,7 @@ function ColourInput({ label, value, onChange }: { label: string; value: string;
 
 function PracticeButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button className="focus-ring rounded-md border border-[#741B47] bg-white px-3 py-2 text-sm font-bold text-[#741B47] transition hover:bg-[#f7edf3]" type="button" onClick={onClick}>
+    <button className="focus-ring btn btn-secondary" type="button" onClick={onClick}>
       {label}
     </button>
   );
@@ -659,8 +686,41 @@ function newElement(): AdminElement {
     officialWording: "New element: represented in planning through purposeful classroom activity.",
     explanation: "Add a teacher-friendly explanation.",
     examples: ["Example classroom opportunity"],
+    progressionDescriptors: {
+      "Step 1": "Add Step 1 descriptor.",
+      "Step 2": "Add Step 2 descriptor.",
+      "Step 3": "Add Step 3 descriptor.",
+      "Step 4": "Add Step 4 descriptor.",
+      "Step 5": "Add Step 5 descriptor."
+    },
     searchKeywords: ["new element"],
     relatedConnections: ["Curriculum connections"],
     active: true
   };
+}
+
+function loadAdminFrameworks(frameworkLibrary: Parameters<typeof normaliseFrameworks>[0], schoolId: string): AdminFramework[] {
+  if (typeof window !== "undefined") {
+    const saved = window.localStorage.getItem(`skills-tracker-admin-frameworks-${schoolId}`);
+    if (saved) {
+      try {
+        return JSON.parse(saved) as AdminFramework[];
+      } catch {
+        window.localStorage.removeItem(`skills-tracker-admin-frameworks-${schoolId}`);
+      }
+    }
+  }
+  return normaliseFrameworks(frameworkLibrary);
+}
+
+function normaliseFrameworks(frameworkLibrary: { name: string; shortName: string; strands: { name: string; elements: ElementDefinition[] }[] }[]): AdminFramework[] {
+  return frameworkLibrary.map((framework) => ({
+    ...framework,
+    active: true,
+    strands: framework.strands.map((strand) => ({
+      ...strand,
+      active: true,
+      elements: strand.elements.map((element) => ({ ...element, progressionDescriptors: element.progressionDescriptors ?? newElement().progressionDescriptors, active: true }))
+    }))
+  }));
 }

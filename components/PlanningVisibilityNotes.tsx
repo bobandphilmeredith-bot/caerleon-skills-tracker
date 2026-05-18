@@ -7,6 +7,14 @@ import type { AreaTheme } from "@/lib/theme";
 
 type ModalType = "distribution" | "unmapped" | null;
 
+const wholeSchoolActions: Record<string, { href: string; label: string }> = {
+  "Year 11 visibility": { href: "/curriculum-explorer", label: "Open mappings" },
+  "Framework balance": { href: "/progression-overview", label: "Open overview" },
+  "Curriculum review": { href: "/review-summary", label: "Open summary" },
+  "DCF progression": { href: "/progression-overview", label: "Open overview" },
+  "Numeracy in Arts": { href: "/curriculum-explorer", label: "Open mappings" }
+};
+
 export function PlanningVisibilityNotes({
   items,
   coverage,
@@ -32,6 +40,15 @@ export function PlanningVisibilityNotes({
             );
           }
 
+          if (!coverage) {
+            const action = wholeSchoolActions[item.title] ?? { href: "/curriculum-explorer", label: "Open mappings" };
+            return (
+              <Link key={item.title} href={action.href} className="focus-ring block rounded-md border p-4 transition hover:shadow-sm" style={{ borderColor: theme.border }}>
+                <NoteContent item={item} theme={theme} action={action.label} />
+              </Link>
+            );
+          }
+
           const modalType = item.title === "Unmapped elements" ? "unmapped" : "distribution";
 
           return (
@@ -42,7 +59,7 @@ export function PlanningVisibilityNotes({
               type="button"
               onClick={() => setModal(modalType)}
             >
-              <NoteContent item={item} theme={theme} action="View detail" />
+              <NoteContent item={item} theme={theme} action="View details" />
             </button>
           );
         })}

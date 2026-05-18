@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { useCurrentSchoolData } from "@/lib/currentSchool";
 import { filterNaturalLanguage, getRelatedSuggestions } from "@/lib/curriculumOutputs";
+import { descriptorForReference, progressionReferenceForEntry, secondaryProgressionReferences } from "@/lib/progression";
 import type { FrameworkDefinition, MappingEntry } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
@@ -17,6 +19,7 @@ export default function CurriculumExplorerPage() {
   const [subject, setSubject] = useState(allValue);
   const [yearGroup, setYearGroup] = useState(allValue);
   const [term, setTerm] = useState(allValue);
+  const [progressionReference, setProgressionReference] = useState(allValue);
   const [keyword, setKeyword] = useState("");
   const [sortBy, setSortBy] = useState("Most recent");
   const [selectedEntry, setSelectedEntry] = useState<MappingEntry | null>(null);
@@ -28,7 +31,8 @@ export default function CurriculumExplorerPage() {
     const query = keyword.trim().toLowerCase();
     const naturalMatches = query ? new Set(filterNaturalLanguage(query, mappings).map((entry) => entry.id)) : null;
     const filtered = mappings.filter((entry) => {
-      const searchable = [entry.subject, entry.year, entry.term, entry.unit, entry.framework, entry.strand, entry.element, entry.activityDescription, entry.schemeReference, entry.note ?? ""]
+      const entryProgression = progressionReferenceForEntry(entry);
+      const searchable = [entry.subject, entry.year, entry.term, entry.unit, entry.framework, entry.strand, entry.element, entryProgression, entry.activityDescription, entry.schemeReference, entry.note ?? ""]
         .join(" ")
         .toLowerCase();
 
@@ -39,6 +43,7 @@ export default function CurriculumExplorerPage() {
         (subject === allValue || entry.subject === subject) &&
         (yearGroup === allValue || entry.year === yearGroup) &&
         (term === allValue || entry.term === term) &&
+        (progressionReference === allValue || entryProgression === progressionReference) &&
         (!query || searchable.includes(query) || naturalMatches?.has(entry.id))
       );
     });
@@ -48,7 +53,7 @@ export default function CurriculumExplorerPage() {
       if (sortBy === "Framework") return a.framework.localeCompare(b.framework);
       return b.lastMappedDate.localeCompare(a.lastMappedDate);
     });
-  }, [element, framework, keyword, sortBy, strand, subject, term, yearGroup]);
+  }, [element, framework, keyword, progressionReference, sortBy, strand, subject, term, yearGroup]);
 
   const popularElements = topCounts(mappings.map((entry) => entry.element)).slice(0, 5);
   const representedStrands = topCounts(mappings.map((entry) => entry.strand)).slice(0, 5);
@@ -65,6 +70,18 @@ export default function CurriculumExplorerPage() {
     setElement(allValue);
   }
 
+  function resetFilters() {
+    setFramework(allValue);
+    setStrand(allValue);
+    setElement(allValue);
+    setSubject(allValue);
+    setYearGroup(allValue);
+    setTerm(allValue);
+    setProgressionReference(allValue);
+    setKeyword("");
+    setSortBy("Most recent");
+  }
+
   return (
     <section className="space-y-6">
       <PageHeader
@@ -75,12 +92,10 @@ export default function CurriculumExplorerPage() {
       />
 
       <article className="rounded-lg border bg-white p-5 shadow-sm" style={{ borderColor: areaThemes.overview.border }}>
-        <div className="mb-4 flex flex-wrap gap-2">
-          {["What is happening in Year 9 numeracy?", "Where are pupils evaluating information?", "Where is Cynefin mapped?", "Where are pupils interpreting data?"].map((prompt) => (
-            <button key={prompt} className="focus-ring rounded-full px-3 py-1 text-xs font-bold" style={{ backgroundColor: areaThemes.overview.soft, color: areaThemes.overview.text }} type="button" onClick={() => setKeyword(prompt)}>
-              {prompt}
-            </button>
-          ))}
+        <div className="mb-4 flex justify-end">
+          <button className="focus-ring btn btn-muted" type="button" onClick={resetFilters}>
+            Reset filters
+          </button>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SelectField label="Framework" value={framework} onChange={updateFramework} options={[allValue, ...frameworkLibrary.map((item) => item.name)]} />
@@ -89,6 +104,7 @@ export default function CurriculumExplorerPage() {
           <SelectField label="Subject" value={subject} onChange={setSubject} options={[allValue, ...subjects]} />
           <SelectField label="Year group" value={yearGroup} onChange={setYearGroup} options={[allValue, ...yearGroups]} />
           <SelectField label="Term" value={term} onChange={setTerm} options={[allValue, ...terms]} />
+          <SelectField label="Progression reference" value={progressionReference} onChange={setProgressionReference} options={[allValue, ...secondaryProgressionReferences]} />
           <SelectField label="Sort by" value={sortBy} onChange={setSortBy} options={["Most recent", "Subject", "Year group", "Framework"]} />
           <label className="md:col-span-2">
             <span className="mb-1 block text-sm font-semibold text-gray-700">Keyword search</span>
@@ -103,10 +119,15 @@ export default function CurriculumExplorerPage() {
       </article>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-bold text-gray-900">{filteredEntries.length} mapped activities</h2>
-        <span className="rounded-full px-3 py-1 text-xs font-bold" style={{ backgroundColor: areaThemes.overview.soft, color: areaThemes.overview.text }}>
-          Local curriculum data
-        </span>
+        <h2 className="text-lg font-bold text-gray-900">{filteredEntries.length} mapped opportunities</h2>
+        <div className="flex flex-wrap gap-2">
+          <Link className="focus-ring btn btn-primary" href="/add-entry">
+            Add mapping entry
+          </Link>
+          <Link className="focus-ring btn btn-secondary" href="/framework-browser">
+            Open framework browser
+          </Link>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -176,6 +197,7 @@ function EntryCard({ entry, subjectAoleMap, onOpen }: { entry: MappingEntry; sub
       <div className="mt-4 grid gap-2 text-sm text-gray-700 sm:grid-cols-2">
         <Meta label="Strand" value={entry.strand} />
         <Meta label="Element" value={entry.element} />
+        <Meta label="Progression reference" value={progressionReferenceForEntry(entry)} />
         <Meta label="Scheme" value={entry.schemeReference} />
       </div>
       <p className="mt-4 text-sm leading-6 text-gray-700">{entry.activityDescription}</p>
@@ -187,6 +209,7 @@ function EntryCard({ entry, subjectAoleMap, onOpen }: { entry: MappingEntry; sub
 function EntryDetailModal({ entry, onClose, frameworkLibrary, mappings, subjectAoleMap }: { entry: MappingEntry; onClose: () => void; frameworkLibrary: FrameworkDefinition[]; mappings: MappingEntry[]; subjectAoleMap: Record<string, string | undefined> }) {
   const theme = themeForFramework(entry.framework);
   const element = frameworkLibrary.flatMap((framework) => framework.strands.flatMap((strand) => strand.elements)).find((item) => item.name === entry.element);
+  const entryProgression = progressionReferenceForEntry(entry);
   const related = mappings
     .filter((item) => item.id !== entry.id && (item.element === entry.element || item.strand === entry.strand) && item.subject !== entry.subject)
     .slice(0, 5);
@@ -248,9 +271,17 @@ function EntryDetailModal({ entry, onClose, frameworkLibrary, mappings, subjectA
                 <DetailRow label="Framework" value={entry.framework} />
                 <DetailRow label="Strand" value={entry.strand} />
                 <DetailRow label="Element" value={entry.element} />
+                <DetailRow label="Progression reference" value={entryProgression} />
                 <DetailRow label="Scheme reference" value={entry.schemeReference} />
                 <DetailRow label="Optional note" value={entry.note ?? "None added"} />
               </dl>
+            </section>
+            <section className="rounded-md border p-4" style={{ borderColor: theme.border, backgroundColor: theme.soft }}>
+              <h3 className="font-bold" style={{ color: theme.text }}>
+                Progression reference
+              </h3>
+              <p className="mt-2 text-sm font-bold text-gray-900">{entryProgression}</p>
+              <p className="mt-2 text-sm leading-6 text-gray-700">{descriptorForReference(element, entryProgression)}</p>
             </section>
             <section className="rounded-md border border-gray-200 p-4">
               <h3 className="font-bold text-gray-900">Also mapped in...</h3>

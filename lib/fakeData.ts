@@ -1,4 +1,5 @@
 import type { AoleConfig, Card, Dashboard, ElementCoverageRow, FrameworkCoverage, FrameworkDefinition, MappingEntry, SubjectConfig, SubjectDetail, SubjectOverview } from "@/lib/types";
+import { suggestedProgressionForYear } from "@/lib/progression";
 
 export const aoleOptions = ["Expressive Arts", "Health and Well-being", "Humanities", "Languages, Literacy and Communication", "Mathematics and Numeracy", "Science and Technology"];
 
@@ -32,7 +33,10 @@ export const subjectConfigs: SubjectConfig[] = [
   subjectConfig("Music", "Expressive Arts", 21)
 ];
 
-export const subjects = subjectConfigs.filter((subject) => subject.active && subject.appearsInMappingDropdowns).sort((a, b) => a.displayOrder - b.displayOrder).map((subject) => subject.name);
+export const subjects = subjectConfigs
+  .filter((subject) => subject.active && subject.appearsInMappingDropdowns)
+  .map((subject) => subject.name)
+  .sort((a, b) => a.localeCompare(b));
 
 export const faculties = aoleOptions;
 
@@ -342,7 +346,7 @@ export const subjectProfiles: Record<string, { cards: Card[]; rows: string[]; co
         notes: [
           `${subject} has clear opportunities to show planned skill development without recording learner outcomes.`,
           "Subject discussion can focus on visibility, progression language and balance across year groups.",
-          `Review suggested: ${overview.lastReviewedDate}. The map is intentionally separate from assessment and behaviour records.`
+          `Review suggested: ${overview.lastReviewedDate}. Use the map to discuss curriculum visibility and planning connections.`
         ]
       }
     ];
@@ -444,6 +448,7 @@ function element(name: string, explanation: string, examples: string[]) {
     officialWording: `${name}: represented in planning through purposeful classroom activity and curriculum connections.`,
     explanation,
     examples,
+    progressionDescriptors: progressionDescriptors(name, explanation),
     searchKeywords: keywordSet(name, explanation),
     relatedConnections: relatedConnections(name)
   };
@@ -463,8 +468,47 @@ function entry(subject: string, framework: string, strand: string, elementName: 
     unit,
     activityDescription,
     schemeReference,
+    progressionReference: suggestedProgressionForYear(year),
     note: "Curriculum mapping entry for visibility only.",
     lastMappedDate
+  };
+}
+
+function progressionDescriptors(name: string, explanation: string) {
+  const lower = `${name} ${explanation}`.toLowerCase();
+  if (lower.includes("infer") || lower.includes("viewpoint") || lower.includes("source") || lower.includes("reliability")) {
+    return {
+      "Step 1": "Learners identify simple information and begin to notice meaning in familiar texts.",
+      "Step 2": "Learners find relevant information and give simple reasons for their responses.",
+      "Step 3": "Learners use evidence to infer meaning and identify simple viewpoints in texts and sources.",
+      "Step 4": "Learners infer meaning and recognise viewpoint, bias and purpose in increasingly complex texts.",
+      "Step 5": "Learners evaluate complex texts and sources, explaining how viewpoint, purpose and bias shape meaning."
+    };
+  }
+  if (lower.includes("data") || lower.includes("trend") || lower.includes("number") || lower.includes("calculation")) {
+    return {
+      "Step 1": "Learners use simple numerical information in familiar contexts.",
+      "Step 2": "Learners collect, read or use numerical information with support.",
+      "Step 3": "Learners select and use numerical information to describe patterns or solve familiar problems.",
+      "Step 4": "Learners interpret numerical information, explain patterns and justify decisions in varied contexts.",
+      "Step 5": "Learners evaluate numerical information and communicate reasoned conclusions in complex contexts."
+    };
+  }
+  if (lower.includes("digital") || lower.includes("online") || lower.includes("spreadsheet") || lower.includes("model")) {
+    return {
+      "Step 1": "Learners use digital tools safely for simple purposeful tasks.",
+      "Step 2": "Learners choose familiar digital tools and follow routines for safe, organised work.",
+      "Step 3": "Learners select digital tools to create, organise or communicate information for a purpose.",
+      "Step 4": "Learners use digital tools to collaborate, refine outputs and explain choices for audience and purpose.",
+      "Step 5": "Learners evaluate digital processes and outputs, adapting choices for complex audiences or problems."
+    };
+  }
+  return {
+    "Step 1": `Learners begin to explore ${name.toLowerCase()} through familiar classroom opportunities.`,
+    "Step 2": `Learners use supported strategies connected to ${name.toLowerCase()} in planned learning.`,
+    "Step 3": `Learners apply ${name.toLowerCase()} in familiar curriculum contexts and explain simple choices.`,
+    "Step 4": `Learners apply ${name.toLowerCase()} in varied contexts, making connections and explaining decisions.`,
+    "Step 5": `Learners use ${name.toLowerCase()} independently in more complex contexts and evaluate their choices.`
   };
 }
 

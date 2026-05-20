@@ -37,6 +37,14 @@ export type ManagedStaffUser = {
   last_sign_in_at: string | null;
 };
 
+export type AccessDeniedDebug = {
+  authenticated_user_id: string | null;
+  authenticated_email: string | null;
+  staff_profile_role: UserRole | null;
+  staff_profile_school_id: string | null;
+  target_school_id: string | null;
+};
+
 export function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -50,16 +58,48 @@ export function getSupabaseAdmin() {
   });
 }
 
+export function getSupabaseAuthClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
+}
+
 export function bearerToken(request: Request) {
   const header = request.headers.get("authorization") ?? "";
   return header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
 }
 
-export async function getActorProfile(admin: SupabaseClient, token: string) {
-  if (!token) return { error: "You must be signed in." };
+export async function getActorProfile(admin: SupabaseClient, token: string, targetSchoolId?: string | null) {
+  const emptyDebug: AccessDeniedDebug = {
+    authenticated_user_id: null,
+    authenticated_email: null,
+    staff_profile_role: null,
+    staff_profile_school_id: null,
+    target_school_id: targetSchoolId ?? null
+  };
 
-  const { data: userData, error: userError } = await admin.auth.getUser(token);
-  if (userError || !userData.user) return { error: "You must be signed in." };
+  if (!token) return { error: "You must be signed in.", debug: emptyDebug };
+
+  const authClient = getSupabaseAuthClient();
+  if (!authClient) return { error: "Supabase auth is not configured.", debug: emptyDebug };
+
+  const { data: userData, error: userError } = await authClient.auth.getUser(token);
+  if (userError || !userData.user) return { error: "You must be signed in.", debug: emptyDebug };
+
+  const debug: AccessDeniedDebug = {
+    authenticated_user_id: userData.user.id,
+    authenticated_email: userData.user.email ?? null,
+    staff_profile_role: null,
+    staff_profile_school_id: null,
+    target_school_id: targetSchoolId ?? null
+  };
 
   const { data: profile, error: profileError } = await admin
     .from("staff_profiles")
@@ -67,7 +107,10 @@ export async function getActorProfile(admin: SupabaseClient, token: string) {
     .eq("id", userData.user.id)
     .maybeSingle<StaffProfile>();
 
-  if (profileError || !profile || !profile.active) return { error: "Access denied." };
+  debug.staff_profile_role = profile?.role ?? null;
+  debug.staff_profile_school_id = profile?.school_id ?? null;
+
+  if (profileError || !profile || !profile.active) return { error: "Access denied.", debug };
   return { profile };
 }
 

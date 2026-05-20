@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { roleBadgeClass, roleDescriptions, roleLabels, useAuth } from "@/lib/auth";
 import { areaThemes } from "@/lib/theme";
@@ -12,6 +12,14 @@ export default function LoginPage() {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const activeUsers = users.filter((user) => user.active);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("password_reset") === "success") {
+      setMessage("Password updated. You can now sign in.");
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   async function submitPasswordSignIn() {
     setMessage("");

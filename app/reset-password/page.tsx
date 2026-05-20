@@ -15,6 +15,7 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
+  const expiredMessage = "Password reset session not found or expired. Please request a new password reset link.";
 
   useEffect(() => {
     async function prepareRecoverySession() {
@@ -23,11 +24,21 @@ export default function ResetPasswordPage() {
         return;
       }
 
+      const query = new URLSearchParams(window.location.search);
+      const code = query.get("code");
       const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
       const accessToken = hash.get("access_token");
       const refreshToken = hash.get("refresh_token");
 
-      if (accessToken && refreshToken) {
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        window.history.replaceState(null, "", window.location.pathname);
+
+        if (exchangeError) {
+          setError(expiredMessage);
+          return;
+        }
+      } else if (accessToken && refreshToken) {
         const { error: sessionError } = await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken
@@ -36,14 +47,14 @@ export default function ResetPasswordPage() {
         window.history.replaceState(null, "", window.location.pathname);
 
         if (sessionError) {
-          setError("This password reset link could not be used. Please request a new reset email.");
+          setError(expiredMessage);
           return;
         }
       }
 
       const { data } = await supabase.auth.getSession();
       if (!data.session) {
-        setError("This password reset session has expired. Please request a new reset email.");
+        setError(expiredMessage);
         return;
       }
 
@@ -86,7 +97,7 @@ export default function ResetPasswordPage() {
     setMessage("Password updated. You can now sign in.");
     setNewPassword("");
     setConfirmPassword("");
-    window.setTimeout(() => router.push("/login"), 1800);
+    window.setTimeout(() => router.push("/login?password_reset=success"), 1800);
   }
 
   return (

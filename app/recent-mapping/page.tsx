@@ -17,6 +17,7 @@ export default function RecentMappingPage() {
       />
 
       <div className="space-y-4">
+        {!recentMappingFeed.length ? <p className="rounded-lg border border-gray-200 bg-white p-5 text-sm text-gray-600">No curriculum mapping entries have been created yet.</p> : null}
         {recentMappingFeed.map((item) => {
           const theme = themeForFramework(item.framework);
           return (

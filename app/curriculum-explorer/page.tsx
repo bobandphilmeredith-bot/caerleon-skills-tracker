@@ -168,7 +168,11 @@ export default function CurriculumExplorerPage() {
         ))}
       </div>
 
-      {!filteredEntries.length ? <p className="rounded-lg border border-gray-200 bg-white p-5 text-sm text-gray-600">No mapped activities match those filters.</p> : null}
+      {!filteredEntries.length ? (
+        <p className="rounded-lg border border-gray-200 bg-white p-5 text-sm text-gray-600">
+          {mappings.length ? "No mapped activities match those filters." : "No curriculum mapping entries have been created yet."}
+        </p>
+      ) : null}
 
       {selectedEntry ? (
         <EntryDetailModal

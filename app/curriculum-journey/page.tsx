@@ -83,7 +83,7 @@ export default function CurriculumJourneyPage() {
                   </div>
                 </div>
               ))}
-              {!yearBlock.entries.length ? <p className="text-sm text-gray-500">Fewer recorded opportunities for this selection.</p> : null}
+              {!yearBlock.entries.length ? <p className="text-sm text-gray-500">{mappings.length ? "Fewer recorded opportunities for this selection." : "No curriculum mapping entries have been created yet."}</p> : null}
             </div>
           </article>
         ))}

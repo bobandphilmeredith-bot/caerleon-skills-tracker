@@ -98,6 +98,7 @@ export default function ProgressionOverviewPage() {
         <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-bold text-gray-900">Recent mappings with progression reference</h2>
           <div className="mt-4 space-y-3">
+            {!recentMappings.length ? <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-600">No curriculum mapping entries have been created yet.</p> : null}
             {recentMappings.map((entry) => {
               const theme = themeForFramework(entry.framework);
               return (

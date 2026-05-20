@@ -1,5 +1,4 @@
 import type { AoleConfig, Card, Dashboard, ElementCoverageRow, FrameworkCoverage, FrameworkDefinition, MappingEntry, SubjectConfig, SubjectDetail, SubjectOverview } from "@/lib/types";
-import { suggestedProgressionForYear } from "@/lib/progression";
 
 export const aoleOptions = ["Expressive Arts", "Health and Well-being", "Humanities", "Languages, Literacy and Communication", "Mathematics and Numeracy", "Science and Technology"];
 
@@ -200,28 +199,7 @@ export const frameworkMap: Record<string, Record<string, string[]>> = Object.fro
   ])
 );
 
-const coreMappings: MappingEntry[] = [
-  entry("History", "Literacy", "Reading", "Locating information", "Year 8", "Autumn", "Local heritage source enquiry", "Pupils locate details in archive extracts and create evidence notes about Caerleon landmarks.", "HIS-Y8-A1", "2026-04-18"),
-  entry("History", "Literacy", "Reading", "Comparing sources", "Year 8", "Autumn", "Caerleon through sources", "Pupils compare museum captions and visitor articles to identify how viewpoint changes the account.", "HIS-Y8-A2", "2026-04-22"),
-  entry("French", "Literacy", "Oracy", "Collaborative discussion", "Year 9", "Spring", "Structured group discussion", "Pupils use target language prompts to build a shared response to a cultural scenario.", "FRE-Y9-S1", "2026-03-14"),
-  entry("Welsh", "Literacy", "Writing", "Audience and purpose", "Year 10", "Summer", "Persuasive writing for audience", "Pupils draft a persuasive article and adapt tone for a youth audience.", "WEL-Y10-S3", "2026-05-02"),
-  entry("Chemistry", "Numeracy", "Using data skills", "Collecting data", "Year 9", "Spring", "Water quality investigation", "Pupils collect water quality readings and organise results in a shared data table.", "CHE-Y9-S2", "2026-04-08"),
-  entry("Biology", "Numeracy", "Using data skills", "Interpreting trends", "Year 9", "Spring", "Ecosystem results analysis", "Pupils interpret reaction graphs and use data to justify conclusions.", "BIO-Y9-S4", "2026-04-19"),
-  entry("Maths", "Numeracy", "Using number skills", "Use of calculation", "Year 7", "Autumn", "Budget challenge", "Pupils calculate costs for a community event and compare different spending choices.", "MAT-Y7-A2", "2026-03-28"),
-  entry("Maths", "Numeracy", "Developing numerical reasoning", "Justifying decisions", "Year 10", "Summer", "Data-led recommendations", "Pupils use summary statistics to recommend an option and explain their numerical reasoning.", "MAT-Y10-S1", "2026-05-05"),
-  entry("DT", "Digital Competence Framework", "Producing", "Creating digital content", "Year 10", "Spring", "Design portfolio", "Pupils build a digital portfolio showing design choices, model photographs and user feedback.", "DT-Y10-S1", "2026-04-12"),
-  entry("DT", "Digital Competence Framework", "Producing", "Evaluating outputs", "Year 10", "Spring", "Design iteration review", "Pupils review a model against audience needs and record improvements for the next iteration.", "DT-Y10-S2", "2026-04-21"),
-  entry("Physics", "Digital Competence Framework", "Data and computational thinking", "Data handling", "Year 8", "Summer", "Spreadsheet model of results", "Pupils structure experiment results in a spreadsheet and use formulae to compare outcomes.", "PHY-Y8-SU2", "2026-05-01"),
-  entry("Art", "Cross-cutting Themes", "Diversity", "Culture and community", "Year 7", "Autumn", "Community arts brief", "Pupils research local community stories and use them to shape a creative response.", "ART-Y7-A1", "2026-04-04"),
-  entry("RSE", "Cross-cutting Themes", "Relationships and sexuality education", "Healthy relationships", "Year 8", "Spring", "Respectful communication", "Pupils discuss scenario cards and identify respectful communication choices.", "RSE-Y8-S1", "2026-03-30"),
-  entry("Geography", "Cross-cutting Themes", "Human rights", "Voice and participation", "Year 9", "Summer", "Local decision-making enquiry", "Pupils examine local consultation examples and plan how young people can share views.", "GEO-Y9-SU1", "2026-05-06"),
-  entry("English", "Literacy", "Reading", "Comparing sources", "Year 8", "Spring", "Persuasive viewpoints", "Pupils compare two persuasive articles and identify how writers shape viewpoint.", "ENG-Y8-S2", "2026-05-08"),
-  entry("Biology", "Literacy", "Reading", "Comparing sources", "Year 10", "Autumn", "Bias in science media", "Pupils compare science news reports and evaluate how evidence is selected.", "BIO-Y10-A3", "2026-05-09"),
-  entry("Geography", "Numeracy", "Using data skills", "Interpreting trends", "Year 9", "Summer", "Population change enquiry", "Pupils interpret population graphs and connect trends to migration factors.", "GEO-Y9-SU3", "2026-05-10"),
-  entry("English", "Cross-cutting Themes", "Diversity", "Challenging stereotypes", "Year 8", "Summer", "Representation in fiction", "Pupils analyse character descriptions and discuss how writers challenge stereotypes.", "ENG-Y8-SU1", "2026-05-10")
-];
-
-export const mappings: MappingEntry[] = expandMappings(coreMappings);
+export const mappings: MappingEntry[] = [];
 
 const columns = yearGroups;
 
@@ -284,7 +262,6 @@ export const themesDashboard = makeDashboard("Cross-cutting Themes", "Cross-cutt
 export const subjectOverviews: SubjectOverview[] = subjects.map((subject, index) => {
   const subjectMappings = mappings.filter((item) => item.subject === subject);
   const config = subjectConfigs.find((item) => item.name === subject);
-  const fallbackTotal = 24 + index * 3;
   return {
     subject,
     aole: config?.aole,
@@ -292,30 +269,30 @@ export const subjectOverviews: SubjectOverview[] = subjects.map((subject, index)
     appearsInMappingDropdowns: config?.appearsInMappingDropdowns ?? true,
     faculty: config?.aole ?? "Optional AoLE not set",
     department: subject,
-    total: subjectMappings.length ? subjectMappings.length * 7 + fallbackTotal : fallbackTotal,
-    literacy: countFramework(subjectMappings, "Literacy", 8 + index),
-    numeracy: countFramework(subjectMappings, "Numeracy", 7 + index),
-    dcf: countFramework(subjectMappings, "Digital Competence Framework", 5 + index),
-    themes: countFramework(subjectMappings, "Cross-cutting Themes", 4 + index),
-    lastReviewedDate: `2026-0${(index % 4) + 2}-${String(12 + index).padStart(2, "0")}`
+    total: subjectMappings.length,
+    literacy: countFramework(subjectMappings, "Literacy"),
+    numeracy: countFramework(subjectMappings, "Numeracy"),
+    dcf: countFramework(subjectMappings, "Digital Competence Framework"),
+    themes: countFramework(subjectMappings, "Cross-cutting Themes"),
+    lastReviewedDate: "Not reviewed yet"
   };
 });
 
 export const subjectDetails: Record<string, SubjectDetail> = Object.fromEntries(
-  subjectOverviews.map((overview, index) => {
+  subjectOverviews.map((overview) => {
     const subjectMappings = mappings.filter((item) => item.subject === overview.subject);
     return [
       overview.subject,
       {
         ...overview,
-        byYearGroup: Object.fromEntries(yearGroups.map((year, yearIndex) => [year, subjectMappings.filter((item) => item.year === year).length * 4 + 2 + ((index + yearIndex) % 5)])),
+        byYearGroup: Object.fromEntries(yearGroups.map((year) => [year, subjectMappings.filter((item) => item.year === year).length])),
         byFramework: {
           Literacy: overview.literacy,
           Numeracy: overview.numeracy,
           DCF: overview.dcf,
           "Cross-cutting themes": overview.themes
         },
-        schemes: unique(subjectMappings.map((item) => item.schemeReference)).concat([`${overview.subject.slice(0, 3).toUpperCase()}-MAP-${index + 1}`]).slice(0, 4),
+        schemes: unique(subjectMappings.map((item) => item.schemeReference)).slice(0, 4),
         strandsCovered: unique(subjectMappings.map((item) => item.strand)).slice(0, 6),
         elementsCovered: unique(subjectMappings.map((item) => item.element)).slice(0, 8)
       }
@@ -324,7 +301,7 @@ export const subjectDetails: Record<string, SubjectDetail> = Object.fromEntries(
 );
 
 export const subjectProfiles: Record<string, { cards: Card[]; rows: string[]; columns: string[]; values: number[][]; notes: string[] }> = Object.fromEntries(
-  subjects.map((subject, index) => {
+  subjects.map((subject) => {
     const overview = subjectDetails[subject];
     return [
       subject,
@@ -338,15 +315,15 @@ export const subjectProfiles: Record<string, { cards: Card[]; rows: string[]; co
         rows: ["Literacy", "Numeracy", "DCF", "Themes"],
         columns,
         values: [
-          [78 + index, 81, 76, 70, 62],
-          [61, 68 + index, 72, 66, 58],
-          [54, 63, 70 + index, 69, 57],
-          [48, 58, 65, 62 + index, 53]
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0]
         ],
         notes: [
-          `${subject} has clear opportunities to show planned skill development without recording learner outcomes.`,
+          `${subject} is ready for curriculum mapping entries.`,
           "Subject discussion can focus on visibility, progression language and balance across year groups.",
-          `Review suggested: ${overview.lastReviewedDate}. Use the map to discuss curriculum visibility and planning connections.`
+          "Review suggested when curriculum mapping entries have been added."
         ]
       }
     ];
@@ -417,8 +394,8 @@ function buildCoverage(framework: FrameworkDefinition): FrameworkCoverage {
         strand: strand.name,
         element: elementItem.name,
         count: elementEntries.length,
-        subjects: elementEntries.length ? unique(elementEntries.map((item) => item.subject)) : fallbackSubjects(elementIndex),
-        yearGroups: elementEntries.length ? unique(elementEntries.map((item) => item.year)) : fallbackYears(elementIndex),
+        subjects: elementEntries.length ? unique(elementEntries.map((item) => item.subject)) : [],
+        yearGroups: elementEntries.length ? unique(elementEntries.map((item) => item.year)) : [],
         lastMappedDate: elementEntries.sort((a, b) => b.lastMappedDate.localeCompare(a.lastMappedDate))[0]?.lastMappedDate ?? "No current mapping"
       };
       allRows.push(row);
@@ -451,26 +428,6 @@ function element(name: string, explanation: string, examples: string[]) {
     progressionDescriptors: progressionDescriptors(name, explanation),
     searchKeywords: keywordSet(name, explanation),
     relatedConnections: relatedConnections(name)
-  };
-}
-
-function entry(subject: string, framework: string, strand: string, elementName: string, year: string, term: string, unit: string, activityDescription: string, schemeReference: string, lastMappedDate: string): MappingEntry {
-  const id = `${subject}-${framework}-${strand}-${elementName}-${year}-${unit}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  return {
-    id,
-    subject,
-    framework,
-    strand,
-    element: elementName,
-    context: unit,
-    year,
-    term,
-    unit,
-    activityDescription,
-    schemeReference,
-    progressionReference: suggestedProgressionForYear(year),
-    note: "Curriculum mapping entry for visibility only.",
-    lastMappedDate
   };
 }
 
@@ -512,101 +469,8 @@ function progressionDescriptors(name: string, explanation: string) {
   };
 }
 
-function expandMappings(base: MappingEntry[]) {
-  const generated: MappingEntry[] = [];
-  subjects.forEach((subject, subjectIndex) => {
-    yearGroups.forEach((year, yearIndex) => {
-      const topic = subjectTopic(subject, yearIndex);
-      const activitySet = activityOptions(subject, topic);
-      const frameworkCount = subject === "Maths" ? 3 : subject === "RSE" || subject === "PSE" ? 2 : 4;
-      frameworkLibrary.slice(0, frameworkCount).forEach((framework, frameworkIndex) => {
-        const strand = framework.strands[(subjectIndex + yearIndex + frameworkIndex) % framework.strands.length];
-        const elementItem = strand.elements[(subjectIndex + frameworkIndex + yearIndex) % strand.elements.length];
-        const term = terms[(yearIndex + frameworkIndex) % terms.length];
-        const activity = activitySet[(frameworkIndex + yearIndex) % activitySet.length];
-        const month = String(1 + ((subjectIndex + yearIndex + frameworkIndex) % 5)).padStart(2, "0");
-        const day = String(10 + ((subjectIndex * 3 + yearIndex + frameworkIndex) % 18)).padStart(2, "0");
-        generated.push(
-          entry(
-            subject,
-            framework.name,
-            strand.name,
-            elementItem.name,
-            year,
-            term,
-            topic,
-            activity,
-            `${subjectCode(subject)}-${year.replace("Year ", "Y")}-${term.slice(0, 2).toUpperCase()}${frameworkIndex + 1}`,
-            `2026-${month}-${day}`
-          )
-        );
-      });
-    });
-  });
-
-  const merged = new Map<string, MappingEntry>();
-  [...base, ...generated].forEach((item) => merged.set(item.id, item));
-  return [...merged.values()].sort((a, b) => b.lastMappedDate.localeCompare(a.lastMappedDate));
-}
-
-function subjectTopic(subject: string, yearIndex: number) {
-  const topics: Record<string, string[]> = {
-    Maths: ["Ratio and proportion", "Linear graphs", "Financial planning", "Statistics investigation", "Trigonometry in context"],
-    English: ["Narrative voice", "Persuasive speeches", "Modern drama", "Media viewpoints", "Poetry comparison"],
-    French: ["Town and local area", "Healthy lifestyles", "Cultural festivals", "Future plans", "Global issues"],
-    German: ["Family and relationships", "School life", "Travel planning", "Media habits", "Environment choices"],
-    Welsh: ["Cynefin and identity", "Welsh culture", "Opinion writing", "Community interviews", "Future Wales"],
-    Geography: ["River fieldwork", "Urban change", "Population patterns", "Climate risk", "Sustainable futures"],
-    History: ["Medieval Wales", "Industrial change", "Civil rights", "Conflict sources", "Caerleon heritage"],
-    PE: ["Fitness planning", "Tactical games", "Leadership roles", "Health data review", "Outdoor challenge"],
-    Business: ["Enterprise pitch", "Market research", "Budget planning", "Ethical business", "Customer data"],
-    Chemistry: ["Particles and reactions", "Acids and alkalis", "Rates of reaction", "Materials testing", "Energy changes"],
-    Biology: ["Cells and systems", "Ecosystems", "Health and disease", "Genetics debate", "Practical data review"],
-    Physics: ["Forces and motion", "Energy transfer", "Electricity", "Waves and communication", "Space data"],
-    Sociology: ["Family structures", "Education and society", "Media influence", "Research methods", "Social inequality"],
-    RSE: ["Healthy relationships", "Consent and communication", "Rights and respect", "Digital relationships", "Identity and belonging"],
-    Skills: ["Independent enquiry", "Team project", "Presentation portfolio", "Problem-solving challenge", "Reflective learning"],
-    DT: ["Product analysis", "Design brief", "Materials testing", "CAD development", "Sustainable packaging"],
-    ICT: ["Data dashboards", "Coding project", "Cyber safety", "Digital media product", "Spreadsheet modelling"],
-    "King's Trust": ["Community project", "Employability skills", "Team challenge", "Enterprise planning", "Personal development"],
-    PSE: ["Financial choices", "Mental wellbeing", "Careers planning", "Ethical decisions", "Community participation"],
-    Art: ["Portrait identity", "Local landscape", "Mixed media response", "Gallery critique", "Public art brief"],
-    Music: ["Rhythm ensemble", "Film music", "Welsh music study", "Composition project", "Performance reflection"]
-  };
-  return (topics[subject] ?? ["Curriculum enquiry"])[yearIndex];
-}
-
-function activityOptions(subject: string, topic: string) {
-  return [
-    `Pupils debate key ideas from ${topic} and use evidence to justify their viewpoints.`,
-    `Pupils interpret graphs, tables or source materials linked to ${topic} and summarise patterns.`,
-    `Pupils work collaboratively to produce a short presentation explaining ${topic} for a defined audience.`,
-    `Pupils complete a practical or design task connected to ${topic} and evaluate their choices.`,
-    `Pupils use digital research, note-taking and source evaluation to build a structured response about ${topic}.`,
-    `Pupils connect ${topic} to ethical, sustainability or community questions and record curriculum connections.`
-  ];
-}
-
-function subjectCode(subject: string) {
-  return subject
-    .replace("King's Trust", "KGT")
-    .split(/\s+/)
-    .map((part) => part.slice(0, 3).toUpperCase())
-    .join("")
-    .slice(0, 4);
-}
-
-function countFramework(items: MappingEntry[], framework: string, fallback: number) {
-  const count = items.filter((item) => item.framework === framework).length;
-  return count ? count * 6 + fallback : fallback;
-}
-
-function fallbackSubjects(index: number) {
-  return [subjects[index % subjects.length], subjects[(index + 2) % subjects.length]];
-}
-
-function fallbackYears(index: number) {
-  return [yearGroups[index % yearGroups.length], yearGroups[(index + 1) % yearGroups.length]];
+function countFramework(items: MappingEntry[], framework: string) {
+  return items.filter((item) => item.framework === framework).length;
 }
 
 function keywordSet(name: string, explanation: string) {

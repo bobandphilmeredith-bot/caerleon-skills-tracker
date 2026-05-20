@@ -1,5 +1,4 @@
 import * as base from "@/lib/fakeData";
-import { suggestedProgressionForYear } from "@/lib/progression";
 import type { AoleConfig, Card, Dashboard, ElementCoverageRow, FrameworkCoverage, FrameworkDefinition, MappingEntry, School, SubjectConfig, SubjectDetail, SubjectOverview } from "@/lib/types";
 
 export type SchoolDataBundle = {
@@ -65,37 +64,20 @@ const newportSubjects: SubjectConfig[] = [
   subject("Health and Well-being", "Health and Well-being", 8, "school_newportsample")
 ];
 
-const newportMappings: MappingEntry[] = [
-  entry("school_newportsample", "English", "Literacy", "Reading", "Comparing sources", "Year 7", "Autumn", "Local news and viewpoint", "Pupils compare local news reports and identify how language choices shape viewpoint.", "ENG-Y7-A1", "2026-05-02"),
-  entry("school_newportsample", "English", "Literacy", "Oracy", "Presenting information", "Year 9", "Spring", "Spoken language campaign", "Pupils present a short campaign speech using evidence and audience-aware language.", "ENG-Y9-S2", "2026-04-20"),
-  entry("school_newportsample", "Maths", "Numeracy", "Using data skills", "Representing data", "Year 8", "Autumn", "Transport data dashboard", "Pupils choose charts to represent transport survey results and explain their choices.", "MAT-Y8-A1", "2026-03-15"),
-  entry("school_newportsample", "Maths", "Numeracy", "Using number skills", "Financial contexts", "Year 10", "Summer", "Personal finance choices", "Pupils compare savings options and explain financial decisions using calculations.", "MAT-Y10-S1", "2026-05-05"),
-  entry("school_newportsample", "Science", "Numeracy", "Using data skills", "Interpreting trends", "Year 9", "Spring", "Rates practical", "Pupils interpret practical graph trends and connect anomalies to method choices.", "SCI-Y9-S2", "2026-04-16"),
-  entry("school_newportsample", "Science", "Digital Competence Framework", "Data and computational thinking", "Data handling", "Year 8", "Summer", "Spreadsheet practical log", "Pupils structure practical readings in a spreadsheet and use formulae to compare results.", "SCI-Y8-SU1", "2026-05-09"),
-  entry("school_newportsample", "Humanities", "Literacy", "Reading", "Inference and deduction", "Year 8", "Spring", "Migration stories", "Pupils infer attitudes from oral history extracts and justify interpretations with evidence.", "HUM-Y8-S2", "2026-04-12"),
-  entry("school_newportsample", "Humanities", "Cross-cutting Themes", "Human rights", "Voice and participation", "Year 9", "Summer", "Community decision-making", "Pupils review consultation examples and plan how young people can contribute views.", "HUM-Y9-SU1", "2026-05-11"),
-  entry("school_newportsample", "Languages", "Literacy", "Writing", "Audience and purpose", "Year 10", "Autumn", "Cultural exchange email", "Pupils write for a partner school audience and adapt language to purpose.", "LAN-Y10-A1", "2026-02-17"),
-  entry("school_newportsample", "Technology", "Digital Competence Framework", "Producing", "Planning digital products", "Year 7", "Autumn", "App wireframe", "Pupils create wireframes for a school information app and annotate audience needs.", "TEC-Y7-A1", "2026-03-22"),
-  entry("school_newportsample", "Technology", "Digital Competence Framework", "Producing", "Evaluating outputs", "Year 10", "Spring", "Technology review", "Pupils test digital products against audience needs and record iteration notes.", "TEC-Y10-S2", "2026-05-03"),
-  entry("school_newportsample", "Expressive Arts", "Cross-cutting Themes", "Diversity", "Culture and community", "Year 7", "Spring", "Community performance", "Pupils research local cultural influences and use them in a performance response.", "ART-Y7-S1", "2026-04-26"),
-  entry("school_newportsample", "Health and Well-being", "Cross-cutting Themes", "Relationships and sexuality education", "Healthy relationships", "Year 8", "Spring", "Respectful communication", "Pupils discuss scenario cards and identify respectful communication choices.", "HWB-Y8-S1", "2026-03-28"),
-  entry("school_newportsample", "Health and Well-being", "Numeracy", "Using measuring skills", "Time and scale", "Year 11", "Autumn", "Training plan review", "Pupils compare training schedules and use time data to plan progression.", "HWB-Y11-A1", "2026-02-24")
-];
-
 export const schoolDataById: Record<string, SchoolDataBundle> = {
   school_caerleon: buildBundle({
     schoolId: "school_caerleon",
     subjectConfigs: base.subjectConfigs.map((item) => ({ ...item, schoolId: "school_caerleon" })),
     aoleConfigs: base.aoleConfigs.map((item) => ({ ...item, schoolId: "school_caerleon" })),
     frameworkLibrary: withSchoolFrameworks(base.frameworkLibrary, "school_caerleon"),
-    mappings: base.mappings.map((item) => ({ ...item, schoolId: "school_caerleon" }))
+    mappings: []
   }),
   school_newportsample: buildBundle({
     schoolId: "school_newportsample",
     subjectConfigs: newportSubjects,
     aoleConfigs: base.aoleConfigs.map((item) => ({ ...item, schoolId: "school_newportsample" })),
     frameworkLibrary: withSchoolFrameworks(base.frameworkLibrary, "school_newportsample"),
-    mappings: newportMappings
+    mappings: []
   })
 };
 
@@ -166,7 +148,7 @@ function makeWholeSchoolDashboard(schoolId: string, subjects: string[], mappings
     heatmapTitle: "Framework Coverage by Year Group",
     heatmapRows: ["Literacy", "Numeracy", "DCF", "Cross-cutting themes"],
     heatmapColumns: base.yearGroups,
-    heatmapValues: heatValues(schoolId, 4),
+    heatmapValues: wholeSchoolHeatValues(mappings),
     reviewItems: [
       { title: "Year 11 visibility", status: "Mapping note", description: "Year 11 curriculum entries are represented across configured frameworks." },
       { title: "Framework balance", status: "Mapping note", description: "Mapped opportunities show curriculum connections across subjects." },
@@ -191,7 +173,7 @@ function makeDashboard(framework: string, title: string, description: string, co
     heatmapTitle: `${frameworkCoverage.framework} Coverage by Year Group`,
     heatmapRows: frameworkCoverage.strands.map((item) => item.strand),
     heatmapColumns: base.yearGroups,
-    heatmapValues: heatValues(framework, frameworkCoverage.strands.length),
+    heatmapValues: frameworkHeatValues(framework, frameworkCoverage.strands, mappings),
     reviewItems: [
       { title: "Distribution by strand", status: "Visibility", description: "Shows how mapped opportunities are spread across this framework." },
       { title: "Element library", status: "Visibility", description: "Teachers can browse strand and element explanations before mapping." },
@@ -214,8 +196,8 @@ function buildCoverage(framework: FrameworkDefinition, mappings: MappingEntry[],
         strand: strand.name,
         element: elementItem.name,
         count: elementEntries.length,
-        subjects: elementEntries.length ? unique(elementEntries.map((item) => item.subject)) : fallbackSubjects(subjects, elementIndex),
-        yearGroups: elementEntries.length ? unique(elementEntries.map((item) => item.year)) : fallbackYears(elementIndex),
+        subjects: elementEntries.length ? unique(elementEntries.map((item) => item.subject)) : [],
+        yearGroups: elementEntries.length ? unique(elementEntries.map((item) => item.year)) : [],
         lastMappedDate: elementEntries.sort((a, b) => b.lastMappedDate.localeCompare(a.lastMappedDate))[0]?.lastMappedDate ?? "No current mapping"
       };
       allRows.push(row);
@@ -228,10 +210,9 @@ function buildCoverage(framework: FrameworkDefinition, mappings: MappingEntry[],
 }
 
 function makeSubjectOverviews(schoolId: string, subjects: string[], subjectConfigs: SubjectConfig[], mappings: MappingEntry[]): SubjectOverview[] {
-  return subjects.map((subjectName, index) => {
+  return subjects.map((subjectName) => {
     const rows = mappings.filter((item) => item.subject === subjectName);
     const config = subjectConfigs.find((item) => item.name === subjectName);
-    const fallbackTotal = 8 + index * 2;
     return {
       schoolId,
       subject: subjectName,
@@ -240,27 +221,27 @@ function makeSubjectOverviews(schoolId: string, subjects: string[], subjectConfi
       appearsInMappingDropdowns: config?.appearsInMappingDropdowns ?? true,
       faculty: config?.aole ?? "Optional AoLE not set",
       department: subjectName,
-      total: rows.length ? rows.length * 5 + fallbackTotal : fallbackTotal,
-      literacy: countFramework(rows, "Literacy", 2 + index),
-      numeracy: countFramework(rows, "Numeracy", 2 + index),
-      dcf: countFramework(rows, "Digital Competence Framework", 1 + index),
-      themes: countFramework(rows, "Cross-cutting Themes", 1 + index),
-      lastReviewedDate: `2026-0${(index % 4) + 2}-${String(12 + index).padStart(2, "0")}`
+      total: rows.length,
+      literacy: countFramework(rows, "Literacy"),
+      numeracy: countFramework(rows, "Numeracy"),
+      dcf: countFramework(rows, "Digital Competence Framework"),
+      themes: countFramework(rows, "Cross-cutting Themes"),
+      lastReviewedDate: "Not reviewed yet"
     };
   });
 }
 
 function makeSubjectDetails(overviews: SubjectOverview[], mappings: MappingEntry[]) {
   return Object.fromEntries(
-    overviews.map((overview, index) => {
+    overviews.map((overview) => {
       const rows = mappings.filter((item) => item.subject === overview.subject);
       return [
         overview.subject,
         {
           ...overview,
-          byYearGroup: Object.fromEntries(base.yearGroups.map((year, yearIndex) => [year, rows.filter((item) => item.year === year).length * 3 + 1 + ((index + yearIndex) % 4)])),
+          byYearGroup: Object.fromEntries(base.yearGroups.map((year) => [year, rows.filter((item) => item.year === year).length])),
           byFramework: { Literacy: overview.literacy, Numeracy: overview.numeracy, DCF: overview.dcf, "Cross-cutting themes": overview.themes },
-          schemes: unique(rows.map((item) => item.schemeReference)).concat([`${overview.subject.slice(0, 3).toUpperCase()}-MAP-${index + 1}`]).slice(0, 4),
+          schemes: unique(rows.map((item) => item.schemeReference)).slice(0, 4),
           strandsCovered: unique(rows.map((item) => item.strand)).slice(0, 6),
           elementsCovered: unique(rows.map((item) => item.element)).slice(0, 8)
         }
@@ -271,7 +252,7 @@ function makeSubjectDetails(overviews: SubjectOverview[], mappings: MappingEntry
 
 function makeSubjectProfiles(subjectDetails: Record<string, SubjectDetail>) {
   return Object.fromEntries(
-    Object.entries(subjectDetails).map(([subjectName, overview], index) => [
+    Object.entries(subjectDetails).map(([subjectName, overview]) => [
       subjectName,
       {
         cards: [
@@ -282,11 +263,16 @@ function makeSubjectProfiles(subjectDetails: Record<string, SubjectDetail>) {
         ],
         rows: ["Literacy", "Numeracy", "DCF", "Themes"],
         columns: base.yearGroups,
-        values: heatValues(subjectName, 4),
+        values: [
+          base.yearGroups.map(() => 0),
+          base.yearGroups.map(() => 0),
+          base.yearGroups.map(() => 0),
+          base.yearGroups.map(() => 0)
+        ],
         notes: [
-          `${subjectName} has curriculum visibility through mapped opportunities without recording learner outcomes.`,
+          `${subjectName} is ready for curriculum mapping entries.`,
           "Subject discussion can focus on visibility, progression language and balance across year groups.",
-          `Review suggested: ${overview.lastReviewedDate}. Use the map to discuss curriculum visibility and planning connections.`
+          "Review suggested when curriculum mapping entries have been added."
         ]
       }
     ])
@@ -297,31 +283,21 @@ function withSchoolFrameworks(frameworks: FrameworkDefinition[], schoolId: strin
   return frameworks.map((framework) => ({ ...framework, schoolId, strands: framework.strands.map((strand) => ({ ...strand, schoolId, elements: strand.elements.map((elementItem) => ({ ...elementItem, schoolId })) })) }));
 }
 
-function entry(schoolId: string, subjectName: string, framework: string, strand: string, elementName: string, year: string, term: string, unit: string, activityDescription: string, schemeReference: string, lastMappedDate: string): MappingEntry {
-  const id = `${schoolId}-${subjectName}-${framework}-${strand}-${elementName}-${year}-${unit}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  return { schoolId, id, subject: subjectName, framework, strand, element: elementName, context: unit, year, term, unit, activityDescription, schemeReference, progressionReference: suggestedProgressionForYear(year), note: "Curriculum mapping entry for visibility only.", lastMappedDate };
-}
-
 function subject(name: string, aole: string | undefined, displayOrder: number, schoolId: string): SubjectConfig {
   return { schoolId, id: `${schoolId}-${name}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"), name, aole, active: true, displayOrder, appearsInMappingDropdowns: true };
 }
 
-function heatValues(seed: string, rows: number) {
-  const offset = seed.length % 11;
-  return Array.from({ length: rows }, (_, row) => base.yearGroups.map((_, col) => 50 + ((offset + row * 9 + col * 7) % 39)));
+function wholeSchoolHeatValues(mappings: MappingEntry[]) {
+  const frameworks = ["Literacy", "Numeracy", "Digital Competence Framework", "Cross-cutting Themes"];
+  return frameworks.map((framework) => base.yearGroups.map((year) => mappings.filter((entry) => entry.framework === framework && entry.year === year).length));
 }
 
-function countFramework(items: MappingEntry[], framework: string, fallback: number) {
-  const count = items.filter((item) => item.framework === framework).length;
-  return count ? count * 5 + fallback : fallback;
+function frameworkHeatValues(framework: string, strands: FrameworkCoverage["strands"], mappings: MappingEntry[]) {
+  return strands.map((strand) => base.yearGroups.map((year) => mappings.filter((entry) => entry.framework === framework && entry.strand === strand.strand && entry.year === year).length));
 }
 
-function fallbackSubjects(subjects: string[], index: number) {
-  return subjects.length ? [subjects[index % subjects.length], subjects[(index + 2) % subjects.length]].filter(Boolean) : [];
-}
-
-function fallbackYears(index: number) {
-  return [base.yearGroups[index % base.yearGroups.length], base.yearGroups[(index + 1) % base.yearGroups.length]];
+function countFramework(items: MappingEntry[], framework: string) {
+  return items.filter((item) => item.framework === framework).length;
 }
 
 function unique(items: string[]) {

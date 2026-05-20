@@ -537,9 +537,9 @@ as $$
         and sp.school_id = target_school_id
         and sp.active = true
         and (
-          sp.role in ('school_admin', 'teacher')
+          sp.role = 'school_admin'
           or (
-            sp.role = 'subject_lead'
+            sp.role in ('teacher', 'subject_lead')
             and exists (
               select 1
               from public.subjects s
@@ -556,7 +556,7 @@ as $$
       where su.user_id = auth.uid()
         and su.school_id = target_school_id
         and su.active = true
-        and su.role in ('school_admin', 'teacher')
+        and su.role = 'school_admin'
     );
 $$;
 
@@ -573,7 +573,7 @@ as $$
       from public.staff_profiles sp
       where sp.id = auth.uid()
         and sp.school_id = target_school_id
-        and sp.role = 'subject_lead'
+        and sp.role in ('teacher', 'subject_lead')
         and sp.active = true
         and exists (
           select 1

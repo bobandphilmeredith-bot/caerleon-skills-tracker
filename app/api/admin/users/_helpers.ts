@@ -6,14 +6,14 @@ export const protectedPlatformAdminEmail = "meredithp3@newportschools.wales";
 export type StaffUserInput = {
   display_name: string;
   email: string;
-  password: string;
+  password?: string;
   role: UserRole;
   assigned_subjects: string[];
   active: boolean;
   school_id: string;
 };
 
-type StaffProfile = {
+export type StaffProfile = {
   id: string;
   school_id: string;
   email: string;
@@ -21,6 +21,20 @@ type StaffProfile = {
   role: UserRole;
   assigned_subjects: string[] | null;
   active: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type ManagedStaffUser = {
+  id: string;
+  school_id: string;
+  email: string;
+  display_name: string;
+  role: UserRole;
+  assigned_subjects: string[];
+  active: boolean;
+  created_at: string | null;
+  last_sign_in_at: string | null;
 };
 
 export function getSupabaseAdmin() {
@@ -78,7 +92,7 @@ export function normaliseStaffInput(input: Partial<StaffUserInput>, actor: Staff
 }
 
 export async function upsertStaffUser(admin: SupabaseClient, actor: StaffProfile, input: StaffUserInput) {
-  const validation = validateInput(actor, input);
+  const validation = await validateInput(admin, actor, input, "create");
   if (validation) return { success: false, message: validation };
 
   const existingAuthUser = await findAuthUserByEmail(admin, input.email);
@@ -136,7 +150,111 @@ export async function upsertStaffUser(admin: SupabaseClient, actor: StaffProfile
   return { success: true, message: existingAuthUser.user ? "User updated." : "User created.", userId };
 }
 
-function validateInput(actor: StaffProfile, input: StaffUserInput) {
+export async function updateStaffUser(admin: SupabaseClient, actor: StaffProfile, userId: string, input: StaffUserInput) {
+  if (!userId) return { success: false, message: "User id is required." };
+
+  const existingProfile = await getStaffProfileById(admin, userId);
+  if (!existingProfile) return { success: false, message: "User was not found." };
+  if (existingProfile.role === "platform_admin" && actor.role !== "platform_admin") {
+    return { success: false, message: "Only a platform admin can manage a platform admin account." };
+  }
+
+  const protectedTarget = existingProfile.email.toLowerCase() === protectedPlatformAdminEmail || input.email.toLowerCase() === protectedPlatformAdminEmail;
+  const nextInput: StaffUserInput = protectedTarget
+    ? { ...input, email: protectedPlatformAdminEmail, role: "platform_admin", active: true }
+    : input;
+
+  const validation = await validateInput(admin, actor, nextInput, "update");
+  if (validation) return { success: false, message: validation };
+  if (actor.role !== "platform_admin" && existingProfile.school_id !== actor.school_id) {
+    return { success: false, message: "School admins can only manage their own school." };
+  }
+
+  const { error: authError } = await admin.auth.admin.updateUserById(userId, {
+    email: nextInput.email,
+    ...(nextInput.password ? { password: nextInput.password } : {}),
+    email_confirm: true,
+    user_metadata: {
+      display_name: nextInput.display_name
+    }
+  });
+  if (authError) return { success: false, message: "Could not update auth user." };
+
+  const { error: userError } = await admin.from("users").upsert(
+    {
+      id: userId,
+      email: nextInput.email,
+      display_name: nextInput.display_name
+    },
+    { onConflict: "id" }
+  );
+  if (userError) return { success: false, message: "Could not update user profile." };
+
+  const { error: profileError } = await admin
+    .from("staff_profiles")
+    .update({
+      school_id: nextInput.school_id,
+      email: nextInput.email,
+      display_name: nextInput.display_name,
+      role: nextInput.role,
+      assigned_subjects: nextInput.assigned_subjects,
+      active: nextInput.active
+    })
+    .eq("id", userId);
+  if (profileError) return { success: false, message: "Could not update staff profile." };
+
+  const { error: membershipError } = await admin.from("school_users").upsert(
+    {
+      school_id: nextInput.school_id,
+      user_id: userId,
+      role: nextInput.role,
+      active: nextInput.active
+    },
+    { onConflict: "school_id,user_id" }
+  );
+  if (membershipError) return { success: false, message: "Could not update school membership." };
+
+  return { success: true, message: "User updated.", userId };
+}
+
+export async function listManagedUsers(admin: SupabaseClient, actor: StaffProfile): Promise<{ users?: ManagedStaffUser[]; error?: string }> {
+  if (!canManageUsers(actor)) return { error: "Only platform admins and school admins can manage users." };
+
+  let query = admin
+    .from("staff_profiles")
+    .select("id,school_id,email,display_name,role,assigned_subjects,active,created_at")
+    .order("display_name", { ascending: true });
+
+  if (actor.role !== "platform_admin") {
+    query = query.eq("school_id", actor.school_id).neq("role", "platform_admin");
+  }
+
+  const { data: profiles, error: profileError } = await query.returns<StaffProfile[]>();
+  if (profileError) return { error: "Could not load staff profiles." };
+
+  const authUsers = await listAllAuthUsers(admin);
+  if ("error" in authUsers) return { error: authUsers.error };
+  const authById = new Map(authUsers.users.map((user) => [user.id, user]));
+
+  return {
+    users: (profiles ?? []).map((profile) => {
+      const authUser = authById.get(profile.id);
+      return {
+        id: profile.id,
+        school_id: profile.school_id,
+        email: profile.email,
+        display_name: profile.display_name || profile.email,
+        role: profile.role,
+        assigned_subjects: Array.isArray(profile.assigned_subjects) ? profile.assigned_subjects : [],
+        active: profile.active,
+        created_at: profile.created_at ?? authUser?.created_at ?? null,
+        last_sign_in_at: authUser?.last_sign_in_at ?? null
+      };
+    })
+  };
+}
+
+async function validateInput(admin: SupabaseClient, actor: StaffProfile, input: StaffUserInput, mode: "create" | "update") {
   const roles: UserRole[] = ["platform_admin", "school_admin", "teacher", "subject_lead", "viewer"];
   if (!canManageUsers(actor)) return "Only platform admins and school admins can manage users.";
   if (!input.display_name) return "Name is required.";
@@ -145,7 +263,10 @@ function validateInput(actor: StaffProfile, input: StaffUserInput) {
   if (!input.school_id) return "School is required.";
   if (actor.role !== "platform_admin" && input.school_id !== actor.school_id) return "School admins can only manage their own school.";
   if (actor.role !== "platform_admin" && input.role === "platform_admin") return "Only a platform admin can create a platform admin.";
-  if (!input.password || input.password.length < 8) return "Temporary password must be at least 8 characters.";
+  if (mode === "create" && (!input.password || input.password.length < 8)) return "Temporary password must be at least 8 characters.";
+  if (mode === "update" && input.password && input.password.length < 8) return "Temporary password must be at least 8 characters.";
+  const subjectError = await validateAssignedSubjects(admin, input.school_id, input.assigned_subjects);
+  if (subjectError) return subjectError;
   return "";
 }
 
@@ -164,7 +285,7 @@ async function createAuthUser(admin: SupabaseClient, input: StaffUserInput) {
 async function updateAuthUser(admin: SupabaseClient, userId: string, input: StaffUserInput) {
   const { data, error } = await admin.auth.admin.updateUserById(userId, {
     email: input.email,
-    password: input.password,
+    ...(input.password ? { password: input.password } : {}),
     email_confirm: true,
     user_metadata: {
       display_name: input.display_name
@@ -174,7 +295,7 @@ async function updateAuthUser(admin: SupabaseClient, userId: string, input: Staf
 }
 
 async function getStaffProfileById(admin: SupabaseClient, id: string) {
-  const { data } = await admin.from("staff_profiles").select("role").eq("id", id).maybeSingle<Pick<StaffProfile, "role">>();
+  const { data } = await admin.from("staff_profiles").select("id,school_id,email,display_name,role,assigned_subjects,active").eq("id", id).maybeSingle<StaffProfile>();
   return data;
 }
 
@@ -189,4 +310,29 @@ async function findAuthUserByEmail(admin: SupabaseClient, email: string) {
     page += 1;
   }
   return { error: "Too many auth users to search safely." };
+}
+
+async function listAllAuthUsers(admin: SupabaseClient) {
+  const users = [];
+  let page = 1;
+  while (page < 20) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) return { error: "Could not load auth users." };
+    users.push(...data.users);
+    if (data.users.length < 1000) return { users };
+    page += 1;
+  }
+  return { error: "Too many auth users to list safely." };
+}
+
+async function validateAssignedSubjects(admin: SupabaseClient, schoolId: string, assignedSubjects: string[]) {
+  if (!assignedSubjects.length) return "";
+
+  const uniqueSubjects = Array.from(new Set(assignedSubjects.map((subject) => subject.trim()).filter(Boolean)));
+  const { data, error } = await admin.from("subjects").select("name").eq("school_id", schoolId).in("name", uniqueSubjects);
+  if (error) return "Could not validate assigned subjects.";
+
+  const known = new Set((data ?? []).map((subject) => subject.name));
+  const unknown = uniqueSubjects.filter((subject) => !known.has(subject));
+  return unknown.length ? `Unknown assigned subject${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}.` : "";
 }

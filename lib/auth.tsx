@@ -13,6 +13,8 @@ export type AppUser = {
   schoolId: string;
   assignedSubjects: string[];
   active: boolean;
+  createdAt?: string;
+  lastLoginAt?: string | null;
 };
 
 type AuthContextValue = {
@@ -52,7 +54,7 @@ export const roleLabels: Record<UserRole, string> = {
 export const roleDescriptions: Record<UserRole, string> = {
   platform_admin: "Can access platform admin and manage schools.",
   school_admin: "Can manage their own school, users, frameworks, branding and mappings.",
-  teacher: "Can add and edit curriculum mapping entries.",
+  teacher: "Can add and edit curriculum mapping entries for assigned subjects.",
   subject_lead: "Can manage assigned subject mapping entries.",
   viewer: "Can view curriculum visibility information only."
 };
@@ -310,8 +312,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canEditSubject: (subject) => {
         if (!currentUser) return false;
         if (currentUser.role === "platform_admin" || currentUser.role === "school_admin") return true;
-        if (currentUser.role === "teacher") return true;
-        if (currentUser.role === "subject_lead") return currentUser.assignedSubjects.includes(subject);
+        if (currentUser.role === "teacher" || currentUser.role === "subject_lead") return currentUser.assignedSubjects.includes(subject);
         return false;
       },
       canAccessRole: (roles) => !!currentUser && roles.includes(currentUser.role)

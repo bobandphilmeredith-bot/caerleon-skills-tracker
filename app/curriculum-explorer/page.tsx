@@ -185,7 +185,8 @@ export default function CurriculumExplorerPage() {
           frameworkMap={frameworkMap}
           mappings={mappings}
           subjectAoleMap={subjectAoleMap}
-          subjects={subjects.filter((item) => canEditSubject(item))}
+          subjects={subjects}
+          canEditSubject={canEditSubject}
           terms={terms}
           yearGroups={yearGroups}
         />
@@ -284,6 +285,7 @@ function EntryDetailModal({
   mappings,
   subjectAoleMap,
   subjects,
+  canEditSubject,
   terms,
   yearGroups
 }: {
@@ -297,6 +299,7 @@ function EntryDetailModal({
   mappings: MappingEntry[];
   subjectAoleMap: Record<string, string | undefined>;
   subjects: string[];
+  canEditSubject: (subject: string) => boolean;
   terms: string[];
   yearGroups: string[];
 }) {
@@ -322,6 +325,7 @@ function EntryDetailModal({
     .slice(0, 5);
   const strandOptions = Object.keys(frameworkMap[draft.framework] ?? {});
   const elementOptions = frameworkMap[draft.framework]?.[draft.strand] ?? [];
+  const canSaveDraftSubject = canEditSubject(draft.subject);
 
   function updateDraftFramework(nextFramework: string) {
     const nextStrand = Object.keys(frameworkMap[nextFramework] ?? {})[0] ?? "";
@@ -334,6 +338,7 @@ function EntryDetailModal({
   }
 
   function saveEdit() {
+    if (!canSaveDraftSubject) return;
     if (!draft.subject || !draft.unit.trim() || !draft.schemeReference.trim() || !draft.activityDescription.trim()) return;
     onSave(entry.id, {
       ...draft,
@@ -401,7 +406,12 @@ function EntryDetailModal({
                 <textarea className="focus-ring min-h-28 w-full rounded-md border border-gray-300 px-3 py-2" value={draft.activityDescription} onChange={(event) => setDraft((current) => ({ ...current, activityDescription: event.target.value }))} />
               </label>
             </div>
-            <button className="focus-ring btn btn-primary mt-4" type="button" onClick={saveEdit}>
+            {!canSaveDraftSubject ? (
+              <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">
+                You can view this subject, but you do not have permission to edit it.
+              </p>
+            ) : null}
+            <button className="focus-ring btn btn-primary mt-4" type="button" onClick={saveEdit} disabled={!canSaveDraftSubject}>
               Save changes
             </button>
           </section>

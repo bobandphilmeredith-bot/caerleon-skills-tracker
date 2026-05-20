@@ -18,7 +18,6 @@ export default function AddEntryPage() {
   const activeSubjects = subjectConfigs
     .filter((subject) => subject.active && subject.appearsInMappingDropdowns)
     .map((subject) => subject.name)
-    .filter((subjectName) => currentUser?.role !== "subject_lead" || currentUser.assignedSubjects.includes(subjectName))
     .sort((a, b) => a.localeCompare(b));
   const [subject, setSubject] = useState("");
   const selectedFrameworkName = frameworkMap[framework] ? framework : frameworkNames[0];
@@ -44,6 +43,9 @@ export default function AddEntryPage() {
   const selectedAole = selectedSubjectName ? subjectAoleMap[selectedSubjectName] : undefined;
   const suggestedProgression = suggestedProgressionForYear(yearGroup);
   const progressionDescriptor = descriptorForReference(selectedElement, progressionReference);
+  const hasSubjectRestrictedRole = currentUser?.role === "teacher" || currentUser?.role === "subject_lead";
+  const hasEditableSubjects = !hasSubjectRestrictedRole || currentUser.assignedSubjects.length > 0;
+  const canEditSelectedSubject = !selectedSubjectName || currentUser?.role === "platform_admin" || currentUser?.role === "school_admin" || currentUser?.assignedSubjects.includes(selectedSubjectName);
 
   if (!canEditMappings) {
     return <AccessDenied title="Add mapping restricted" message="Your current role is read-only. Switch to a teacher, subject lead or school admin account to add curriculum mapping entries." />;
@@ -74,9 +76,13 @@ export default function AddEntryPage() {
           ? "Use 250 characters or fewer."
           : "";
   const formError =
-    !selectedSubjectName
+    hasSubjectRestrictedRole && !hasEditableSubjects
+      ? "No editable subjects are assigned to your account. Contact a school administrator."
+      : !selectedSubjectName
       ? "Select a subject."
-      : !trimmedUnit
+      : !canEditSelectedSubject
+        ? "You can view this subject, but you do not have permission to edit it."
+        : !trimmedUnit
         ? "Unit/topic cannot be blank."
         : !trimmedSchemeReference
           ? "Scheme of learning reference cannot be blank."
@@ -157,6 +163,11 @@ export default function AddEntryPage() {
           </div>
 
           <div className="space-y-5">
+            {hasSubjectRestrictedRole && !hasEditableSubjects ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
+                No editable subjects are assigned to your account. Contact a school administrator.
+              </div>
+            ) : null}
             <FormSection number="1" title="Context" description="Choose the subject, year, term and planning reference before adding framework detail.">
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Subject">
@@ -167,6 +178,11 @@ export default function AddEntryPage() {
                     ))}
                   </select>
                   {selectedSubjectName ? <div className="mt-2 rounded-md border border-[#e8cfe0] bg-[#f7edf3] px-3 py-2 text-sm font-semibold text-[#571435]">AoLE: {selectedAole ?? "Not set"}</div> : null}
+                  {selectedSubjectName && !canEditSelectedSubject ? (
+                    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">
+                      You can view this subject, but you do not have permission to edit it.
+                    </div>
+                  ) : null}
                 </Field>
                 <Field label="Year group">
                   <SegmentedButtons options={yearGroups} value={yearGroup} onChange={setYearGroup} />
@@ -330,10 +346,10 @@ export default function AddEntryPage() {
           </div>
 
           <div className="sticky bottom-0 -mx-5 mt-5 flex flex-wrap gap-3 border-t border-gray-200 bg-white/95 px-5 py-4 backdrop-blur">
-            <button className="focus-ring btn btn-primary" type="button" onClick={handleSave}>
+            <button className="focus-ring btn btn-primary" type="button" onClick={handleSave} disabled={!hasEditableSubjects || !canEditSelectedSubject}>
               Save mapping
             </button>
-            <button className="focus-ring btn btn-secondary" type="button" onClick={saveAndAddNew}>
+            <button className="focus-ring btn btn-secondary" type="button" onClick={saveAndAddNew} disabled={!hasEditableSubjects || !canEditSelectedSubject}>
               Save and add new
             </button>
             <button className="focus-ring btn btn-muted" type="button" onClick={clearForm}>

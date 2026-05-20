@@ -7,21 +7,22 @@ It does not connect the app yet. The current app can keep using local data until
 ## What Is Included
 
 - `schema.sql` creates the database structure.
-- `RLS_POLICIES.sql` adds security rules.
 - `seed.sql` adds clean starter data for Caerleon Comprehensive School and Newport Sample School.
+- `seed_example.sql` shows how to bootstrap a single school once the first Auth user exists.
 - `seed-data/` contains older CSV seed files, but `seed.sql` is now the recommended setup route.
 
 The database is designed for curriculum visibility only. It does not include pupil data, assessment data, behaviour data, grades, judgement scores, compliance scores or staff rankings.
+
+Important: `schema.sql` is designed for a fresh Supabase project. If earlier versions of these tables already exist, `create table if not exists` will not migrate them. Use a fresh project or write a migration.
 
 ## Recommended Setup Order
 
 1. Create a Supabase project.
 2. Run `schema.sql`.
-3. Run `RLS_POLICIES.sql`.
-4. Run `seed.sql`.
-5. Add `.env.local` later when the app is ready to connect.
+3. Run `seed.sql`, or edit and run `seed_example.sql`.
+4. Add `.env.local` later when the app is ready to connect.
 
-This order keeps the setup close to production security rules while still using Supabase SQL Editor for the starter data.
+RLS policies are now included in `schema.sql`. Do not run `RLS_POLICIES.sql` separately; that old separate file has been removed.
 
 ## 1. Run schema.sql
 
@@ -44,16 +45,7 @@ After this, the database should contain tables such as:
 - `branding_settings`
 - `framework_colour_themes`
 
-## 2. Run RLS_POLICIES.sql
-
-1. Go back to `SQL Editor`.
-2. Create a new query.
-3. Paste the contents of `supabase/RLS_POLICIES.sql`.
-4. Click `Run`.
-
-This switches on Row Level Security.
-
-The intended access model is:
+Row Level Security is switched on by `schema.sql`. The intended access model is:
 
 - `platform_admin`: can access everything.
 - `school_admin`: can manage data for their own school.
@@ -61,7 +53,7 @@ The intended access model is:
 - `subject_lead`: can add and edit curriculum mapping data for their assigned school.
 - `viewer`: can read school data but cannot change it.
 
-## 3. Run seed.sql
+## 2. Run seed.sql
 
 1. Go to `SQL Editor`.
 2. Create a new query.
@@ -90,15 +82,16 @@ The folder still includes CSV seed files, but use `seed.sql` instead of CSV impo
 
 SQL seed data avoids common CSV import problems with commas, quotes, UUIDs and PostgreSQL array columns.
 
-## 4. Create Users Later
+## 3. Create Users
 
 The seed data does not create real users.
 
-When Supabase Auth is connected later, each staff user will need:
+Each staff user needs:
 
 1. A Supabase Auth account.
 2. A matching row in `public.users`.
-3. A row in `school_users` linking them to a school and role.
+3. A matching row in `staff_profiles`.
+4. A row in `school_users` linking them to a school and role if multi-school membership is needed.
 
 Example roles:
 
@@ -107,7 +100,7 @@ Example roles:
 - `subject_lead`
 - `viewer`
 
-## 5. Create .env.local Later
+## 4. Create .env.local
 
 When the app is ready to connect to Supabase, create a file called `.env.local` in the project root.
 
@@ -116,11 +109,12 @@ It will eventually need values like:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_ENABLE_DEMO_LOGIN=false
 ```
 
 Do not put the service role key in the browser app.
 
-## 6. Connect Supabase Later
+## 5. Connect Supabase Later
 
 The app pages have not been changed yet.
 
@@ -132,7 +126,7 @@ When it is time to connect Supabase, the next build step should:
 4. Replace local save/edit/delete with database insert/update/delete.
 5. Keep all queries filtered by `school_id`.
 
-## 7. Test Data Saving Later
+## 6. Test Data Saving Later
 
 Once the app is connected:
 

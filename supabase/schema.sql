@@ -1,6 +1,10 @@
 -- Skills Tracker Wales
 -- Complete Supabase/PostgreSQL setup for curriculum mapping only.
 --
+-- This schema is designed for a fresh Supabase project. If earlier versions
+-- of these tables already exist, create table if not exists will not migrate
+-- them. Use a fresh project or write a migration.
+--
 -- This database must not store pupil data, behaviour data, assessment data,
 -- grades, judgement scores, compliance scores or staff ranking data.
 

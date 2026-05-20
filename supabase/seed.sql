@@ -1,5 +1,5 @@
 -- Skills Tracker Wales starter seed data.
--- Run after schema.sql and RLS_POLICIES.sql.
+-- Run after schema.sql.
 -- This inserts clean setup data only: no curriculum entries, mappings,
 -- sample activity data, audit logs, or review history.
 

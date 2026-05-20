@@ -6,28 +6,45 @@ import { roleBadgeClass, roleDescriptions, roleLabels, useAuth } from "@/lib/aut
 import { areaThemes } from "@/lib/theme";
 
 export default function LoginPage() {
-  const { accessDeniedMessage, authLoading, currentUser, isDemoMode, isSupabaseConfigured, sendSignInLink, users, loginAs, logout } = useAuth();
+  const { accessDeniedMessage, authLoading, currentUser, isDemoMode, isSupabaseConfigured, signInWithPassword, resetPassword, users, loginAs, logout } = useAuth();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const activeUsers = users.filter((user) => user.active);
 
-  async function submitSignIn() {
+  async function submitPasswordSignIn() {
     setMessage("");
     if (!email.trim()) {
       setMessage("Enter your school email address.");
       return;
     }
+    if (!password) {
+      setMessage("Enter your password.");
+      return;
+    }
     setSending(true);
-    const error = await sendSignInLink(email.trim());
+    const error = await signInWithPassword(email.trim(), password);
     setSending(false);
-    setMessage(error || "Check your email for a secure sign-in link.");
+    setMessage(error || "Signed in successfully.");
+  }
+
+  async function submitPasswordReset() {
+    setMessage("");
+    if (!email.trim()) {
+      setMessage("Enter your school email address first.");
+      return;
+    }
+    setSending(true);
+    const error = await resetPassword(email.trim());
+    setSending(false);
+    setMessage(error || "Password reset email sent.");
   }
 
   if (!isDemoMode) {
     return (
       <section className="space-y-6">
-        <PageHeader title="Staff sign in" eyebrow="Staff access" description="Use your school email address to receive a secure sign-in link." accent={areaThemes.overview.accent} />
+        <PageHeader title="Staff sign in" eyebrow="Staff access" description="Use your school email address and password." accent={areaThemes.overview.accent} />
 
         {!isSupabaseConfigured ? (
           <article className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm font-semibold leading-6 text-red-800 shadow-sm">
@@ -64,10 +81,25 @@ export default function LoginPage() {
                 autoComplete="email"
               />
             </label>
+            <label className="mt-4 block">
+              <span className="mb-1 block text-sm font-semibold text-gray-700">Password</span>
+              <input
+                className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+              />
+            </label>
             <p className="mt-3 text-sm leading-6 text-gray-600">Staff should use their school email address. Roles are managed by the school administrator and cannot be chosen on this page.</p>
-            <button className="focus-ring btn btn-primary mt-4" type="button" onClick={submitSignIn} disabled={!isSupabaseConfigured || sending || authLoading}>
-              {sending ? "Sending..." : "Send sign-in link"}
-            </button>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button className="focus-ring btn btn-primary" type="button" onClick={submitPasswordSignIn} disabled={!isSupabaseConfigured || sending || authLoading}>
+                {sending ? "Signing in..." : "Sign in"}
+              </button>
+              <button className="focus-ring text-sm font-bold text-[#741B47] underline-offset-4 hover:underline" type="button" onClick={submitPasswordReset} disabled={!isSupabaseConfigured || sending}>
+                Forgot password?
+              </button>
+            </div>
             {message ? <p className="mt-3 text-sm font-semibold text-gray-700">{message}</p> : null}
           </article>
         )}

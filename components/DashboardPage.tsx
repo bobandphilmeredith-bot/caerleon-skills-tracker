@@ -45,6 +45,7 @@ export function DashboardPage({ dashboard }: { dashboard: Dashboard }) {
         <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-bold text-gray-900">Subject Summary</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {!subjectSummary.length ? <p className="text-sm text-gray-600 sm:col-span-2">No curriculum mapping entries have been created yet.</p> : null}
             {subjectSummary.map((item) => (
               <div key={item.label} className="rounded-md bg-gray-50 p-3">
                 <div className="flex items-center justify-between gap-3 text-sm">
@@ -62,6 +63,7 @@ export function DashboardPage({ dashboard }: { dashboard: Dashboard }) {
         <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-bold text-gray-900">Curriculum Journey Highlights</h2>
           <div className="mt-4 space-y-3">
+            {!journeyHighlights.length ? <p className="text-sm text-gray-600">No curriculum mapping entries have been created yet.</p> : null}
             {journeyHighlights.map((entry) => (
               <div key={entry.id} className="rounded-md border border-gray-200 p-3">
                 <div className="text-sm font-bold text-gray-900">
@@ -92,6 +94,13 @@ export function DashboardPage({ dashboard }: { dashboard: Dashboard }) {
               </tr>
             </thead>
             <tbody>
+              {!dashboard.entries.length ? (
+                <tr>
+                  <td className="py-4 pr-4 text-gray-600" colSpan={6}>
+                    No curriculum mapping entries have been created yet.
+                  </td>
+                </tr>
+              ) : null}
               {dashboard.entries.map((entry) => (
                 <tr key={`${entry.subject}-${entry.framework}-${entry.context}`} className="border-b border-gray-100">
                   <td className="py-3 pr-4 font-semibold text-gray-900">{entry.subject}</td>

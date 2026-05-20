@@ -22,6 +22,8 @@ type AuthContextValue = {
   isSupabaseConfigured: boolean;
   authLoading: boolean;
   accessDeniedMessage: string;
+  signInWithPassword: (email: string, password: string) => Promise<string>;
+  resetPassword: (email: string) => Promise<string>;
   sendSignInLink: (email: string) => Promise<string>;
   loginAs: (userId: string) => void;
   logout: () => void;
@@ -245,6 +247,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isSupabaseConfigured,
       authLoading,
       accessDeniedMessage,
+      signInWithPassword: async (email, password) => {
+        if (!supabase) return "Supabase environment variables are missing.";
+
+        const client = supabase;
+        const { error } = await client.auth.signInWithPassword({ email, password });
+        return error?.message ?? "";
+      },
+      resetPassword: async (email) => {
+        if (!supabase) return "Supabase environment variables are missing.";
+
+        const client = supabase;
+        const { error } = await client.auth.resetPasswordForEmail(email, {
+          redirectTo: typeof window === "undefined" ? undefined : `${window.location.origin}/auth/callback`
+        });
+        return error?.message ?? "";
+      },
       sendSignInLink: async (email) => {
         if (!supabase) return "Supabase environment variables are missing.";
 

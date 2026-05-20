@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useSchoolSettings } from "@/lib/schoolSettings";
 import { buildBundle, createEmptySchoolData, defaultSchoolId, sampleSchools, schoolDataById, type SchoolDataBundle } from "@/lib/multiSchoolData";
+import { isDemoLoginEnabled } from "@/lib/supabaseClient";
 import type { MappingEntry, School, SubjectConfig } from "@/lib/types";
 
 type CurrentSchoolContextValue = {
@@ -44,7 +45,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
 
   const currentSchool = schools.find((school) => school.id === currentSchoolId) ?? schools[0] ?? sampleSchools[0];
   const baseData = customData[currentSchool.id] ?? schoolDataById[currentSchool.id] ?? createEmptySchoolData(currentSchool.id);
-  const currentMappings = mappingOverrides[currentSchool.id] ?? baseData.mappings;
+  const currentMappings = isDemoLoginEnabled ? (mappingOverrides[currentSchool.id] ?? baseData.mappings) : [];
   const data = useMemo(
     () =>
       buildBundle({
@@ -58,6 +59,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   );
 
   useEffect(() => {
+    if (!isDemoLoginEnabled) return;
     const savedMappings = window.localStorage.getItem(mappingStorageKey(currentSchool.id));
     if (!savedMappings) return;
     try {
@@ -84,6 +86,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   }, [currentSchool.id, currentSchool.name, currentSchool.motto, currentSchool.primaryColour, currentSchool.secondaryColour, currentSchool.logoUrl]);
 
   useEffect(() => {
+    if (!isDemoLoginEnabled) return;
     const mappings = mappingOverrides[currentSchool.id];
     if (mappings) window.localStorage.setItem(mappingStorageKey(currentSchool.id), JSON.stringify(mappings));
   }, [currentSchool.id, mappingOverrides]);

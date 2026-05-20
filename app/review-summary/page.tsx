@@ -94,6 +94,13 @@ export default function ReviewSummaryPage() {
                 </tr>
               </thead>
               <tbody>
+                {!frameworkRows.length ? (
+                  <tr>
+                    <td className="px-4 py-4 text-gray-600" colSpan={yearGroups.length + 2}>
+                      No curriculum mapping entries have been created yet.
+                    </td>
+                  </tr>
+                ) : null}
                 {frameworkRows.map((row) => {
                   const theme = themeForFramework(row.framework);
                   return (
@@ -167,6 +174,7 @@ export default function ReviewSummaryPage() {
           <div>
             <h2 className="text-xl font-bold text-gray-950">Recent mapped opportunities</h2>
             <div className="mt-4 space-y-3">
+              {!recentMappings.length ? <p className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">No curriculum mapping entries have been created yet.</p> : null}
               {recentMappings.map((entry) => {
                 const theme = themeForFramework(entry.framework);
                 return (

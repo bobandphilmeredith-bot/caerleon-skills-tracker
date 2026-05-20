@@ -87,7 +87,7 @@ export function SubjectDashboard() {
                 <div className="mt-2 text-xs font-semibold text-gray-500">{entry.schemeReference} · Progression reference: {progressionReferenceForEntry(entry)}</div>
               </div>
             ))}
-            {!subjectMappings.length ? <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-600">No mapped activities recorded for this subject yet.</p> : null}
+            {!subjectMappings.length ? <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-600">No curriculum mapping entries have been created yet.</p> : null}
           </div>
         </article>
 

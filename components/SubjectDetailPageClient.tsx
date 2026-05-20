@@ -79,7 +79,7 @@ export function SubjectDetailPageClient({ subjectName }: { subjectName: string }
                     {entries.map((entry) => (
                       <MappingTimelineCard key={entry.id} entry={entry} onOpen={() => setSelectedMapping(entry)} />
                     ))}
-                    {!entries.length ? <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-600">Review suggested when entries are added.</p> : null}
+                    {!entries.length ? <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-600">No curriculum mapping entries have been created yet.</p> : null}
                   </div>
                 </div>
               );
@@ -125,6 +125,7 @@ export function SubjectDetailPageClient({ subjectName }: { subjectName: string }
               <p className="mt-3 text-sm leading-6 text-gray-700">{entry.activityDescription}</p>
             </div>
           ))}
+          {!recent.length ? <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-600">No curriculum mapping entries have been created yet.</p> : null}
         </div>
       </Panel>
 
@@ -144,6 +145,13 @@ export function SubjectDetailPageClient({ subjectName }: { subjectName: string }
               </tr>
             </thead>
             <tbody>
+              {!filteredMappings.length ? (
+                <tr>
+                  <td className="py-4 pr-4 text-gray-600" colSpan={7}>
+                    No curriculum mapping entries have been created yet.
+                  </td>
+                </tr>
+              ) : null}
               {filteredMappings.map((entry) => (
                 <tr key={entry.id} className="border-b border-gray-100">
                   <td className="py-3 pr-4 font-semibold text-gray-900">{entry.year}</td>

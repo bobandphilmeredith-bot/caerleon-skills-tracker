@@ -21,7 +21,15 @@ export async function GET(request: Request) {
   const query = admin.from("schools").select("id,name,slug,active").eq("active", true).order("name", { ascending: true });
   const { data, error } = actor.profile.role === "platform_admin" ? await query.returns<SchoolRow[]>() : await query.eq("id", actor.profile.school_id).returns<SchoolRow[]>();
 
-  if (error) return NextResponse.json({ error: "Could not load schools.", debug: debugFor(actor.profile, "Supabase schools query failed.") }, { status: 400 });
+  if (error) {
+    return NextResponse.json({
+      error: "Could not load schools.",
+      debug: debugFor(
+        actor.profile,
+        `Supabase schools query failed: ${error.message} | code: ${error.code ?? "none"} | details: ${error.details ?? "none"} | hint: ${error.hint ?? "none"}`
+      )
+    }, { status: 400 });
+  }
   return NextResponse.json({ schools: data ?? [] });
 }
 

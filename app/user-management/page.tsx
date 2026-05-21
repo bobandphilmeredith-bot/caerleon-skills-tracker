@@ -66,6 +66,7 @@ export default function UserManagementPage() {
   const [rowMessage, setRowMessage] = useState<Record<string, string>>({});
   const [savingUserId, setSavingUserId] = useState("");
   const [createDebug, setCreateDebug] = useState<AccessDebug | null>(null);
+  const [schoolDebug, setSchoolDebug] = useState<AccessDebug | null>(null);
 
   const schoolOptions = isDemoMode ? schools.map((school) => ({ id: school.id, name: school.name, slug: school.slug, active: school.active })) : managedSchools;
   const targetSchoolId = currentUser?.role === "platform_admin" ? selectedSchoolId : (currentUser?.schoolId ?? "");
@@ -105,6 +106,7 @@ export default function UserManagementPage() {
     setLoadingUsers(true);
     setNotice("");
     setCreateDebug(null);
+    setSchoolDebug(null);
     const token = await getAccessToken();
     if (!token) {
       setNotice("You must be signed in before managing users.");
@@ -122,7 +124,24 @@ export default function UserManagementPage() {
     if (!usersResponse.ok) setNotice(usersResult.error ?? "Could not load users.");
     else setManagedUsers(usersResult.users ?? []);
 
-    if (schoolsResponse.ok) setManagedSchools(schoolsResult.schools ?? []);
+    if (schoolsResponse.ok) {
+      const nextSchools = schoolsResult.schools ?? [];
+      setManagedSchools(nextSchools);
+      if (!nextSchools.length) {
+        setSchoolDebug({
+          authenticated_user_id: currentUser?.id ?? null,
+          authenticated_email: currentUser?.email ?? null,
+          staff_profile_found: Boolean(currentUser),
+          staff_profile_role: currentUser?.role ?? null,
+          staff_profile_school_id: currentUser?.schoolId ?? null,
+          staff_profile_active: currentUser?.active ?? null,
+          reason: "The schools endpoint returned no active Supabase schools."
+        });
+      }
+    } else {
+      setNotice(schoolsResult.error ?? "Could not load schools.");
+      setSchoolDebug(schoolsResult.debug ?? { reason: schoolsResult.error ?? "Could not load schools." });
+    }
     setLoadingUsers(false);
   }
 
@@ -313,6 +332,7 @@ export default function UserManagementPage() {
             A real Supabase school must be loaded before creating users.
           </p>
         ) : null}
+        {schoolDebug ? <AccessDebugPanel title="School loading debug" debug={schoolDebug} /> : null}
         {createDebug ? <AccessDebugPanel debug={createDebug} /> : null}
       </section>
 
@@ -524,7 +544,7 @@ function toggleSubject(subjects: string[], subject: string) {
   return subjects.includes(subject) ? subjects.filter((item) => item !== subject) : [...subjects, subject];
 }
 
-function AccessDebugPanel({ debug }: { debug: AccessDebug }) {
+function AccessDebugPanel({ debug, title = "Access denied debug" }: { debug: AccessDebug; title?: string }) {
   const rows: [string, string][] = [
     ["authenticated_user_id", displayDebugValue(debug.authenticated_user_id)],
     ["authenticated_email", displayDebugValue(debug.authenticated_email)],
@@ -538,7 +558,7 @@ function AccessDebugPanel({ debug }: { debug: AccessDebug }) {
 
   return (
     <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-      <h3 className="font-bold">Access denied debug</h3>
+      <h3 className="font-bold">{title}</h3>
       <dl className="mt-3 grid gap-2 md:grid-cols-2">
         {rows.map(([label, value]) => (
           <div key={label} className="rounded bg-white/70 p-2">

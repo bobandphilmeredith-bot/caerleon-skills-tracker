@@ -19,11 +19,11 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <SchoolSettingsProvider>
-          <CurrentSchoolProvider>
-            <AuthProvider>
+          <AuthProvider>
+            <CurrentSchoolProvider>
               <AppShell>{children}</AppShell>
-            </AuthProvider>
-          </CurrentSchoolProvider>
+            </CurrentSchoolProvider>
+          </AuthProvider>
         </SchoolSettingsProvider>
       </body>
     </html>

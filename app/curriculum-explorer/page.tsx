@@ -85,19 +85,25 @@ export default function CurriculumExplorerPage() {
     setSortBy("Most recent");
   }
 
-  function handleDelete(entry: MappingEntry) {
+  async function handleDelete(entry: MappingEntry) {
     if (!canEditEntry(entry)) return;
     if (!window.confirm(`Delete "${entry.unit}" from ${entry.subject}?`)) return;
-    deleteMapping(entry.id);
-    if (selectedEntry?.id === entry.id) setSelectedEntry(null);
+    const result = await deleteMapping(entry.id);
+    if (result.ok && selectedEntry?.id === entry.id) setSelectedEntry(null);
+    if (!result.ok) window.alert(`Could not delete mapping: ${result.message ?? "Unknown Supabase error"}`);
   }
 
-  function handleSaveEdit(entryId: string, patch: Partial<MappingEntry>) {
+  async function handleSaveEdit(entryId: string, patch: Partial<MappingEntry>) {
     const original = mappings.find((entry) => entry.id === entryId);
     const nextSubject = patch.subject ?? original?.subject ?? "";
     if (!original || !canEditEntry(original) || !canEditSubject(nextSubject)) return;
-    updateMapping(entryId, { ...patch, lastMappedDate: new Date().toISOString().slice(0, 10) });
-    setSelectedEntry((current) => (current?.id === entryId ? { ...current, ...patch, lastMappedDate: new Date().toISOString().slice(0, 10) } : current));
+    const nextPatch = { ...patch, lastMappedDate: new Date().toISOString().slice(0, 10) };
+    const result = await updateMapping(entryId, nextPatch);
+    if (result.ok) {
+      setSelectedEntry((current) => (current?.id === entryId ? { ...current, ...nextPatch } : current));
+    } else {
+      window.alert(`Could not save mapping: ${result.message ?? "Unknown Supabase error"}`);
+    }
   }
 
   function canEditEntry(entry: MappingEntry) {

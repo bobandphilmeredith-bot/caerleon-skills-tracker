@@ -262,12 +262,16 @@ export async function upsertStaffUser(admin: SupabaseClient, actor: StaffProfile
   const { error: profileError } = await admin.from("staff_profiles").upsert(
     {
       id: userId,
+      school_id: input.school_id,
       email: input.email,
-      display_name: input.display_name
+      display_name: input.display_name,
+      role: input.role,
+      assigned_subjects: input.assigned_subjects,
+      active: input.active
     },
     { onConflict: "id" }
   );
-  if (profileError) return { success: false, message: "Could not update staff profile." };
+  if (profileError) return { success: false, message: `Could not update staff profile: ${profileError.message}` };
 
   const { error: membershipError } = await admin.from("school_users").upsert(
     {
@@ -326,11 +330,15 @@ export async function updateStaffUser(admin: SupabaseClient, actor: StaffProfile
   const { error: profileError } = await admin
     .from("staff_profiles")
     .update({
+      school_id: nextInput.school_id,
       email: nextInput.email,
-      display_name: nextInput.display_name
+      display_name: nextInput.display_name,
+      role: nextInput.role,
+      assigned_subjects: nextInput.assigned_subjects,
+      active: nextInput.active
     })
     .eq("id", userId);
-  if (profileError) return { success: false, message: "Could not update staff profile." };
+  if (profileError) return { success: false, message: `Could not update staff profile: ${profileError.message}` };
 
   const { error: membershipError } = await admin.from("school_users").upsert(
     {

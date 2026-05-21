@@ -36,6 +36,7 @@ export default function AddEntryPage() {
   const [activityDescription, setActivityDescription] = useState("");
   const [showValidation, setShowValidation] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   const selectedFramework = frameworkLibrary.find((item: FrameworkDefinition) => item.name === selectedFrameworkName) ?? frameworkLibrary[0];
   const selectedElement = selectedFramework.strands.flatMap((item: StrandDefinition) => item.elements).find((item: ElementDefinition) => item.name === selectedElementName);
@@ -108,11 +109,13 @@ export default function AddEntryPage() {
     };
   }
 
-  function handleSave() {
+  async function handleSave() {
     setShowValidation(true);
     if (!formError) {
-      addMapping(buildMappingEntry());
-      setSaveMessage("Mapping saved.");
+      setIsSaving(true);
+      const result = await addMapping(buildMappingEntry());
+      setIsSaving(false);
+      setSaveMessage(result.ok ? "Mapping saved." : `Could not save mapping: ${result.message ?? "Unknown Supabase error"}`);
     } else {
       setSaveMessage("");
     }
@@ -135,11 +138,17 @@ export default function AddEntryPage() {
     resetForm();
   }
 
-  function saveAndAddNew() {
+  async function saveAndAddNew() {
     setShowValidation(true);
     if (!formError) {
-      addMapping(buildMappingEntry());
-      resetForm("Mapping saved. Ready for a new entry.");
+      setIsSaving(true);
+      const result = await addMapping(buildMappingEntry());
+      setIsSaving(false);
+      if (result.ok) {
+        resetForm("Mapping saved. Ready for a new entry.");
+      } else {
+        setSaveMessage(`Could not save mapping: ${result.message ?? "Unknown Supabase error"}`);
+      }
     } else {
       setSaveMessage("");
     }
@@ -346,10 +355,10 @@ export default function AddEntryPage() {
           </div>
 
           <div className="sticky bottom-0 -mx-5 mt-5 flex flex-wrap gap-3 border-t border-gray-200 bg-white/95 px-5 py-4 backdrop-blur">
-            <button className="focus-ring btn btn-primary" type="button" onClick={handleSave} disabled={!hasEditableSubjects || !canEditSelectedSubject}>
-              Save mapping
+            <button className="focus-ring btn btn-primary" type="button" onClick={handleSave} disabled={isSaving || !hasEditableSubjects || !canEditSelectedSubject}>
+              {isSaving ? "Saving..." : "Save mapping"}
             </button>
-            <button className="focus-ring btn btn-secondary" type="button" onClick={saveAndAddNew} disabled={!hasEditableSubjects || !canEditSelectedSubject}>
+            <button className="focus-ring btn btn-secondary" type="button" onClick={saveAndAddNew} disabled={isSaving || !hasEditableSubjects || !canEditSelectedSubject}>
               Save and add new
             </button>
             <button className="focus-ring btn btn-muted" type="button" onClick={clearForm}>

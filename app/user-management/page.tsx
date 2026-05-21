@@ -42,19 +42,19 @@ type AccessDebug = {
 
 export default function UserManagementPage() {
   const { currentUser, users, createUser, updateUser, deactivateUser, canManageUsers, isDemoMode } = useAuth();
-  const { currentSchoolId, data, schools } = useCurrentSchool();
+  const { data, schools } = useCurrentSchool();
   const { subjects } = data;
   const availableRoles = currentUser?.role === "platform_admin" ? roles : roles.filter((role) => role !== "platform_admin");
   const [draft, setDraft] = useState<Omit<AppUser, "id">>({
     name: "",
     email: "",
     role: "viewer",
-    schoolId: currentUser?.schoolId ?? "school_caerleon",
+    schoolId: currentUser?.schoolId ?? (isDemoMode ? "school_caerleon" : ""),
     assignedSubjects: [],
     active: true
   });
   const [temporaryPassword, setTemporaryPassword] = useState("");
-  const [selectedSchoolId, setSelectedSchoolId] = useState(currentUser?.schoolId ?? currentSchoolId);
+  const [selectedSchoolId, setSelectedSchoolId] = useState(isDemoMode ? (currentUser?.schoolId ?? "school_caerleon") : "");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const [csv, setCsv] = useState("");
@@ -68,6 +68,8 @@ export default function UserManagementPage() {
   const [createDebug, setCreateDebug] = useState<AccessDebug | null>(null);
 
   const schoolOptions = isDemoMode ? schools.map((school) => ({ id: school.id, name: school.name, slug: school.slug, active: school.active })) : managedSchools;
+  const targetSchoolId = currentUser?.role === "platform_admin" ? selectedSchoolId : (currentUser?.schoolId ?? "");
+  const hasLiveSupabaseSchool = isDemoMode || Boolean(targetSchoolId && !targetSchoolId.startsWith("school_"));
 
   const visibleUsers = useMemo(() => {
     if (currentUser?.role === "platform_admin") return users;
@@ -80,10 +82,20 @@ export default function UserManagementPage() {
   }, [isDemoMode, canManageUsers]);
 
   useEffect(() => {
-    if (schoolOptions.length && !schoolOptions.some((school) => school.id === selectedSchoolId)) {
-      setSelectedSchoolId(currentUser?.schoolId ?? schoolOptions[0].id);
+    if (!schoolOptions.length) return;
+
+    if (isDemoMode) {
+      if (!schoolOptions.some((school) => school.id === selectedSchoolId)) {
+        setSelectedSchoolId(currentUser?.schoolId ?? schoolOptions[0].id);
+      }
+      return;
     }
-  }, [currentUser?.schoolId, schoolOptions, selectedSchoolId]);
+
+    const currentUserSchoolIsReal = currentUser?.schoolId && schoolOptions.some((school) => school.id === currentUser.schoolId);
+    if (!selectedSchoolId || selectedSchoolId.startsWith("school_") || !schoolOptions.some((school) => school.id === selectedSchoolId)) {
+      setSelectedSchoolId(currentUserSchoolIsReal ? currentUser.schoolId : schoolOptions[0].id);
+    }
+  }, [currentUser?.schoolId, isDemoMode, schoolOptions, selectedSchoolId]);
 
   if (!canManageUsers) {
     return <AccessDenied title="User management restricted" message="Only platform admins and school admins can manage staff users." />;
@@ -133,6 +145,21 @@ export default function UserManagementPage() {
     setSaving(true);
     setNotice("");
     setCreateDebug(null);
+    if (!hasLiveSupabaseSchool) {
+      setSaving(false);
+      setNotice("Choose a Supabase school before creating a user.");
+      setCreateDebug({
+        authenticated_user_id: currentUser?.id ?? null,
+        authenticated_email: currentUser?.email ?? null,
+        staff_profile_found: Boolean(currentUser),
+        staff_profile_role: currentUser?.role ?? null,
+        staff_profile_school_id: currentUser?.schoolId ?? null,
+        staff_profile_active: currentUser?.active ?? null,
+        target_school_id: targetSchoolId || null,
+        reason: "The page did not have a real Supabase public.schools.id UUID selected."
+      });
+      return;
+    }
     const token = await getAccessToken();
     if (!token) {
       setSaving(false);
@@ -152,7 +179,7 @@ export default function UserManagementPage() {
         role,
         assigned_subjects: draft.assignedSubjects,
         active: draft.active,
-        school_id: currentUser?.role === "platform_admin" ? selectedSchoolId : currentUser?.schoolId
+        school_id: targetSchoolId
       })
     });
     const result = await response.json();
@@ -163,7 +190,7 @@ export default function UserManagementPage() {
       return;
     }
     setNotice(result.message ?? "User created.");
-    setDraft({ name: "", email: "", role: "viewer", schoolId: currentUser?.schoolId ?? "school_caerleon", assignedSubjects: [], active: true });
+    setDraft({ name: "", email: "", role: "viewer", schoolId: currentUser?.schoolId ?? (isDemoMode ? "school_caerleon" : ""), assignedSubjects: [], active: true });
     setTemporaryPassword("");
     await loadLiveData();
   }
@@ -208,6 +235,11 @@ export default function UserManagementPage() {
     setUploading(true);
     setNotice("");
     setUploadResults([]);
+    if (!hasLiveSupabaseSchool) {
+      setUploading(false);
+      setNotice("Choose a Supabase school before uploading users.");
+      return;
+    }
     const token = await getAccessToken();
     if (!token) {
       setUploading(false);
@@ -222,7 +254,7 @@ export default function UserManagementPage() {
       },
       body: JSON.stringify({
         csv,
-        school_id: currentUser?.role === "platform_admin" ? selectedSchoolId : currentUser?.schoolId
+        school_id: targetSchoolId
       })
     });
     const result = await response.json();
@@ -254,6 +286,7 @@ export default function UserManagementPage() {
             <label>
               <span className="mb-1 block text-sm font-semibold text-gray-700">School</span>
               <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" value={selectedSchoolId} onChange={(event) => setSelectedSchoolId(event.target.value)}>
+                {!schoolOptions.length ? <option value="">Loading Supabase schools...</option> : null}
                 {schoolOptions.map((school) => (
                   <option key={school.id} value={school.id}>
                     {school.name}
@@ -270,11 +303,16 @@ export default function UserManagementPage() {
         </div>
         <SubjectChecks subjects={subjects} selected={draft.assignedSubjects} onToggle={toggleDraftSubject} />
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button className="focus-ring btn btn-primary" type="button" onClick={addUser} disabled={saving}>
+          <button className="focus-ring btn btn-primary" type="button" onClick={addUser} disabled={saving || !hasLiveSupabaseSchool}>
             {saving ? "Creating..." : "Create user"}
           </button>
           {notice ? <span className="text-sm font-semibold text-gray-700">{notice}</span> : null}
         </div>
+        {!isDemoMode && !hasLiveSupabaseSchool ? (
+          <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">
+            A real Supabase school must be loaded before creating users.
+          </p>
+        ) : null}
         {createDebug ? <AccessDebugPanel debug={createDebug} /> : null}
       </section>
 
@@ -358,7 +396,7 @@ export default function UserManagementPage() {
               onChange={(event) => setCsv(event.target.value)}
               placeholder={'display_name,email,role,assigned_subjects,active,password\nJane Smith,smithj@newportschools.wales,teacher,"English;History",true,TempPass2026!'}
             />
-            <button className="focus-ring btn btn-primary mt-4" type="button" onClick={uploadCsv} disabled={uploading}>
+            <button className="focus-ring btn btn-primary mt-4" type="button" onClick={uploadCsv} disabled={uploading || !hasLiveSupabaseSchool}>
               {uploading ? "Uploading..." : "Upload users"}
             </button>
             {uploadResults.length ? (

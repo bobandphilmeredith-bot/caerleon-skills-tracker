@@ -161,19 +161,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function loadStaffProfile(userId: string) {
       const { data: profile, error } = await client
         .from("staff_profiles")
-        .select("id,email,display_name,role,school_id,assigned_subjects,active")
+        .select("id,email,display_name")
         .eq("id", userId)
         .maybeSingle();
 
+      const { data: memberships, error: membershipError } = await client
+        .from("school_users")
+        .select("school_id,role,active")
+        .eq("user_id", userId)
+        .eq("active", true);
+
       if (!mounted) return;
 
-      if (error) {
+      if (error || membershipError) {
         setLiveUser(null);
         setAccessDeniedMessage("Staff profile could not be checked. Please contact your school administrator.");
         return;
       }
 
-      if (!profile || profile.active === false) {
+      const membership = selectPrimaryMembership((memberships ?? []) as { school_id: string; role: UserRole; active: boolean }[]);
+
+      if (!profile || !membership) {
         setLiveUser(null);
         setAccessDeniedMessage("Access denied. Your staff profile is missing or inactive.");
         return;
@@ -183,10 +191,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: profile.id,
         name: profile.display_name || profile.email || "Staff user",
         email: profile.email || "",
-        role: profile.role as UserRole,
-        schoolId: profile.school_id,
-        assignedSubjects: Array.isArray(profile.assigned_subjects) ? profile.assigned_subjects : [],
-        active: profile.active
+        role: membership.role,
+        schoolId: membership.school_id,
+        assignedSubjects: [],
+        active: membership.active
       });
       setAccessDeniedMessage("");
     }
@@ -340,4 +348,18 @@ export function roleBadgeClass(role: UserRole) {
 function mergeDefaultUsers(savedUsers: AppUser[]) {
   const savedIds = new Set(savedUsers.map((user) => user.id));
   return [...savedUsers, ...defaultUsers.filter((user) => !savedIds.has(user.id))];
+}
+
+function selectPrimaryMembership(memberships: { school_id: string; role: UserRole; active: boolean }[]) {
+  return memberships
+    .filter((membership) => membership.active)
+    .sort((a, b) => roleRank(a.role) - roleRank(b.role))[0] ?? null;
+}
+
+function roleRank(role: UserRole) {
+  if (role === "platform_admin") return 1;
+  if (role === "school_admin") return 2;
+  if (role === "subject_lead") return 3;
+  if (role === "teacher") return 4;
+  return 5;
 }

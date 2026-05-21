@@ -25,6 +25,23 @@ export type StaffProfile = {
   updated_at?: string;
 };
 
+type StaffProfileRow = {
+  id: string;
+  email: string;
+  display_name: string | null;
+  created_at?: string;
+};
+
+type SchoolUserRow = {
+  id: string;
+  school_id: string;
+  user_id: string;
+  role: UserRole;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type ManagedStaffUser = {
   id: string;
   school_id: string;
@@ -122,25 +139,49 @@ export async function getActorProfile(admin: SupabaseClient, token: string, targ
 
   const { data: profile, error: profileError } = await admin
     .from("staff_profiles")
-    .select("id,school_id,email,display_name,role,assigned_subjects,active")
+    .select("id,email,display_name,created_at")
     .eq("id", userData.user.id)
-    .maybeSingle<StaffProfile>();
+    .maybeSingle<StaffProfileRow>();
+
+  const { data: memberships, error: membershipError } = await admin
+    .from("school_users")
+    .select("id,school_id,user_id,role,active,created_at,updated_at")
+    .eq("user_id", userData.user.id)
+    .eq("active", true)
+    .order("role", { ascending: true })
+    .returns<SchoolUserRow[]>();
+
+  const membership = selectPrimaryMembership(memberships ?? []);
 
   debug.staff_profile_found = Boolean(profile);
-  debug.staff_profile_role = profile?.role ?? null;
-  debug.staff_profile_school_id = profile?.school_id ?? null;
-  debug.staff_profile_active = profile?.active ?? null;
+  debug.staff_profile_role = membership?.role ?? null;
+  debug.staff_profile_school_id = membership?.school_id ?? null;
+  debug.staff_profile_active = membership?.active ?? null;
 
   if (profileError) {
     return { error: "Access denied.", debug: { ...debug, reason: "Staff profile lookup failed." } };
   }
+  if (membershipError) {
+    return { error: "Access denied.", debug: { ...debug, reason: "School membership lookup failed." } };
+  }
   if (!profile) {
     return { error: "Access denied.", debug: { ...debug, reason: "No matching public.staff_profiles row was found for the authenticated user id." } };
   }
-  if (!profile.active) {
-    return { error: "Access denied.", debug: { ...debug, reason: "The matching staff profile is inactive." } };
+  if (!membership) {
+    return { error: "Access denied.", debug: { ...debug, reason: "No active public.school_users row was found where user_id matches the authenticated user id." } };
   }
-  return { profile };
+  return {
+    profile: {
+      id: profile.id,
+      email: profile.email,
+      display_name: profile.display_name,
+      school_id: membership.school_id,
+      role: membership.role,
+      assigned_subjects: [],
+      active: membership.active,
+      created_at: profile.created_at
+    } satisfies StaffProfile
+  };
 }
 
 export function canManageUsers(actor: StaffProfile) {
@@ -197,12 +238,8 @@ export async function upsertStaffUser(admin: SupabaseClient, actor: StaffProfile
   const { error: profileError } = await admin.from("staff_profiles").upsert(
     {
       id: userId,
-      school_id: input.school_id,
       email: input.email,
-      display_name: input.display_name,
-      role: input.role,
-      assigned_subjects: input.assigned_subjects,
-      active: input.active
+      display_name: input.display_name
     },
     { onConflict: "id" }
   );
@@ -265,12 +302,8 @@ export async function updateStaffUser(admin: SupabaseClient, actor: StaffProfile
   const { error: profileError } = await admin
     .from("staff_profiles")
     .update({
-      school_id: nextInput.school_id,
       email: nextInput.email,
-      display_name: nextInput.display_name,
-      role: nextInput.role,
-      assigned_subjects: nextInput.assigned_subjects,
-      active: nextInput.active
+      display_name: nextInput.display_name
     })
     .eq("id", userId);
   if (profileError) return { success: false, message: "Could not update staff profile." };
@@ -292,34 +325,42 @@ export async function updateStaffUser(admin: SupabaseClient, actor: StaffProfile
 export async function listManagedUsers(admin: SupabaseClient, actor: StaffProfile): Promise<{ users?: ManagedStaffUser[]; error?: string }> {
   if (!canManageUsers(actor)) return { error: "Only platform admins and school admins can manage users." };
 
-  let query = admin
-    .from("staff_profiles")
-    .select("id,school_id,email,display_name,role,assigned_subjects,active,created_at")
-    .order("display_name", { ascending: true });
+  let membershipQuery = admin
+    .from("school_users")
+    .select("id,school_id,user_id,role,active,created_at")
+    .order("created_at", { ascending: true });
 
   if (actor.role !== "platform_admin") {
-    query = query.eq("school_id", actor.school_id).neq("role", "platform_admin");
+    membershipQuery = membershipQuery.eq("school_id", actor.school_id).neq("role", "platform_admin");
   }
 
-  const { data: profiles, error: profileError } = await query.returns<StaffProfile[]>();
+  const { data: memberships, error: membershipError } = await membershipQuery.returns<SchoolUserRow[]>();
+  if (membershipError) return { error: "Could not load school memberships." };
+
+  const userIds = Array.from(new Set((memberships ?? []).map((membership) => membership.user_id)));
+  const { data: profiles, error: profileError } = userIds.length
+    ? await admin.from("staff_profiles").select("id,email,display_name,created_at").in("id", userIds).returns<StaffProfileRow[]>()
+    : { data: [] as StaffProfileRow[], error: null };
   if (profileError) return { error: "Could not load staff profiles." };
 
   const authUsers = await listAllAuthUsers(admin);
   if ("error" in authUsers) return { error: authUsers.error };
   const authById = new Map(authUsers.users.map((user) => [user.id, user]));
+  const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
 
   return {
-    users: (profiles ?? []).map((profile) => {
-      const authUser = authById.get(profile.id);
+    users: (memberships ?? []).map((membership) => {
+      const profile = profileById.get(membership.user_id);
+      const authUser = authById.get(membership.user_id);
       return {
-        id: profile.id,
-        school_id: profile.school_id,
-        email: profile.email,
-        display_name: profile.display_name || profile.email,
-        role: profile.role,
-        assigned_subjects: Array.isArray(profile.assigned_subjects) ? profile.assigned_subjects : [],
-        active: profile.active,
-        created_at: profile.created_at ?? authUser?.created_at ?? null,
+        id: membership.user_id,
+        school_id: membership.school_id,
+        email: profile?.email ?? authUser?.email ?? "",
+        display_name: profile?.display_name || profile?.email || authUser?.email || "Staff user",
+        role: membership.role,
+        assigned_subjects: [],
+        active: membership.active,
+        created_at: profile?.created_at ?? authUser?.created_at ?? membership.created_at ?? null,
         last_sign_in_at: authUser?.last_sign_in_at ?? null
       };
     })
@@ -367,8 +408,27 @@ async function updateAuthUser(admin: SupabaseClient, userId: string, input: Staf
 }
 
 async function getStaffProfileById(admin: SupabaseClient, id: string) {
-  const { data } = await admin.from("staff_profiles").select("id,school_id,email,display_name,role,assigned_subjects,active").eq("id", id).maybeSingle<StaffProfile>();
-  return data;
+  const { data: profile } = await admin.from("staff_profiles").select("id,email,display_name,created_at").eq("id", id).maybeSingle<StaffProfileRow>();
+  if (!profile) return null;
+
+  const { data: memberships } = await admin
+    .from("school_users")
+    .select("id,school_id,user_id,role,active,created_at,updated_at")
+    .eq("user_id", id)
+    .returns<SchoolUserRow[]>();
+  const membership = selectPrimaryMembership(memberships ?? []);
+  if (!membership) return null;
+
+  return {
+    id: profile.id,
+    email: profile.email,
+    display_name: profile.display_name,
+    school_id: membership.school_id,
+    role: membership.role,
+    assigned_subjects: [],
+    active: membership.active,
+    created_at: profile.created_at
+  } satisfies StaffProfile;
 }
 
 async function findAuthUserByEmail(admin: SupabaseClient, email: string) {
@@ -407,4 +467,17 @@ async function validateAssignedSubjects(admin: SupabaseClient, schoolId: string,
   const known = new Set((data ?? []).map((subject) => subject.name));
   const unknown = uniqueSubjects.filter((subject) => !known.has(subject));
   return unknown.length ? `Unknown assigned subject${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}.` : "";
+}
+
+function selectPrimaryMembership(memberships: SchoolUserRow[]) {
+  const activeMemberships = memberships.filter((membership) => membership.active);
+  return activeMemberships.sort((a, b) => roleRank(a.role) - roleRank(b.role))[0] ?? null;
+}
+
+function roleRank(role: UserRole) {
+  if (role === "platform_admin") return 1;
+  if (role === "school_admin") return 2;
+  if (role === "subject_lead") return 3;
+  if (role === "teacher") return 4;
+  return 5;
 }

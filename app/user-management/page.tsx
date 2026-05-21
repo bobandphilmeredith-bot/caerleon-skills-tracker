@@ -29,6 +29,17 @@ type ManagedSchool = {
   active: boolean;
 };
 
+type AccessDebug = {
+  authenticated_user_id?: string | null;
+  authenticated_email?: string | null;
+  staff_profile_found?: boolean;
+  staff_profile_role?: string | null;
+  staff_profile_school_id?: string | null;
+  staff_profile_active?: boolean | null;
+  target_school_id?: string | null;
+  reason?: string;
+};
+
 export default function UserManagementPage() {
   const { currentUser, users, createUser, updateUser, deactivateUser, canManageUsers, isDemoMode } = useAuth();
   const { currentSchoolId, data, schools } = useCurrentSchool();
@@ -54,6 +65,7 @@ export default function UserManagementPage() {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [rowMessage, setRowMessage] = useState<Record<string, string>>({});
   const [savingUserId, setSavingUserId] = useState("");
+  const [createDebug, setCreateDebug] = useState<AccessDebug | null>(null);
 
   const schoolOptions = isDemoMode ? schools.map((school) => ({ id: school.id, name: school.name, slug: school.slug, active: school.active })) : managedSchools;
 
@@ -80,6 +92,7 @@ export default function UserManagementPage() {
   async function loadLiveData() {
     setLoadingUsers(true);
     setNotice("");
+    setCreateDebug(null);
     const token = await getAccessToken();
     if (!token) {
       setNotice("You must be signed in before managing users.");
@@ -119,6 +132,7 @@ export default function UserManagementPage() {
 
     setSaving(true);
     setNotice("");
+    setCreateDebug(null);
     const token = await getAccessToken();
     if (!token) {
       setSaving(false);
@@ -145,6 +159,7 @@ export default function UserManagementPage() {
     setSaving(false);
     if (!response.ok) {
       setNotice(result.error ?? "Could not create user.");
+      setCreateDebug(result.debug ?? null);
       return;
     }
     setNotice(result.message ?? "User created.");
@@ -260,6 +275,7 @@ export default function UserManagementPage() {
           </button>
           {notice ? <span className="text-sm font-semibold text-gray-700">{notice}</span> : null}
         </div>
+        {createDebug ? <AccessDebugPanel debug={createDebug} /> : null}
       </section>
 
       {!isDemoMode ? (
@@ -468,6 +484,39 @@ function SubjectChecks({ subjects, selected, onToggle, compact = false, disabled
 
 function toggleSubject(subjects: string[], subject: string) {
   return subjects.includes(subject) ? subjects.filter((item) => item !== subject) : [...subjects, subject];
+}
+
+function AccessDebugPanel({ debug }: { debug: AccessDebug }) {
+  const rows: [string, string][] = [
+    ["authenticated_user_id", displayDebugValue(debug.authenticated_user_id)],
+    ["authenticated_email", displayDebugValue(debug.authenticated_email)],
+    ["staff_profile_found", displayDebugValue(debug.staff_profile_found)],
+    ["staff_profile_role", displayDebugValue(debug.staff_profile_role)],
+    ["staff_profile_school_id", displayDebugValue(debug.staff_profile_school_id)],
+    ["staff_profile_active", displayDebugValue(debug.staff_profile_active)],
+    ["target_school_id", displayDebugValue(debug.target_school_id)],
+    ["reason", displayDebugValue(debug.reason)]
+  ];
+
+  return (
+    <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+      <h3 className="font-bold">Access denied debug</h3>
+      <dl className="mt-3 grid gap-2 md:grid-cols-2">
+        {rows.map(([label, value]) => (
+          <div key={label} className="rounded bg-white/70 p-2">
+            <dt className="text-xs font-bold uppercase tracking-[0.12em] text-amber-800">{label}</dt>
+            <dd className="mt-1 break-all font-mono text-xs">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function displayDebugValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "Not available";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return String(value);
 }
 
 function formatUkDateTime(value: string | null, fallback = "Not available") {

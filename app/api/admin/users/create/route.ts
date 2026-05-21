@@ -12,7 +12,10 @@ export async function POST(request: Request) {
   const actor = await getActorProfile(admin, bearerToken(request), targetSchoolId);
   if ("error" in actor) return NextResponse.json({ error: actor.error, debug: actor.debug }, { status: 401 });
   if (!canManageUsers(actor.profile)) {
-    return NextResponse.json({ error: "Only platform admins and school admins can manage users.", debug: debugFor(actor.profile, targetSchoolId) }, { status: 403 });
+    return NextResponse.json({
+      error: "Only platform admins and school admins can manage users.",
+      debug: debugFor(actor.profile, targetSchoolId, "Authenticated staff profile is active but role is not allowed to manage users.")
+    }, { status: 403 });
   }
 
   const input = normaliseStaffInput(body, actor.profile);
@@ -22,12 +25,15 @@ export async function POST(request: Request) {
   return NextResponse.json(result);
 }
 
-function debugFor(profile: { id: string; email: string; role: string; school_id: string }, targetSchoolId: string | null) {
+function debugFor(profile: { id: string; email: string; role: string; school_id: string; active: boolean }, targetSchoolId: string | null, reason: string) {
   return {
     authenticated_user_id: profile.id,
     authenticated_email: profile.email,
+    staff_profile_found: true,
     staff_profile_role: profile.role,
     staff_profile_school_id: profile.school_id,
-    target_school_id: targetSchoolId
+    staff_profile_active: profile.active,
+    target_school_id: targetSchoolId,
+    reason
   };
 }

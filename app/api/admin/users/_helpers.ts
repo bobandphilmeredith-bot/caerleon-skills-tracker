@@ -40,9 +40,12 @@ export type ManagedStaffUser = {
 export type AccessDeniedDebug = {
   authenticated_user_id: string | null;
   authenticated_email: string | null;
+  staff_profile_found: boolean;
   staff_profile_role: UserRole | null;
   staff_profile_school_id: string | null;
+  staff_profile_active: boolean | null;
   target_school_id: string | null;
+  reason: string;
 };
 
 export function getSupabaseAdmin() {
@@ -80,25 +83,41 @@ export async function getActorProfile(admin: SupabaseClient, token: string, targ
   const emptyDebug: AccessDeniedDebug = {
     authenticated_user_id: null,
     authenticated_email: null,
+    staff_profile_found: false,
     staff_profile_role: null,
     staff_profile_school_id: null,
-    target_school_id: targetSchoolId ?? null
+    staff_profile_active: null,
+    target_school_id: targetSchoolId ?? null,
+    reason: "No bearer token was provided."
   };
 
   if (!token) return { error: "You must be signed in.", debug: emptyDebug };
 
   const authClient = getSupabaseAuthClient();
-  if (!authClient) return { error: "Supabase auth is not configured.", debug: emptyDebug };
+  if (!authClient) {
+    return {
+      error: "Supabase auth is not configured.",
+      debug: { ...emptyDebug, reason: "NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY is missing." }
+    };
+  }
 
   const { data: userData, error: userError } = await authClient.auth.getUser(token);
-  if (userError || !userData.user) return { error: "You must be signed in.", debug: emptyDebug };
+  if (userError || !userData.user) {
+    return {
+      error: "You must be signed in.",
+      debug: { ...emptyDebug, reason: userError?.message ?? "Bearer token did not resolve to an authenticated user." }
+    };
+  }
 
   const debug: AccessDeniedDebug = {
     authenticated_user_id: userData.user.id,
     authenticated_email: userData.user.email ?? null,
+    staff_profile_found: false,
     staff_profile_role: null,
     staff_profile_school_id: null,
-    target_school_id: targetSchoolId ?? null
+    staff_profile_active: null,
+    target_school_id: targetSchoolId ?? null,
+    reason: "Staff profile lookup has not completed."
   };
 
   const { data: profile, error: profileError } = await admin
@@ -107,10 +126,20 @@ export async function getActorProfile(admin: SupabaseClient, token: string, targ
     .eq("id", userData.user.id)
     .maybeSingle<StaffProfile>();
 
+  debug.staff_profile_found = Boolean(profile);
   debug.staff_profile_role = profile?.role ?? null;
   debug.staff_profile_school_id = profile?.school_id ?? null;
+  debug.staff_profile_active = profile?.active ?? null;
 
-  if (profileError || !profile || !profile.active) return { error: "Access denied.", debug };
+  if (profileError) {
+    return { error: "Access denied.", debug: { ...debug, reason: "Staff profile lookup failed." } };
+  }
+  if (!profile) {
+    return { error: "Access denied.", debug: { ...debug, reason: "No matching public.staff_profiles row was found for the authenticated user id." } };
+  }
+  if (!profile.active) {
+    return { error: "Access denied.", debug: { ...debug, reason: "The matching staff profile is inactive." } };
+  }
   return { profile };
 }
 

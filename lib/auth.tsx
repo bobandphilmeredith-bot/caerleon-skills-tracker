@@ -161,7 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function loadStaffProfile(userId: string) {
       const { data: profile, error } = await client
         .from("staff_profiles")
-        .select("id,email,display_name")
+        .select("id,email,display_name,assigned_subjects")
         .eq("id", userId)
         .maybeSingle();
 
@@ -193,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: profile.email || "",
         role: membership.role,
         schoolId: membership.school_id,
-        assignedSubjects: [],
+        assignedSubjects: Array.isArray(profile.assigned_subjects) ? profile.assigned_subjects.map((subject) => String(subject).trim()).filter(Boolean) : [],
         active: membership.active
       });
       setAccessDeniedMessage("");
@@ -320,7 +320,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canEditSubject: (subject) => {
         if (!currentUser) return false;
         if (currentUser.role === "platform_admin" || currentUser.role === "school_admin") return true;
-        if (currentUser.role === "teacher" || currentUser.role === "subject_lead") return currentUser.assignedSubjects.includes(subject);
+        if (currentUser.role === "teacher" || currentUser.role === "subject_lead") return hasAssignedSubject(currentUser.assignedSubjects, subject);
         return false;
       },
       canAccessRole: (roles) => !!currentUser && roles.includes(currentUser.role)
@@ -329,6 +329,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+function normaliseSubjectName(subject: string) {
+  return subject.trim().toLowerCase();
+}
+
+function hasAssignedSubject(assignedSubjects: string[], subject: string) {
+  const selected = normaliseSubjectName(subject);
+  return assignedSubjects.some((assignedSubject) => normaliseSubjectName(assignedSubject) === selected);
 }
 
 export function useAuth() {

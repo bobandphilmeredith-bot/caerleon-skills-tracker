@@ -46,7 +46,7 @@ export default function AddEntryPage() {
   const progressionDescriptor = descriptorForReference(selectedElement, progressionReference);
   const hasSubjectRestrictedRole = currentUser?.role === "teacher" || currentUser?.role === "subject_lead";
   const hasEditableSubjects = !hasSubjectRestrictedRole || currentUser.assignedSubjects.length > 0;
-  const canEditSelectedSubject = !selectedSubjectName || currentUser?.role === "platform_admin" || currentUser?.role === "school_admin" || currentUser?.assignedSubjects.includes(selectedSubjectName);
+  const canEditSelectedSubject = !selectedSubjectName || currentUser?.role === "platform_admin" || currentUser?.role === "school_admin" || hasAssignedSubject(currentUser?.assignedSubjects ?? [], selectedSubjectName);
 
   if (!canEditMappings) {
     return <AccessDenied title="Add mapping restricted" message="Your current role is read-only. Switch to a teacher, subject lead or school admin account to add curriculum mapping entries." />;
@@ -175,6 +175,11 @@ export default function AddEntryPage() {
             {hasSubjectRestrictedRole && !hasEditableSubjects ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
                 No editable subjects are assigned to your account. Contact a school administrator.
+              </div>
+            ) : null}
+            {currentUser ? (
+              <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-600">
+                Permission check: role {currentUser.role}; assigned subjects {currentUser.assignedSubjects.length ? currentUser.assignedSubjects.join(", ") : "none"}; selected subject {selectedSubjectName || "none"}; can_edit_selected_subject {String(canEditSelectedSubject)}
               </div>
             ) : null}
             <FormSection number="1" title="Context" description="Choose the subject, year, term and planning reference before adding framework detail.">
@@ -487,4 +492,13 @@ function Field({ label, children, wide = false }: { label: string; children: Rea
       {children}
     </label>
   );
+}
+
+function normaliseSubjectName(subject: string) {
+  return subject.trim().toLowerCase();
+}
+
+function hasAssignedSubject(assignedSubjects: string[], subject: string) {
+  const selected = normaliseSubjectName(subject);
+  return assignedSubjects.some((assignedSubject) => normaliseSubjectName(assignedSubject) === selected);
 }

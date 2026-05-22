@@ -29,6 +29,7 @@ type StaffProfileRow = {
   id: string;
   email: string;
   display_name: string | null;
+  assigned_subjects: string[] | null;
 };
 
 type SchoolUserRow = {
@@ -164,7 +165,7 @@ export async function getActorProfile(admin: SupabaseClient, token: string, targ
 
   const { data: profile, error: profileError } = await userClient
     .from("staff_profiles")
-    .select("id,email,display_name")
+    .select("id,email,display_name,assigned_subjects")
     .eq("id", userData.user.id)
     .maybeSingle<StaffProfileRow>();
 
@@ -202,7 +203,7 @@ export async function getActorProfile(admin: SupabaseClient, token: string, targ
       display_name: profile.display_name,
       school_id: membership.school_id,
       role: membership.role,
-      assigned_subjects: [],
+      assigned_subjects: normaliseAssignedSubjects(profile.assigned_subjects),
       active: membership.active
     } satisfies StaffProfile
   };
@@ -371,7 +372,7 @@ export async function listManagedUsers(admin: SupabaseClient, actor: StaffProfil
 
   const userIds = Array.from(new Set((memberships ?? []).map((membership) => membership.user_id)));
   const { data: profiles, error: profileError } = userIds.length
-    ? await admin.from("staff_profiles").select("id,email,display_name").in("id", userIds).returns<StaffProfileRow[]>()
+    ? await admin.from("staff_profiles").select("id,email,display_name,assigned_subjects").in("id", userIds).returns<StaffProfileRow[]>()
     : { data: [] as StaffProfileRow[], error: null };
   if (profileError) return { error: "Could not load staff profiles." };
 
@@ -390,7 +391,7 @@ export async function listManagedUsers(admin: SupabaseClient, actor: StaffProfil
         email: profile?.email ?? authUser?.email ?? "",
         display_name: profile?.display_name || profile?.email || authUser?.email || "Staff user",
         role: membership.role,
-        assigned_subjects: [],
+        assigned_subjects: normaliseAssignedSubjects(profile?.assigned_subjects),
         active: membership.active,
         created_at: authUser?.created_at ?? membership.created_at ?? null,
         last_sign_in_at: authUser?.last_sign_in_at ?? null
@@ -440,7 +441,7 @@ async function updateAuthUser(admin: SupabaseClient, userId: string, input: Staf
 }
 
 async function getStaffProfileById(admin: SupabaseClient, id: string) {
-  const { data: profile } = await admin.from("staff_profiles").select("id,email,display_name").eq("id", id).maybeSingle<StaffProfileRow>();
+  const { data: profile } = await admin.from("staff_profiles").select("id,email,display_name,assigned_subjects").eq("id", id).maybeSingle<StaffProfileRow>();
   if (!profile) return null;
 
   const { data: memberships } = await admin
@@ -457,7 +458,7 @@ async function getStaffProfileById(admin: SupabaseClient, id: string) {
     display_name: profile.display_name,
     school_id: membership.school_id,
     role: membership.role,
-    assigned_subjects: [],
+    assigned_subjects: normaliseAssignedSubjects(profile.assigned_subjects),
     active: membership.active
   } satisfies StaffProfile;
 }
@@ -492,12 +493,20 @@ async function validateAssignedSubjects(admin: SupabaseClient, schoolId: string,
   if (!assignedSubjects.length) return "";
 
   const uniqueSubjects = Array.from(new Set(assignedSubjects.map((subject) => subject.trim()).filter(Boolean)));
-  const { data, error } = await admin.from("subjects").select("name").eq("school_id", schoolId).in("name", uniqueSubjects);
+  const { data, error } = await admin.from("subjects").select("name").eq("school_id", schoolId);
   if (error) return "Could not validate assigned subjects.";
 
-  const known = new Set((data ?? []).map((subject) => subject.name));
-  const unknown = uniqueSubjects.filter((subject) => !known.has(subject));
+  const known = new Set((data ?? []).map((subject) => normaliseSubjectName(subject.name)));
+  const unknown = uniqueSubjects.filter((subject) => !known.has(normaliseSubjectName(subject)));
   return unknown.length ? `Unknown assigned subject${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}.` : "";
+}
+
+function normaliseAssignedSubjects(assignedSubjects: string[] | null | undefined) {
+  return Array.isArray(assignedSubjects) ? assignedSubjects.map((subject) => String(subject).trim()).filter(Boolean) : [];
+}
+
+function normaliseSubjectName(subject: string) {
+  return subject.trim().toLowerCase();
 }
 
 function selectPrimaryMembership(memberships: SchoolUserRow[]) {

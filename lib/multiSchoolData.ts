@@ -105,7 +105,16 @@ export function buildBundle(input: { schoolId: string; subjectConfigs: SubjectCo
     input.frameworkLibrary.map((framework) => [framework.name, Object.fromEntries(framework.strands.map((strand) => [strand.name, strand.elements.map((elementItem) => elementItem.name)]))])
   );
   const frameworkCoverage = Object.fromEntries(input.frameworkLibrary.map((framework) => [framework.name, buildCoverage(framework, input.mappings, subjects)]));
-  const subjectOverviews = makeSubjectOverviews(input.schoolId, subjects, input.subjectConfigs, input.mappings);
+  const literacyFramework = findFrameworkName(input.frameworkLibrary, "Literacy");
+  const numeracyFramework = findFrameworkName(input.frameworkLibrary, "Numeracy");
+  const dcfFramework = findFrameworkName(input.frameworkLibrary, "DCF", "Digital Competence Framework");
+  const themesFramework = findFrameworkName(input.frameworkLibrary, "Themes", "Cross-cutting Themes");
+  const subjectOverviews = makeSubjectOverviews(input.schoolId, subjects, input.subjectConfigs, input.mappings, {
+    literacy: literacyFramework,
+    numeracy: numeracyFramework,
+    dcf: dcfFramework,
+    themes: themesFramework
+  });
   const subjectDetails = makeSubjectDetails(subjectOverviews, input.mappings);
 
   return {
@@ -124,10 +133,10 @@ export function buildBundle(input: { schoolId: string; subjectConfigs: SubjectCo
     mappings: input.mappings,
     frameworkCoverage,
     wholeSchoolDashboard: makeWholeSchoolDashboard(input.schoolId, subjects, input.mappings),
-    literacyDashboard: makeDashboard("Literacy", "Literacy Dashboard", "Reading, writing and oracy opportunities across subjects.", frameworkCoverage, input.mappings),
-    numeracyDashboard: makeDashboard("Numeracy", "Numeracy Dashboard", "Number, measurement, data and numerical reasoning opportunities across curriculum planning.", frameworkCoverage, input.mappings),
-    dcfDashboard: makeDashboard("Digital Competence Framework", "DCF Dashboard", "Digital competence opportunities across digital citizenship, collaboration, producing and data thinking.", frameworkCoverage, input.mappings),
-    themesDashboard: makeDashboard("Cross-cutting Themes", "Cross-cutting Themes Dashboard", "Visibility for RSE, human rights, diversity and careers-related learning across curriculum plans.", frameworkCoverage, input.mappings),
+    literacyDashboard: makeDashboard(literacyFramework, "Literacy Dashboard", "Reading, writing and oracy opportunities across subjects.", frameworkCoverage, input.mappings),
+    numeracyDashboard: makeDashboard(numeracyFramework, "Numeracy Dashboard", "Number, measurement, data and numerical reasoning opportunities across curriculum planning.", frameworkCoverage, input.mappings),
+    dcfDashboard: makeDashboard(dcfFramework, "DCF Dashboard", "Digital competence opportunities across digital citizenship, collaboration, producing and data thinking.", frameworkCoverage, input.mappings),
+    themesDashboard: makeDashboard(themesFramework, "Cross-cutting Themes Dashboard", "Visibility for RSE, human rights, diversity and careers-related learning across curriculum plans.", frameworkCoverage, input.mappings),
     subjectOverviews,
     subjectDetails,
     subjectProfiles: makeSubjectProfiles(subjectDetails)
@@ -159,7 +168,7 @@ function makeWholeSchoolDashboard(schoolId: string, subjects: string[], mappings
 }
 
 function makeDashboard(framework: string, title: string, description: string, coverage: Record<string, FrameworkCoverage>, mappings: MappingEntry[]): Dashboard {
-  const frameworkCoverage = coverage[framework];
+  const frameworkCoverage = coverage[framework] ?? emptyCoverage(framework);
   return {
     eyebrow: "Framework view",
     title,
@@ -182,6 +191,14 @@ function makeDashboard(framework: string, title: string, description: string, co
     entries: mappings.filter((entryItem) => entryItem.framework === framework).slice(0, 6),
     coverage: frameworkCoverage
   };
+}
+
+function findFrameworkName(frameworks: FrameworkDefinition[], shortName: string, fallback = shortName) {
+  return frameworks.find((framework) => framework.shortName === shortName || framework.name === fallback || framework.name === shortName)?.name ?? fallback;
+}
+
+function emptyCoverage(framework: string): FrameworkCoverage {
+  return { framework, total: 0, strands: [], mostMappedElements: [], unmappedElements: [] };
 }
 
 function buildCoverage(framework: FrameworkDefinition, mappings: MappingEntry[], subjects: string[]): FrameworkCoverage {
@@ -209,7 +226,7 @@ function buildCoverage(framework: FrameworkDefinition, mappings: MappingEntry[],
   return { framework: framework.name, total: frameworkEntries.length, strands, mostMappedElements: [...allRows].filter((item) => item.count > 0).sort((a, b) => b.count - a.count).slice(0, 5), unmappedElements: allRows.filter((item) => item.count === 0) };
 }
 
-function makeSubjectOverviews(schoolId: string, subjects: string[], subjectConfigs: SubjectConfig[], mappings: MappingEntry[]): SubjectOverview[] {
+function makeSubjectOverviews(schoolId: string, subjects: string[], subjectConfigs: SubjectConfig[], mappings: MappingEntry[], frameworkNames: { literacy: string; numeracy: string; dcf: string; themes: string }): SubjectOverview[] {
   return subjects.map((subjectName) => {
     const rows = mappings.filter((item) => item.subject === subjectName);
     const config = subjectConfigs.find((item) => item.name === subjectName);
@@ -222,10 +239,10 @@ function makeSubjectOverviews(schoolId: string, subjects: string[], subjectConfi
       faculty: config?.aole ?? "Optional AoLE not set",
       department: subjectName,
       total: rows.length,
-      literacy: countFramework(rows, "Literacy"),
-      numeracy: countFramework(rows, "Numeracy"),
-      dcf: countFramework(rows, "Digital Competence Framework"),
-      themes: countFramework(rows, "Cross-cutting Themes"),
+      literacy: countFramework(rows, frameworkNames.literacy),
+      numeracy: countFramework(rows, frameworkNames.numeracy),
+      dcf: countFramework(rows, frameworkNames.dcf),
+      themes: countFramework(rows, frameworkNames.themes),
       lastReviewedDate: "Not reviewed yet"
     };
   });
@@ -288,8 +305,13 @@ function subject(name: string, aole: string | undefined, displayOrder: number, s
 }
 
 function wholeSchoolHeatValues(mappings: MappingEntry[]) {
-  const frameworks = ["Literacy", "Numeracy", "Digital Competence Framework", "Cross-cutting Themes"];
-  return frameworks.map((framework) => base.yearGroups.map((year) => mappings.filter((entry) => entry.framework === framework && entry.year === year).length));
+  const frameworkGroups = [
+    ["Literacy", "Literacy Framework"],
+    ["Numeracy", "Numeracy Framework"],
+    ["Digital Competence Framework"],
+    ["Cross-cutting Themes"]
+  ];
+  return frameworkGroups.map((frameworks) => base.yearGroups.map((year) => mappings.filter((entry) => frameworks.includes(entry.framework) && entry.year === year).length));
 }
 
 function frameworkHeatValues(framework: string, strands: FrameworkCoverage["strands"], mappings: MappingEntry[]) {

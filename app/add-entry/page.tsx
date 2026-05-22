@@ -39,7 +39,9 @@ export default function AddEntryPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const selectedFramework = frameworkLibrary.find((item: FrameworkDefinition) => item.name === selectedFrameworkName) ?? frameworkLibrary[0];
-  const selectedElement = selectedFramework.strands.flatMap((item: StrandDefinition) => item.elements).find((item: ElementDefinition) => item.name === selectedElementName);
+  const selectedStrand = selectedFramework.strands.find((item: StrandDefinition) => item.name === selectedStrandName);
+  const selectedElement = selectedStrand?.elements.find((item: ElementDefinition) => item.name === selectedElementName);
+  const selectedSubject = subjectConfigs.find((item) => item.name === selectedSubjectName);
   const theme = themeForFramework(selectedFrameworkName);
   const selectedAole = selectedSubjectName ? subjectAoleMap[selectedSubjectName] : undefined;
   const suggestedProgression = suggestedProgressionForYear(yearGroup);
@@ -92,6 +94,10 @@ export default function AddEntryPage() {
   function buildMappingEntry(): MappingEntry {
     return {
       schoolId: currentSchoolId,
+      subjectId: selectedSubject?.id,
+      frameworkId: selectedFramework.id,
+      strandId: selectedStrand?.id,
+      elementId: selectedElement?.id,
       id: `map-${currentSchoolId}-${Date.now()}`,
       subject: selectedSubjectName,
       framework: selectedFrameworkName,

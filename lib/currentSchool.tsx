@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { useSchoolSettings } from "@/lib/schoolSettings";
 import { buildBundle, createEmptySchoolData, defaultSchoolId, sampleSchools, schoolDataById, type SchoolDataBundle } from "@/lib/multiSchoolData";
 import { isDemoLoginEnabled, supabase } from "@/lib/supabaseClient";
-import type { MappingEntry, ProgressionReference, School, SubjectConfig } from "@/lib/types";
+import type { MappingEntry, ProgressionReference, ProgressionStep, School, SubjectConfig } from "@/lib/types";
 
 type MappingMutationResult = {
   ok: boolean;
@@ -38,6 +38,8 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   const [mappingOverrides, setMappingOverrides] = useState<Record<string, MappingEntry[]>>({});
   const [liveMappings, setLiveMappings] = useState<MappingEntry[]>([]);
   const [liveReferenceMaps, setLiveReferenceMaps] = useState<LiveReferenceMaps | null>(null);
+  const [liveFrameworkLibrary, setLiveFrameworkLibrary] = useState<SchoolDataBundle["frameworkLibrary"]>([]);
+  const [liveSubjectConfigs, setLiveSubjectConfigs] = useState<SubjectConfig[]>([]);
 
   useEffect(() => {
     const savedSchools = window.localStorage.getItem("skills-tracker-schools");
@@ -56,16 +58,18 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   const baseData = customData[currentSchool.id] ?? schoolDataById[currentSchool.id] ?? createEmptySchoolData(currentSchool.id);
   const liveSchoolId = isDemoLoginEnabled ? currentSchool.id : currentUser?.schoolId;
   const currentMappings = isDemoLoginEnabled ? (mappingOverrides[currentSchool.id] ?? baseData.mappings) : liveMappings;
+  const currentFrameworkLibrary = !isDemoLoginEnabled && liveFrameworkLibrary.length ? liveFrameworkLibrary : baseData.frameworkLibrary;
+  const currentSubjectConfigs = !isDemoLoginEnabled && liveSubjectConfigs.length ? liveSubjectConfigs : baseData.subjectConfigs;
   const data = useMemo(
     () =>
       buildBundle({
         schoolId: currentSchool.id,
-        subjectConfigs: baseData.subjectConfigs,
+        subjectConfigs: currentSubjectConfigs,
         aoleConfigs: baseData.aoleConfigs,
-        frameworkLibrary: baseData.frameworkLibrary,
+        frameworkLibrary: currentFrameworkLibrary,
         mappings: currentMappings
       }),
-    [baseData, currentMappings, currentSchool.id]
+    [baseData.aoleConfigs, currentFrameworkLibrary, currentMappings, currentSchool.id, currentSubjectConfigs]
   );
 
   useEffect(() => {
@@ -104,6 +108,8 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
     }
 
     setLiveReferenceMaps(refs);
+    setLiveFrameworkLibrary(refs.frameworkLibrary);
+    setLiveSubjectConfigs(refs.subjectConfigs);
     setLiveMappings(((rows ?? []) as CurriculumEntryRow[]).map((row) => curriculumRowToMapping(row, refs)));
   }, [liveSchoolId]);
 
@@ -185,6 +191,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
             framework_id: ids.frameworkId,
             strand_id: ids.strandId,
             element_id: ids.elementId,
+            progression_descriptor_id: ids.progressionDescriptorId,
             year_group: entry.year,
             term: entry.term,
             unit_topic: entry.unit || entry.context,
@@ -229,6 +236,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
               framework_id: ids.frameworkId,
               strand_id: ids.strandId,
               element_id: ids.elementId,
+              progression_descriptor_id: ids.progressionDescriptorId,
               year_group: merged.year,
               term: merged.term,
               unit_topic: merged.unit || merged.context,
@@ -288,23 +296,43 @@ type ReferenceRow = {
   name: string;
 };
 
+type FrameworkReferenceRow = ReferenceRow & {
+  short_name: string;
+};
+
 type StrandReferenceRow = ReferenceRow & {
   framework_id: string;
 };
 
 type ElementReferenceRow = ReferenceRow & {
   strand_id: string;
+  official_wording: string | null;
+  teacher_friendly_explanation: string;
+  example_classroom_opportunities: string[];
+  search_keywords: string[];
+  related_connections: string[];
+  display_order: number;
+};
+
+type ProgressionDescriptorRow = {
+  id: string;
+  element_id: string;
+  progression_step: string;
+  descriptor: string;
 };
 
 type LiveReferenceMaps = {
   subjectsByName: Map<string, ReferenceRow>;
   subjectsById: Map<string, ReferenceRow>;
-  frameworksByName: Map<string, ReferenceRow>;
-  frameworksById: Map<string, ReferenceRow>;
+  frameworksByName: Map<string, FrameworkReferenceRow>;
+  frameworksById: Map<string, FrameworkReferenceRow>;
   strandsByKey: Map<string, StrandReferenceRow>;
   strandsById: Map<string, StrandReferenceRow>;
   elementsByKey: Map<string, ElementReferenceRow>;
   elementsById: Map<string, ElementReferenceRow>;
+  progressionDescriptorByElementAndStep: Map<string, ProgressionDescriptorRow>;
+  frameworkLibrary: SchoolDataBundle["frameworkLibrary"];
+  subjectConfigs: SubjectConfig[];
 };
 
 type CurriculumEntryRow = {
@@ -328,14 +356,23 @@ type CurriculumEntryRow = {
 
 async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string): Promise<LiveReferenceMaps> {
   const [subjectsResult, frameworksResult, strandsResult, elementsResult] = await Promise.all([
-    client.from("subjects").select("id,name").eq("school_id", schoolId).eq("active", true),
-    client.from("frameworks").select("id,name").eq("school_id", schoolId).eq("active", true),
-    client.from("strands").select("id,name,framework_id").eq("school_id", schoolId).eq("active", true),
-    client.from("elements").select("id,name,strand_id").eq("school_id", schoolId).eq("active", true)
+    client.from("subjects").select("id,name").eq("school_id", schoolId).eq("active", true).order("name", { ascending: true }),
+    client.from("frameworks").select("id,name,short_name").eq("school_id", schoolId).eq("active", true).order("display_order", { ascending: true }),
+    client.from("strands").select("id,name,framework_id").eq("school_id", schoolId).eq("active", true).order("display_order", { ascending: true }),
+    client
+      .from("elements")
+      .select("id,name,strand_id,official_wording,teacher_friendly_explanation,example_classroom_opportunities,search_keywords,related_connections,display_order")
+      .eq("school_id", schoolId)
+      .eq("active", true)
+      .order("display_order", { ascending: true })
   ]);
+  const elementIds = ((elementsResult.data ?? []) as ElementReferenceRow[]).map((row) => row.id);
+  const { data: descriptorRows } = elementIds.length
+    ? await client.from("progression_descriptors").select("id,element_id,progression_step,descriptor").in("element_id", elementIds)
+    : { data: [] as ProgressionDescriptorRow[] };
 
   const subjects = ((subjectsResult.data ?? []) as ReferenceRow[]).map(normaliseReferenceName);
-  const frameworks = ((frameworksResult.data ?? []) as ReferenceRow[]).map(normaliseReferenceName);
+  const frameworks = ((frameworksResult.data ?? []) as FrameworkReferenceRow[]).map(normaliseReferenceName);
   const strands = ((strandsResult.data ?? []) as StrandReferenceRow[]).map(normaliseReferenceName);
   const elements = ((elementsResult.data ?? []) as ElementReferenceRow[]).map(normaliseReferenceName);
 
@@ -343,6 +380,11 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string): 
   const strandsById = new Map(strands.map((row) => [row.id, row]));
   const strandsByKey = new Map<string, StrandReferenceRow>();
   const elementsByKey = new Map<string, ElementReferenceRow>();
+  const progressionDescriptorByElementAndStep = new Map<string, ProgressionDescriptorRow>();
+
+  for (const descriptor of (descriptorRows ?? []) as ProgressionDescriptorRow[]) {
+    progressionDescriptorByElementAndStep.set(referenceKey(descriptor.element_id, descriptor.progression_step), descriptor);
+  }
 
   for (const strand of strands) {
     const framework = frameworksById.get(strand.framework_id);
@@ -355,6 +397,44 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string): 
     if (framework && strand) elementsByKey.set(referenceKey(framework.name, strand.name, element.name), element);
   }
 
+  const frameworkLibrary = frameworks.map((framework) => ({
+    id: framework.id,
+    schoolId,
+    name: framework.name,
+    shortName: framework.short_name,
+    strands: strands
+      .filter((strand) => strand.framework_id === framework.id)
+      .map((strand) => ({
+        id: strand.id,
+        schoolId,
+        name: strand.name,
+        elements: elements
+          .filter((element) => element.strand_id === strand.id)
+          .map((element) => ({
+            id: element.id,
+            schoolId,
+            name: element.name,
+            officialWording: element.official_wording ?? element.teacher_friendly_explanation,
+            explanation: element.teacher_friendly_explanation,
+            examples: element.example_classroom_opportunities ?? [],
+            progressionDescriptors: Object.fromEntries(
+              (["Step 1", "Step 2", "Step 3", "Step 4", "Step 5"] as ProgressionStep[]).map((step) => [step, progressionDescriptorByElementAndStep.get(referenceKey(element.id, step))?.descriptor ?? "Descriptor can be edited in Admin Setup."])
+            ) as Record<ProgressionStep, string>,
+            searchKeywords: element.search_keywords ?? [],
+            relatedConnections: element.related_connections ?? []
+          }))
+      }))
+  }));
+
+  const subjectConfigs = subjects.map((subject, index) => ({
+    schoolId,
+    id: subject.id,
+    name: subject.name,
+    active: true,
+    displayOrder: index + 1,
+    appearsInMappingDropdowns: true
+  }));
+
   return {
     subjectsByName: new Map(subjects.map((row) => [row.name, row])),
     subjectsById: new Map(subjects.map((row) => [row.id, row])),
@@ -363,7 +443,10 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string): 
     strandsByKey,
     strandsById,
     elementsByKey,
-    elementsById: new Map(elements.map((row) => [row.id, row]))
+    elementsById: new Map(elements.map((row) => [row.id, row])),
+    progressionDescriptorByElementAndStep,
+    frameworkLibrary,
+    subjectConfigs
   };
 }
 
@@ -376,21 +459,30 @@ function referenceKey(...parts: string[]) {
 }
 
 function resolveLiveIds(entry: MappingEntry, refs: LiveReferenceMaps):
-  | { ok: true; subjectId: string; frameworkId: string; strandId: string; elementId: string }
+  | { ok: true; subjectId: string; frameworkId: string; strandId: string; elementId: string; progressionDescriptorId: string | null }
   | { ok: false; message: string } {
-  const subject = refs.subjectsByName.get(entry.subject.trim());
-  if (!subject) return { ok: false, message: `Subject not found in Supabase: ${entry.subject}` };
+  if (!entry.subjectId || !entry.frameworkId || !entry.strandId || !entry.elementId) {
+    return { ok: false, message: "Mapping reference IDs are missing. Reload the page and select the framework, strand and element again." };
+  }
 
-  const framework = refs.frameworksByName.get(entry.framework.trim());
+  const subject = refs.subjectsById.get(entry.subjectId);
+  if (!subject) return { ok: false, message: `Subject ID not found in Supabase: ${entry.subjectId}` };
+
+  const framework = refs.frameworksById.get(entry.frameworkId);
   if (!framework) return { ok: false, message: `Framework not found in Supabase: ${entry.framework}` };
 
-  const strand = refs.strandsByKey.get(referenceKey(entry.framework, entry.strand));
+  const strand = refs.strandsById.get(entry.strandId);
   if (!strand) return { ok: false, message: `Strand not found in Supabase: ${entry.framework} → ${entry.strand}` };
 
-  const element = refs.elementsByKey.get(referenceKey(entry.framework, entry.strand, entry.element));
+  const element = refs.elementsById.get(entry.elementId);
   if (!element) return { ok: false, message: `Element not found in Supabase: ${entry.framework} → ${entry.strand} → ${entry.element}` };
 
-  return { ok: true, subjectId: subject.id, frameworkId: framework.id, strandId: strand.id, elementId: element.id };
+  const progressionDescriptorId =
+    entry.progressionDescriptorId ??
+    refs.progressionDescriptorByElementAndStep.get(referenceKey(element.id, toDatabaseProgression(entry.progressionReference)))?.id ??
+    null;
+
+  return { ok: true, subjectId: subject.id, frameworkId: framework.id, strandId: strand.id, elementId: element.id, progressionDescriptorId };
 }
 
 function curriculumRowToMapping(row: CurriculumEntryRow, refs: LiveReferenceMaps): MappingEntry {
@@ -402,6 +494,10 @@ function curriculumRowToMapping(row: CurriculumEntryRow, refs: LiveReferenceMaps
   return {
     schoolId: row.school_id,
     id: row.id,
+    subjectId: row.subject_id,
+    frameworkId: row.framework_id,
+    strandId: row.strand_id,
+    elementId: row.element_id,
     subject,
     framework,
     strand,

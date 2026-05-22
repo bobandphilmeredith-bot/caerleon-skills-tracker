@@ -1,4 +1,5 @@
 import type { AoleConfig, Card, Dashboard, ElementCoverageRow, FrameworkCoverage, FrameworkDefinition, MappingEntry, SubjectConfig, SubjectDetail, SubjectOverview } from "@/lib/types";
+import { officialFrameworkLibrary } from "@/lib/officialFrameworks";
 
 export const aoleOptions = ["Expressive Arts", "Health and Well-being", "Humanities", "Languages, Literacy and Communication", "Mathematics and Numeracy", "Science and Technology"];
 
@@ -45,152 +46,7 @@ export const yearGroups = ["Year 7", "Year 8", "Year 9", "Year 10", "Year 11"];
 
 export const terms = ["Autumn", "Spring", "Summer"];
 
-export const frameworkLibrary: FrameworkDefinition[] = [
-  {
-    name: "Literacy",
-    shortName: "Literacy",
-    strands: [
-      {
-        name: "Oracy",
-        elements: [
-          element("Listening for meaning", "Learners listen actively, identify key points and respond to spoken ideas.", ["Structured seminar", "Peer explanation", "Debate preparation"]),
-          element("Collaborative discussion", "Learners build on contributions and use talk to shape shared understanding.", ["Group enquiry roles", "Think-pair-share", "Project critique circle"]),
-          element("Presenting information", "Learners organise and communicate information clearly for a chosen audience.", ["Short presentation", "Podcast script", "Exhibition talk"])
-        ]
-      },
-      {
-        name: "Reading",
-        elements: [
-          element("Locating information", "Learners find relevant details from texts, diagrams, sources and digital materials.", ["Source investigation", "Information hunt", "Research note taking"]),
-          element("Inference and deduction", "Learners use evidence to read between the lines and justify interpretations.", ["Character evidence grid", "Historical source inference", "Scientific explanation reading"]),
-          element("Comparing sources", "Learners compare viewpoints, reliability and purpose across sources.", ["News comparison", "Primary and secondary source check", "Website reliability review"])
-        ]
-      },
-      {
-        name: "Writing",
-        elements: [
-          element("Planning writing", "Learners plan structure, content and sequence before producing written work.", ["Writing frame", "Storyboard", "Report plan"]),
-          element("Technical accuracy", "Learners edit spelling, punctuation, grammar and vocabulary choices.", ["Redrafting checklist", "Peer editing", "Subject vocabulary focus"]),
-          element("Audience and purpose", "Learners adapt tone, register and form to suit the intended reader.", ["Campaign leaflet", "Formal report", "Museum label"])
-        ]
-      }
-    ]
-  },
-  {
-    name: "Numeracy",
-    shortName: "Numeracy",
-    strands: [
-      {
-        name: "Using number skills",
-        elements: [
-          element("Use of calculation", "Learners choose and apply calculations in meaningful subject contexts.", ["Budget comparison", "Recipe scaling", "Science formula practice"]),
-          element("Estimating and checking", "Learners estimate, check reasonableness and explain numerical decisions.", ["Approximate cost planning", "Data sense check", "Measurement prediction"]),
-          element("Financial contexts", "Learners apply number skills to money, value and financial decision-making.", ["Enterprise pricing", "Household budget", "Cost-benefit comparison"])
-        ]
-      },
-      {
-        name: "Using measuring skills",
-        elements: [
-          element("Time and scale", "Learners use time, timelines, maps or scale to understand relationships.", ["Historical timeline", "Map scale task", "Training plan timings"]),
-          element("Area and volume", "Learners calculate, compare or reason with space, area and volume.", ["Garden design", "Packaging system", "Classroom layout"]),
-          element("Interpreting units", "Learners select and interpret units accurately across practical contexts.", ["Lab measurement", "Recipe conversion", "Material dimensions"])
-        ]
-      },
-      {
-        name: "Using data skills",
-        elements: [
-          element("Collecting data", "Learners gather data fairly and record it in usable forms.", ["Survey design", "Fieldwork tally", "Experiment results table"]),
-          element("Representing data", "Learners choose appropriate charts, tables or visual displays.", ["Infographic", "Graph selection", "Dashboard sketch"]),
-          element("Interpreting trends", "Learners describe patterns, anomalies and relationships in data.", ["Climate trend discussion", "Performance data story", "Population graph analysis"])
-        ]
-      },
-      {
-        name: "Developing numerical reasoning",
-        elements: [
-          element("Selecting strategies", "Learners choose approaches and explain why they fit the problem.", ["Multi-step problem", "Planning a route", "Comparing solution methods"]),
-          element("Justifying decisions", "Learners use numbers to support conclusions and communicate reasoning.", ["Evidence-backed recommendation", "Data-led argument", "Estimate justification"]),
-          element("Evaluating accuracy", "Learners consider precision, uncertainty and reliability in numerical work.", ["Rounding discussion", "Measurement error review", "Graph scale critique"])
-        ]
-      }
-    ]
-  },
-  {
-    name: "Digital Competence Framework",
-    shortName: "DCF",
-    strands: [
-      {
-        name: "Citizenship",
-        elements: [
-          element("Identity and wellbeing", "Learners understand their digital identity and how online choices affect wellbeing.", ["Online profile discussion", "Screen-time reflection", "Digital footprint check"]),
-          element("Digital rights", "Learners recognise ownership, permission and responsible use of digital content.", ["Copyright check", "Image permission task", "Creative Commons review"]),
-          element("Online behaviour", "Learners communicate respectfully and safely in digital spaces.", ["Comment protocol", "Shared document etiquette", "Online scenario sort"])
-        ]
-      },
-      {
-        name: "Interacting and collaborating",
-        elements: [
-          element("Communication", "Learners select appropriate digital communication tools and formats.", ["Email for audience", "Video update", "Class discussion board"]),
-          element("Collaboration", "Learners use shared tools to co-create, review and improve work.", ["Shared slide deck", "Collaborative planning board", "Peer feedback document"]),
-          element("Storing and sharing", "Learners organise, name and share digital files responsibly.", ["Folder structure", "Version naming", "Share settings check"])
-        ]
-      },
-      {
-        name: "Producing",
-        elements: [
-          element("Planning digital products", "Learners plan digital outputs with audience, purpose and success criteria in mind.", ["Storyboard", "Wireframe", "Production checklist"]),
-          element("Creating digital content", "Learners combine media and tools to create purposeful digital outcomes.", ["Video explainer", "Interactive poster", "System portfolio"]),
-          element("Evaluating outputs", "Learners review digital work against purpose and make improvements.", ["Usability review", "Audience feedback", "Iteration notes"])
-        ]
-      },
-      {
-        name: "Data and computational thinking",
-        elements: [
-          element("Problem solving", "Learners break problems into steps and develop logical approaches.", ["Algorithm cards", "Debugging routine", "Process map"]),
-          element("Data handling", "Learners collect, structure and use data with digital tools.", ["Spreadsheet model", "Database fields", "Data cleaning task"]),
-          element("Modelling", "Learners use digital models or simulations to test ideas.", ["What-if spreadsheet", "Simulation variables", "System behaviour model"])
-        ]
-      }
-    ]
-  },
-  {
-    name: "Cross-cutting Themes",
-    shortName: "Themes",
-    strands: [
-      {
-        name: "Relationships and sexuality education",
-        elements: [
-          element("Healthy relationships", "Learners explore respect, consent, communication and wellbeing in age-appropriate ways.", ["Scenario discussion", "Trusted adults map", "Respectful language task"]),
-          element("Rights and equity", "Learners consider rights, fairness and inclusion in relationships and communities.", ["Rights charter", "Equity case study", "Class agreement"]),
-          element("Personal identity", "Learners reflect on identity, values and belonging.", ["Identity artwork", "Reflective writing", "Community interview"])
-        ]
-      },
-      {
-        name: "Human rights",
-        elements: [
-          element("Voice and participation", "Learners understand how people can participate and have their voices heard.", ["School council brief", "Campaign design", "Public consultation role-play"]),
-          element("Fairness", "Learners explore fair treatment and decision-making.", ["Resource allocation task", "Justice debate", "Case study review"]),
-          element("Dignity", "Learners consider dignity, respect and the rights of others.", ["Charter comparison", "Ethical dilemma", "Community values discussion"])
-        ]
-      },
-      {
-        name: "Diversity",
-        elements: [
-          element("Identity", "Learners explore identity as complex, personal and connected to community.", ["Identity map", "Local voices project", "Personal narrative"]),
-          element("Culture and community", "Learners investigate cultures, languages and communities in Wales and beyond.", ["Community research", "Cultural celebration analysis", "Place-name enquiry"]),
-          element("Challenging stereotypes", "Learners identify stereotypes and consider how to challenge them.", ["Media analysis", "Representation audit", "Alternative narrative task"])
-        ]
-      },
-      {
-        name: "Careers and work-related experiences",
-        elements: [
-          element("Pathways", "Learners understand possible learning and career pathways.", ["Pathway map", "Alumni profile", "Options comparison"]),
-          element("Workplace skills", "Learners identify transferable skills used in different roles.", ["Skills audit", "Employer brief", "Team role reflection"]),
-          element("Future planning", "Learners connect current learning to future choices and aspirations.", ["Personal action plan", "Careers interview", "Goal review"])
-        ]
-      }
-    ]
-  }
-];
+export const frameworkLibrary: FrameworkDefinition[] = officialFrameworkLibrary;
 
 export const frameworkMap: Record<string, Record<string, string[]>> = Object.fromEntries(
   frameworkLibrary.map((framework) => [
@@ -232,13 +88,13 @@ export const wholeSchoolDashboard: Dashboard = {
   entries: [...mappings].sort((a, b) => b.lastMappedDate.localeCompare(a.lastMappedDate)).slice(0, 8)
 };
 
-export const literacyDashboard = makeDashboard("Literacy", "Literacy Dashboard", "Reading, writing and oracy opportunities across subjects.", [
+export const literacyDashboard = makeDashboard("Literacy Framework", "Literacy Dashboard", "Reading, writing and oracy opportunities across subjects.", [
   [91, 84, 80, 72, 65],
   [79, 76, 82, 74, 68],
   [73, 81, 78, 70, 63]
 ]);
 
-export const numeracyDashboard = makeDashboard("Numeracy", "Numeracy Dashboard", "Number, measurement, data and numerical reasoning opportunities across curriculum planning.", [
+export const numeracyDashboard = makeDashboard("Numeracy Framework", "Numeracy Dashboard", "Number, measurement, data and numerical reasoning opportunities across curriculum planning.", [
   [84, 88, 78, 70, 62],
   [72, 79, 76, 69, 57],
   [66, 74, 83, 71, 60],

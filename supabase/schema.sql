@@ -208,6 +208,7 @@ create table if not exists public.progression_descriptors (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (element_id, progression_step),
+  unique (id, school_id),
   foreign key (element_id, school_id) references public.elements(id, school_id) on delete cascade
 );
 
@@ -224,6 +225,7 @@ create table if not exists public.curriculum_entries (
   learning_activity_description text not null,
   scheme_reference text not null,
   progression_reference public.progression_reference not null default 'Not specified',
+  progression_descriptor_id uuid,
   optional_note text,
   last_mapped_date date not null default current_date,
   created_by uuid references public.users(id) on delete set null,
@@ -234,6 +236,7 @@ create table if not exists public.curriculum_entries (
   foreign key (framework_id, school_id) references public.frameworks(id, school_id) on delete restrict,
   foreign key (strand_id, school_id) references public.strands(id, school_id) on delete restrict,
   foreign key (element_id, school_id) references public.elements(id, school_id) on delete restrict,
+  foreign key (progression_descriptor_id, school_id) references public.progression_descriptors(id, school_id) on delete set null,
   constraint curriculum_entries_year_group_check check (year_group in ('Year 7', 'Year 8', 'Year 9', 'Year 10', 'Year 11')),
   constraint curriculum_entries_term_check check (term in ('Autumn', 'Spring', 'Summer')),
   constraint curriculum_entries_unit_not_blank check (char_length(trim(unit_topic)) > 0),
@@ -318,6 +321,7 @@ create index if not exists curriculum_entries_framework_idx on public.curriculum
 create index if not exists curriculum_entries_element_idx on public.curriculum_entries(element_id);
 create index if not exists curriculum_entries_year_term_idx on public.curriculum_entries(school_id, year_group, term);
 create index if not exists curriculum_entries_progression_idx on public.curriculum_entries(school_id, progression_reference);
+create index if not exists curriculum_entries_progression_descriptor_idx on public.curriculum_entries(school_id, progression_descriptor_id);
 create index if not exists review_cycles_school_idx on public.review_cycles(school_id);
 create index if not exists audit_logs_school_created_idx on public.audit_logs(school_id, created_at desc);
 create index if not exists audit_logs_entity_idx on public.audit_logs(entity_type, entity_id);

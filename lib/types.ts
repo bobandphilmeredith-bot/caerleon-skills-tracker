@@ -17,6 +17,7 @@ export type School = {
 };
 
 export type ElementDefinition = {
+  id?: string;
   schoolId?: string;
   name: string;
   officialWording: string;
@@ -28,12 +29,14 @@ export type ElementDefinition = {
 };
 
 export type StrandDefinition = {
+  id?: string;
   schoolId?: string;
   name: string;
   elements: ElementDefinition[];
 };
 
 export type FrameworkDefinition = {
+  id?: string;
   schoolId?: string;
   name: string;
   shortName: string;
@@ -42,6 +45,11 @@ export type FrameworkDefinition = {
 
 export type MappingEntry = {
   schoolId?: string;
+  subjectId?: string;
+  frameworkId?: string;
+  strandId?: string;
+  elementId?: string;
+  progressionDescriptorId?: string;
   id: string;
   subject: string;
   framework: string;

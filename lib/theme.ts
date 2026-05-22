@@ -94,8 +94,8 @@ export const areaThemes: Record<string, AreaTheme> = {
 
 export function themeForFramework(framework?: string) {
   if (!framework) return areaThemes.overview;
-  if (framework === "Literacy") return areaThemes.literacy;
-  if (framework === "Numeracy") return areaThemes.numeracy;
+  if (framework === "Literacy" || framework === "Literacy Framework") return areaThemes.literacy;
+  if (framework === "Numeracy" || framework === "Numeracy Framework") return areaThemes.numeracy;
   if (framework === "Digital Competence Framework" || framework === "DCF") return areaThemes.dcf;
   if (framework === "Cross-cutting Themes" || framework === "Cross-cutting themes" || framework === "Themes") return areaThemes.themes;
   return areaThemes.overview;

@@ -30,10 +30,10 @@ export const themeMapOutputs = [
 ];
 
 export const recentMappingFeed = [
-  feed("Biology", "Numeracy", "Using data skills", "Interpreting trends", "Pupils interpret reaction graphs and use data to justify conclusions.", "2026-05-10"),
-  feed("History", "Literacy", "Reading", "Comparing sources", "Pupils compare museum captions and visitor articles to identify how viewpoint changes the account.", "2026-05-09"),
-  feed("English", "Literacy", "Reading", "Comparing sources", "Pupils compare two persuasive articles and identify how writers shape viewpoint.", "2026-05-08"),
-  feed("DT", "Digital Competence Framework", "Producing", "Evaluating outputs", "Pupils review a system against audience needs and record improvements for the next iteration.", "2026-05-06"),
+  feed("Biology", "Numeracy Framework", "Learning that statistics represent data and that probability models chance helps us make informed inferences and decisions", "Interpreting data", "Pupils interpret reaction graphs and use data to justify conclusions.", "2026-05-10"),
+  feed("History", "Literacy Framework", "Reading", "Understanding, response and analysis", "Pupils compare museum captions and visitor articles to identify how viewpoint changes the account.", "2026-05-09"),
+  feed("English", "Literacy Framework", "Reading", "Understanding, response and analysis", "Pupils compare two persuasive articles and identify how writers shape viewpoint.", "2026-05-08"),
+  feed("DT", "Digital Competence Framework", "Producing", "Evaluating and improving digital content", "Pupils review a system against audience needs and record improvements for the next iteration.", "2026-05-06"),
   feed("RSE", "Cross-cutting Themes", "Relationships and sexuality education", "Healthy relationships", "Pupils discuss scenario cards and identify respectful communication choices.", "2026-05-04")
 ];
 
@@ -89,7 +89,7 @@ export function filterNaturalLanguage(query: string, entries = mappings) {
     const content = `${entry.subject} ${entry.year} ${entry.term} ${entry.framework} ${entry.strand} ${entry.element} ${entry.unit} ${entry.activityDescription}`.toLowerCase();
     const expanded =
       content +
-      (entry.framework === "Numeracy" ? " numeracy number data interpreting data graphs " : "") +
+      (entry.framework === "Numeracy" || entry.framework === "Numeracy Framework" ? " numeracy number data interpreting data graphs " : "") +
       (entry.element.includes("Comparing") || entry.activityDescription.toLowerCase().includes("evidence") ? " evaluating information source evaluation viewpoint bias " : "") +
       (entry.activityDescription.toLowerCase().includes("local") || entry.activityDescription.toLowerCase().includes("community") ? " cynefin local community belonging " : "");
 

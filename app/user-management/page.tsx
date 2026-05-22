@@ -67,6 +67,16 @@ export default function UserManagementPage() {
   const [savingUserId, setSavingUserId] = useState("");
   const [createDebug, setCreateDebug] = useState<AccessDebug | null>(null);
   const [schoolDebug, setSchoolDebug] = useState<AccessDebug | null>(null);
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<UserRole | "All">("All");
+  const [statusFilter, setStatusFilter] = useState<"Active" | "Suspended" | "Archived" | "All">("Active");
+  const [subjectFilter, setSubjectFilter] = useState("All");
+  const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
+  const [viewingUser, setViewingUser] = useState<ManagedUser | null>(null);
+  const [archivedUserIds, setArchivedUserIds] = useState<string[]>([]);
+  const [deletedUserIds, setDeletedUserIds] = useState<string[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<ManagedUser | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   const schoolOptions = isDemoMode ? schools.map((school) => ({ id: school.id, name: school.name, slug: school.slug, active: school.active })) : managedSchools;
   const targetSchoolId = currentUser?.role === "platform_admin" ? selectedSchoolId : (currentUser?.schoolId ?? "");
@@ -76,6 +86,22 @@ export default function UserManagementPage() {
     if (currentUser?.role === "platform_admin") return users;
     return users.filter((user) => user.schoolId === currentUser?.schoolId && user.role !== "platform_admin");
   }, [currentUser, users]);
+
+  const filteredManagedUsers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return managedUsers.filter((user) => {
+      const archived = archivedUserIds.includes(user.id);
+      const deleted = deletedUserIds.includes(user.id);
+      if (deleted) return false;
+      if (statusFilter === "Active" && (!user.active || archived)) return false;
+      if (statusFilter === "Suspended" && (user.active || archived)) return false;
+      if (statusFilter === "Archived" && !archived) return false;
+      if (roleFilter !== "All" && user.role !== roleFilter) return false;
+      if (subjectFilter !== "All" && !user.assigned_subjects.some((subject) => subject.trim().toLowerCase() === subjectFilter.trim().toLowerCase())) return false;
+      if (query && !`${user.display_name} ${user.email}`.toLowerCase().includes(query)) return false;
+      return true;
+    });
+  }, [archivedUserIds, deletedUserIds, managedUsers, roleFilter, search, statusFilter, subjectFilter]);
 
   useEffect(() => {
     if (isDemoMode || !canManageUsers) return;
@@ -242,8 +268,14 @@ export default function UserManagementPage() {
     });
     const result = await response.json();
     setSavingUserId("");
-    setRowMessage((current) => ({ ...current, [user.id]: response.ok ? "Saved." : result.error ?? "Could not save user." }));
-    if (response.ok) await loadLiveData();
+    setRowMessage((current) => ({ ...current, [user.id]: response.ok ? "User updated" : result.error ?? "Could not save user." }));
+    if (response.ok) {
+      setNotice("User updated");
+      setEditingUser(null);
+      await loadLiveData();
+    } else {
+      setNotice(result.error ?? "Could not save user.");
+    }
   }
 
   function updateLiveUser(userId: string, patch: Partial<ManagedUser>) {
@@ -284,6 +316,46 @@ export default function UserManagementPage() {
     }
     setUploadResults(result.results ?? []);
     await loadLiveData();
+  }
+
+  async function setLiveUserActive(user: ManagedUser, active: boolean, message: string) {
+    await saveLiveUser({ ...user, active });
+    setNotice(message);
+  }
+
+  async function archiveLiveUser(user: ManagedUser) {
+    if (!canManageTarget(user)) {
+      setNotice("You do not have permission to perform this action");
+      return;
+    }
+    await saveLiveUser({ ...user, active: false });
+    setArchivedUserIds((current) => Array.from(new Set([...current, user.id])));
+    setNotice("User archived");
+  }
+
+  async function deleteLiveUser() {
+    if (!deleteTarget) return;
+    if (deleteConfirmText !== "DELETE") return;
+    if (!canManageTarget(deleteTarget) || currentUser?.role !== "platform_admin") {
+      setNotice("You do not have permission to perform this action");
+      return;
+    }
+    await saveLiveUser({ ...deleteTarget, active: false });
+    setDeletedUserIds((current) => Array.from(new Set([...current, deleteTarget.id])));
+    setNotice("User deleted");
+    setDeleteTarget(null);
+    setDeleteConfirmText("");
+  }
+
+  function canManageTarget(user: ManagedUser) {
+    if (currentUser?.role === "platform_admin") return true;
+    if (currentUser?.role === "school_admin") return user.school_id === currentUser.schoolId && user.role !== "platform_admin";
+    return false;
+  }
+
+  function userStatus(user: ManagedUser) {
+    if (archivedUserIds.includes(user.id)) return "Archived";
+    return user.active ? "Active" : "Suspended";
   }
 
   return (

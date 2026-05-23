@@ -41,6 +41,10 @@ export default function AddEntryPage() {
   const [saveMessage, setSaveMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
+  const selectedThemes = useMemo(
+    () => crossCuttingThemes.filter((themeItem) => selectedThemeIds.includes(themeItem.id)),
+    [crossCuttingThemes, selectedThemeIds]
+  );
   const selectedSubject = activeSubjects.find((subject) => subject.id === subjectId);
   const selectedFramework = progressionFrameworkLibrary.find((item) => item.id === frameworkId) ?? progressionFrameworkLibrary[0];
   const strands = selectedFramework?.strands ?? [];
@@ -107,6 +111,12 @@ export default function AddEntryPage() {
     }
     if (selectedDescriptor.id !== progressionDescriptorId) setProgressionDescriptorId(selectedDescriptor.id);
   }, [progressionDescriptorId, selectedDescriptor?.id]);
+
+  useEffect(() => {
+    if (!liveDiagnostics) return;
+    const liveThemeIds = new Set(crossCuttingThemes.map((themeItem) => themeItem.id));
+    setSelectedThemeIds((current) => current.filter((id) => liveThemeIds.has(id) && looksLikeUuid(id)));
+  }, [crossCuttingThemes, liveDiagnostics]);
 
   if (!canEditMappings) {
     return <AccessDenied title="Add mapping restricted" message="Your current role is read-only. Switch to a teacher, subject lead or school admin account to add curriculum mapping entries." />;
@@ -189,8 +199,8 @@ export default function AddEntryPage() {
       taskDescription: trimmedTaskDescription,
       schemeReference: trimmedSchemeReference,
       progressionReference: frameworkReferences[0]?.progressionReference ?? "Not specified",
-      crossCuttingThemeIds: selectedThemeIds,
-      crossCuttingThemes: crossCuttingThemes.filter((themeItem) => selectedThemeIds.includes(themeItem.id)).map((themeItem) => themeItem.name),
+      crossCuttingThemeIds: selectedThemes.map((themeItem) => themeItem.id),
+      crossCuttingThemes: selectedThemes.map((themeItem) => themeItem.name),
       crossCuttingThemeNotes: themeNotes.trim(),
       note: "",
       lastMappedDate: new Date().toISOString().slice(0, 10)
@@ -236,6 +246,10 @@ export default function AddEntryPage() {
       setSaveMessage("");
       return;
     }
+    console.log("Selected themes before save", selectedThemes);
+    if (!validateThemeIdsBeforeSave()) {
+      return;
+    }
     setIsSaving(true);
     const result = await addMapping(buildMappingEntry());
     setIsSaving(false);
@@ -265,6 +279,10 @@ export default function AddEntryPage() {
       setSaveMessage("");
       return;
     }
+    console.log("Selected themes before save", selectedThemes);
+    if (!validateThemeIdsBeforeSave()) {
+      return;
+    }
     setIsSaving(true);
     const result = await addMapping(buildMappingEntry());
     setIsSaving(false);
@@ -273,6 +291,14 @@ export default function AddEntryPage() {
   }
 
   const canAddReference = Boolean(selectedFramework?.id && selectedStrand?.id && selectedElement?.id && selectedDescriptor?.id);
+
+  function validateThemeIdsBeforeSave() {
+    if (selectedThemeIds.some((id) => !looksLikeUuid(id))) {
+      setSaveMessage("Theme data is still using prototype IDs. Reload cross-cutting themes from Supabase.");
+      return false;
+    }
+    return true;
+  }
 
   return (
     <section className="space-y-6">
@@ -669,6 +695,10 @@ function normaliseSubjectName(subject: string) {
 function hasAssignedSubject(assignedSubjects: string[], subject: string) {
   const selected = normaliseSubjectName(subject);
   return assignedSubjects.some((assignedSubject) => normaliseSubjectName(assignedSubject) === selected);
+}
+
+function looksLikeUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function strandButtonLabel(framework: string, strand: StrandDefinition) {

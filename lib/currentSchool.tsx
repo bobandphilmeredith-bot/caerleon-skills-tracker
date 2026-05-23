@@ -5,7 +5,6 @@ import { useAuth } from "@/lib/auth";
 import { useSchoolSettings } from "@/lib/schoolSettings";
 import { buildBundle, createEmptySchoolData, defaultSchoolId, sampleSchools, schoolDataById, type SchoolDataBundle } from "@/lib/multiSchoolData";
 import { isDemoLoginEnabled, supabase } from "@/lib/supabaseClient";
-import { defaultCrossCuttingThemes } from "@/lib/crossCuttingThemes";
 import type { CrossCuttingTheme, MappingEntry, ProgressionReference, ProgressionStep, School, SubjectConfig } from "@/lib/types";
 
 type MappingMutationResult = {
@@ -443,7 +442,11 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
       .eq("school_id", querySchoolId)
       .eq("active", true)
       .order("progression_step", { ascending: true }),
-    client.from("cross_cutting_themes").select("id,school_id,name,description,active,display_order").or(`school_id.eq.${querySchoolId},school_id.is.null`).order("display_order", { ascending: true })
+    client
+      .from("cross_cutting_themes")
+      .select("id,school_id,name,description,active,display_order")
+      .or(`school_id.eq.${querySchoolId},school_id.is.null`)
+      .order("display_order", { ascending: true })
   ]);
 
   const subjects = ((subjectsResult.data ?? []) as SubjectReferenceRow[]).map(normaliseReferenceName);
@@ -451,14 +454,14 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
   const strands = ((strandsResult.data ?? []) as StrandReferenceRow[]).map(normaliseReferenceName);
   const elements = ((elementsResult.data ?? []) as ElementReferenceRow[]).map(normaliseReferenceName);
   const descriptorRows = ((descriptorsResult.data ?? []) as ProgressionDescriptorRow[]).filter((descriptor) => descriptorText(descriptor));
-const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((theme) => ({
-  id: theme.id,
-  schoolId: theme.school_id ?? null,
-  name: theme.name,
-  description: theme.description,
-  active: theme.active,
-  displayOrder: theme.display_order,
-}));
+  const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((theme) => ({
+    id: theme.id,
+    schoolId: theme.school_id ?? null,
+    name: theme.name,
+    description: theme.description,
+    active: theme.active,
+    displayOrder: theme.display_order
+  }));
   const { data: mappingRows } = await client.from("curriculum_mappings").select("id").eq("school_id", querySchoolId);
   const mappingIds = ((mappingRows ?? []) as { id: string }[]).map((row) => row.id);
   const { data: frameworkLinkRows } = mappingIds.length
@@ -579,7 +582,7 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
     progressionDescriptorByElementAndStep,
     frameworkLibrary,
     subjectConfigs,
-    crossCuttingThemes: crossCuttingThemes.length ? crossCuttingThemes : defaultCrossCuttingThemes.map((theme) => ({ ...theme, schoolId: querySchoolId })),
+    crossCuttingThemes,
     frameworkLinksByMappingId: buildFrameworkLinkMap((frameworkLinkRows ?? []) as FrameworkLinkRow[]),
     themeNamesByMappingId: buildThemeNameMap(linkRows ?? []),
     themeIdsByMappingId: buildThemeIdMap(linkRows ?? []),
@@ -812,6 +815,9 @@ async function replaceThemeLinks(client: SupabaseClient, mappingId: string, them
   if (deleteError) return { ok: false, message: deleteError.message };
   const uniqueThemeIds = Array.from(new Set(themeIds.filter(Boolean)));
   if (!uniqueThemeIds.length) return { ok: true };
+  if (uniqueThemeIds.some((themeId) => !looksLikeUuid(themeId))) {
+    return { ok: false, message: "Theme data is still using prototype IDs. Reload cross-cutting themes from Supabase." };
+  }
   const { error } = await client.from("curriculum_mapping_theme_links").insert(
     uniqueThemeIds.map((themeId) => ({
       mapping_id: mappingId,
@@ -821,6 +827,10 @@ async function replaceThemeLinks(client: SupabaseClient, mappingId: string, them
     }))
   );
   return error ? { ok: false, message: error.message } : { ok: true };
+}
+
+function looksLikeUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function progressionStepNumber(reference: ProgressionReference | undefined) {

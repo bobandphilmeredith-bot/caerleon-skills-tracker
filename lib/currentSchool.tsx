@@ -603,29 +603,22 @@ type ThemeLinkRow = {
 };
 
 async function loadThemeRows(client: SupabaseClient, schoolId: string): Promise<ThemeReferenceRow[]> {
-  for (const tableName of ["cross_cutting_themes", "themes"]) {
-    const schoolRows = await client
-      .from(tableName)
-      .select("id,school_id,name,description,active,display_order")
-      .eq("school_id", schoolId)
-      .eq("active", true)
-      .order("display_order", { ascending: true })
-      .order("name", { ascending: true });
+  const themesRows = await client
+    .from("themes")
+    .select("id,school_id,name,description,active")
+    .eq("school_id", schoolId)
+    .eq("active", true)
+    .order("name", { ascending: true });
+  if (!themesRows.error && themesRows.data?.length) return themesRows.data.map((theme, index) => ({ ...theme, display_order: index + 1 })) as ThemeReferenceRow[];
 
-    if (!schoolRows.error && schoolRows.data?.length) return schoolRows.data as ThemeReferenceRow[];
-
-    const sharedRows = await client
-      .from(tableName)
-      .select("id,school_id,name,description,active,display_order")
-      .or(`school_id.eq.${schoolId},school_id.is.null`)
-      .eq("active", true)
-      .order("display_order", { ascending: true })
-      .order("name", { ascending: true });
-
-    if (!sharedRows.error && sharedRows.data?.length) return sharedRows.data as ThemeReferenceRow[];
-  }
-
-  return [];
+  const crossCuttingRows = await client
+    .from("cross_cutting_themes")
+    .select("id,school_id,name,description,active,display_order")
+    .eq("school_id", schoolId)
+    .eq("active", true)
+    .order("display_order", { ascending: true })
+    .order("name", { ascending: true });
+  return (crossCuttingRows.data ?? []) as ThemeReferenceRow[];
 }
 
 function buildFrameworkLinkMap(rows: FrameworkLinkRow[]) {

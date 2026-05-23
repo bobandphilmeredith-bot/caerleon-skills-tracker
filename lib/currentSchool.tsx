@@ -59,10 +59,11 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   const currentSchool = schools.find((school) => school.id === currentSchoolId) ?? schools[0] ?? sampleSchools[0];
   const baseData = customData[currentSchool.id] ?? schoolDataById[currentSchool.id] ?? createEmptySchoolData(currentSchool.id);
   const liveSchoolId = isDemoLoginEnabled ? currentSchool.id : currentUser?.schoolId;
-  const currentMappings = isDemoLoginEnabled ? (mappingOverrides[currentSchool.id] ?? baseData.mappings) : liveMappings;
-  const currentFrameworkLibrary = !isDemoLoginEnabled && liveFrameworkLibrary.length ? liveFrameworkLibrary : baseData.frameworkLibrary;
-  const currentSubjectConfigs = !isDemoLoginEnabled && liveSubjectConfigs.length ? liveSubjectConfigs : baseData.subjectConfigs;
-  const currentCrossCuttingThemes = !isDemoLoginEnabled && liveCrossCuttingThemes.length ? liveCrossCuttingThemes : baseData.crossCuttingThemes;
+  const useLiveData = !isDemoLoginEnabled && Boolean(liveSchoolId);
+  const currentMappings = useLiveData ? liveMappings : (mappingOverrides[currentSchool.id] ?? baseData.mappings);
+  const currentFrameworkLibrary = useLiveData ? liveFrameworkLibrary : baseData.frameworkLibrary;
+  const currentSubjectConfigs = useLiveData ? liveSubjectConfigs : baseData.subjectConfigs;
+  const currentCrossCuttingThemes = useLiveData ? liveCrossCuttingThemes : baseData.crossCuttingThemes;
   const data = useMemo(
     () =>
       buildBundle({
@@ -304,6 +305,7 @@ type FrameworkReferenceRow = ReferenceRow & {
 
 type StrandReferenceRow = ReferenceRow & {
   framework_id: string;
+  short_name: string | null;
 };
 
 type ElementReferenceRow = ReferenceRow & {
@@ -322,6 +324,8 @@ type ProgressionDescriptorRow = {
   progression_step: number | string;
   descriptor?: string;
   descriptor_text?: string;
+  active?: boolean;
+  display_order?: number;
 };
 
 type LiveReferenceMaps = {
@@ -372,7 +376,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string): 
   const [subjectsResult, frameworksResult, strandsResult, elementsResult, themesResult] = await Promise.all([
     client.from("subjects").select("id,name").eq("school_id", schoolId).eq("active", true).order("name", { ascending: true }),
     client.from("frameworks").select("id,name,short_name,active").eq("school_id", schoolId).order("display_order", { ascending: true }),
-    client.from("strands").select("id,name,framework_id,active").eq("school_id", schoolId).order("display_order", { ascending: true }),
+    client.from("strands").select("id,name,short_name,framework_id,active").eq("school_id", schoolId).order("display_order", { ascending: true }),
     client
       .from("elements")
       .select("id,name,strand_id,official_wording,teacher_friendly_explanation,example_classroom_opportunities,search_keywords,related_connections,display_order,active")
@@ -382,7 +386,12 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string): 
   ]);
   const elementIds = ((elementsResult.data ?? []) as ElementReferenceRow[]).map((row) => row.id);
   const { data: descriptorRows } = elementIds.length
-    ? await client.from("progression_descriptors").select("id,element_id,progression_step,descriptor,descriptor_text").in("element_id", elementIds)
+    ? await client
+        .from("progression_descriptors")
+        .select("id,element_id,progression_step,descriptor,descriptor_text,active,display_order")
+        .in("element_id", elementIds)
+        .eq("active", true)
+        .order("display_order", { ascending: true })
     : { data: [] as ProgressionDescriptorRow[] };
 
   const subjects = ((subjectsResult.data ?? []) as ReferenceRow[]).map(normaliseReferenceName);
@@ -441,6 +450,7 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
         id: strand.id,
         schoolId,
         name: strand.name,
+        shortName: strand.short_name,
         elements: elements
           .filter((element) => element.strand_id === strand.id && element.active !== false)
           .map((element) => ({
@@ -681,7 +691,9 @@ function frameworkLinkToReference(link: FrameworkLinkRow, refs: LiveReferenceMap
     progressionDescriptorId: link.progression_descriptor_id,
     progressionStep,
     framework: framework?.name ?? "Unknown framework",
+    frameworkShortName: framework?.short_name ?? framework?.name ?? "Unknown framework",
     strand: strand?.name ?? "Unknown strand",
+    strandShortName: strand?.short_name ?? strand?.name ?? "Unknown strand",
     element: element?.name ?? "Unknown element",
     progressionReference,
     descriptor: descriptorText(descriptor),
@@ -736,7 +748,8 @@ function progressionStepNumberFromDescriptor(descriptor: ProgressionDescriptorRo
 }
 
 function descriptorText(descriptor: ProgressionDescriptorRow | undefined) {
-  return descriptor?.descriptor_text ?? descriptor?.descriptor ?? undefined;
+  const text = descriptor?.descriptor_text ?? descriptor?.descriptor ?? undefined;
+  return text?.trim() ? text : undefined;
 }
 
 export function useCurrentSchool() {

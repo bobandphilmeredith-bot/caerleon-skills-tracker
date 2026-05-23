@@ -33,6 +33,7 @@ export type StrandDefinition = {
   id?: string;
   schoolId?: string;
   name: string;
+  shortName?: string | null;
   elements: ElementDefinition[];
 };
 
@@ -52,7 +53,9 @@ export type MappingFrameworkReference = {
   progressionDescriptorId?: string | null;
   progressionStep?: number | null;
   framework: string;
+  frameworkShortName?: string;
   strand: string;
+  strandShortName?: string | null;
   element: string;
   progressionReference?: ProgressionReference;
   descriptor?: string;

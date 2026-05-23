@@ -358,6 +358,15 @@ type ProgressionDescriptorRow = {
   display_order: number | null;
 };
 
+type ThemeReferenceRow = {
+  id: string;
+  school_id: string | null;
+  name: string;
+  description: string | null;
+  active: boolean | null;
+  display_order: number | null;
+};
+
 type LiveReferenceMaps = {
   school?: School;
   diagnostics: LiveDataDiagnostics;
@@ -412,7 +421,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
   const strandQuerySelect = "id, school_id, framework_id, name, short_name, description, display_order, active";
   const elementQuerySelect = "id, school_id, strand_id, name, description, official_wording, teacher_friendly_explanation, display_order, active";
   const descriptorQuerySelect = "id, school_id, element_id, progression_step, descriptor_text, display_order, active";
-  let [subjectsResult, frameworksResult, strandsResult, elementsResult, descriptorsResult, themesResult] = await Promise.all([
+  const [subjectsResult, frameworksResult, strandsResult, elementsResult, descriptorsResult] = await Promise.all([
     client
       .from("subjects")
       .select(subjectQuerySelect)
@@ -441,35 +450,19 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
       .select(descriptorQuerySelect)
       .eq("school_id", querySchoolId)
       .eq("active", true)
-      .order("progression_step", { ascending: true }),
-    client
-      .from("cross_cutting_themes")
-      .select("id,school_id,name,description,active,display_order")
-      .eq("school_id", querySchoolId)
-      .eq("active", true)
-      .order("display_order", { ascending: true })
-      .order("name", { ascending: true })
+      .order("progression_step", { ascending: true })
   ]);
-
-  if (!themesResult.error && !themesResult.data?.length) {
-    themesResult = await client
-      .from("cross_cutting_themes")
-      .select("id,school_id,name,description,active,display_order")
-      .or(`school_id.eq.${querySchoolId},school_id.is.null`)
-      .eq("active", true)
-      .order("display_order", { ascending: true })
-      .order("name", { ascending: true });
-  }
+  const themeRows = await loadThemeRows(client, querySchoolId);
 
   const subjects = ((subjectsResult.data ?? []) as SubjectReferenceRow[]).map(normaliseReferenceName);
   const frameworks = ((frameworksResult.data ?? []) as FrameworkReferenceRow[]).map(normaliseReferenceName);
   const strands = ((strandsResult.data ?? []) as StrandReferenceRow[]).map(normaliseReferenceName);
   const elements = ((elementsResult.data ?? []) as ElementReferenceRow[]).map(normaliseReferenceName);
   const descriptorRows = ((descriptorsResult.data ?? []) as ProgressionDescriptorRow[]).filter((descriptor) => descriptorText(descriptor));
-  const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((theme) => ({
+  const crossCuttingThemes: CrossCuttingTheme[] = themeRows.map((theme) => ({
     id: theme.id,
     schoolId: theme.school_id ?? null,
-    name: theme.name,
+    name: theme.name.trim(),
     description: theme.description,
     active: theme.active ?? true,
     displayOrder: theme.display_order ?? 0
@@ -608,6 +601,32 @@ type ThemeLinkRow = {
   notes: string | null;
   cross_cutting_themes?: { id: string; name: string } | { id: string; name: string }[] | null;
 };
+
+async function loadThemeRows(client: SupabaseClient, schoolId: string): Promise<ThemeReferenceRow[]> {
+  for (const tableName of ["cross_cutting_themes", "themes"]) {
+    const schoolRows = await client
+      .from(tableName)
+      .select("id,school_id,name,description,active,display_order")
+      .eq("school_id", schoolId)
+      .eq("active", true)
+      .order("display_order", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (!schoolRows.error && schoolRows.data?.length) return schoolRows.data as ThemeReferenceRow[];
+
+    const sharedRows = await client
+      .from(tableName)
+      .select("id,school_id,name,description,active,display_order")
+      .or(`school_id.eq.${schoolId},school_id.is.null`)
+      .eq("active", true)
+      .order("display_order", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (!sharedRows.error && sharedRows.data?.length) return sharedRows.data as ThemeReferenceRow[];
+  }
+
+  return [];
+}
 
 function buildFrameworkLinkMap(rows: FrameworkLinkRow[]) {
   const map = new Map<string, FrameworkLinkRow[]>();

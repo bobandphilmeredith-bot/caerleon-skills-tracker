@@ -445,8 +445,10 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
     client
       .from("cross_cutting_themes")
       .select("id,school_id,name,description,active,display_order")
-      .or(`school_id.eq.${querySchoolId},school_id.is.null`)
+      .eq("school_id", querySchoolId)
+      .eq("active", true)
       .order("display_order", { ascending: true })
+      .order("name", { ascending: true })
   ]);
 
   const subjects = ((subjectsResult.data ?? []) as SubjectReferenceRow[]).map(normaliseReferenceName);
@@ -830,7 +832,7 @@ async function replaceThemeLinks(client: SupabaseClient, mappingId: string, them
 }
 
 function looksLikeUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 function progressionStepNumber(reference: ProgressionReference | undefined) {

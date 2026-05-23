@@ -317,7 +317,6 @@ type ReferenceRow = {
 
 type SubjectReferenceRow = ReferenceRow & {
   school_id: string;
-  short_name: string | null;
   display_order: number | null;
   aoe_id: string | null;
 };
@@ -403,7 +402,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
   const [subjectsResult, frameworksResult, strandsResult, elementsResult, themesResult] = await Promise.all([
     client
       .from("subjects")
-      .select("id,school_id,name,short_name,active,display_order,aoe_id")
+      .select("id,school_id,name,active,display_order,aoe_id")
       .eq("school_id", querySchoolId)
       .eq("active", true)
       .order("display_order", { ascending: true })
@@ -520,14 +519,14 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
       }))
   }));
 
-  const subjectConfigs = subjects.map((subject, index) => ({
+  const subjectConfigs = subjects.map((subject) => ({
     schoolId: subject.school_id,
     id: subject.id,
     name: subject.name,
-    shortName: subject.short_name,
-    aoeId: subject.aoe_id,
-    active: true,
-    displayOrder: subject.display_order ?? index + 1,
+    shortName: subject.name,
+    aoeId: subject.aoe_id ?? null,
+    active: subject.active ?? true,
+    displayOrder: subject.display_order ?? 0,
     appearsInMappingDropdowns: true
   }));
 

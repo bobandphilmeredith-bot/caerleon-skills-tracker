@@ -9,6 +9,8 @@ import { supabase } from "@/lib/supabaseClient";
 import type { CrossCuttingTheme, ElementDefinition, FrameworkDefinition, MappingEntry, MappingFrameworkReference, ProgressionDescriptorDefinition, StrandDefinition } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
+const caerleonSchoolId = "657f5a77-ae52-48ea-b459-290f86bbd2f0";
+
 export default function AddEntryPage() {
   const { canEditMappings, currentUser } = useAuth();
   const { currentSchoolId, data, addMapping } = useCurrentSchool();
@@ -114,12 +116,13 @@ export default function AddEntryPage() {
   }, [themeOptions]);
 
   useEffect(() => {
-    if (!supabase || !looksLikeUuid(currentSchoolId)) return;
+    if (!supabase) return;
+    const schoolIdForThemes = looksLikeUuid(currentSchoolId) ? currentSchoolId : caerleonSchoolId;
     let cancelled = false;
     void supabase
       .from("themes")
       .select("id,school_id,name,description,active")
-      .eq("school_id", currentSchoolId)
+      .eq("school_id", schoolIdForThemes)
       .eq("active", true)
       .order("name", { ascending: true })
       .then(({ data: rows }) => {

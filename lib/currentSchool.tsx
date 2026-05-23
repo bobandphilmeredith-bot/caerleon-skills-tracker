@@ -58,9 +58,6 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   const [liveReferenceMaps, setLiveReferenceMaps] = useState<LiveReferenceMaps | null>(null);
   const [liveSchool, setLiveSchool] = useState<School | null>(null);
   const [liveDiagnostics, setLiveDiagnostics] = useState<LiveDataDiagnostics | null>(null);
-  const [liveFrameworkLibrary, setLiveFrameworkLibrary] = useState<SchoolDataBundle["frameworkLibrary"]>([]);
-  const [liveSubjectConfigs, setLiveSubjectConfigs] = useState<SubjectConfig[]>([]);
-  const [liveCrossCuttingThemes, setLiveCrossCuttingThemes] = useState<CrossCuttingTheme[]>([]);
 
   useEffect(() => {
     const savedSchools = window.localStorage.getItem("skills-tracker-schools");
@@ -81,9 +78,9 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   const liveSchoolId = isDemoLoginEnabled ? currentSchool.id : (liveSchool?.id ?? currentUser?.schoolId ?? "caerleon");
   const useLiveData = !isDemoLoginEnabled && Boolean(liveReferenceMaps);
   const currentMappings = useLiveData ? liveMappings : (mappingOverrides[currentSchool.id] ?? baseData.mappings);
-  const currentFrameworkLibrary = useLiveData ? liveFrameworkLibrary : baseData.frameworkLibrary;
-  const currentSubjectConfigs = useLiveData ? liveSubjectConfigs : baseData.subjectConfigs;
-  const currentCrossCuttingThemes = useLiveData ? liveCrossCuttingThemes : baseData.crossCuttingThemes;
+  const currentFrameworkLibrary = useLiveData ? (liveReferenceMaps?.frameworkLibrary ?? []) : baseData.frameworkLibrary;
+  const currentSubjectConfigs = useLiveData ? (liveReferenceMaps?.subjectConfigs ?? []) : baseData.subjectConfigs;
+  const currentCrossCuttingThemes = useLiveData ? (liveReferenceMaps?.crossCuttingThemes ?? []) : baseData.crossCuttingThemes;
   const data = useMemo(
     () =>
       buildBundle({
@@ -132,9 +129,6 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
     }
 
     setLiveReferenceMaps(refs);
-    setLiveFrameworkLibrary(refs.frameworkLibrary);
-    setLiveSubjectConfigs(refs.subjectConfigs);
-    setLiveCrossCuttingThemes(refs.crossCuttingThemes);
     setLiveMappings(((rows ?? []) as CurriculumMappingRow[]).map((row) => curriculumRowToMapping(row, refs)));
   }, [liveSchoolId, localCurrentSchool]);
 

@@ -369,6 +369,7 @@ export default function AdminPage() {
         <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-700">
           <p>Current school id: {currentSchool.id}</p>
           <p>Current school slug: {currentSchool.slug}</p>
+          <p>Subject query select: {liveDiagnostics?.subjectQuerySelect ?? "id, school_id, name"}</p>
           <p>Raw subject query count: {liveDiagnostics?.subjectQueryCount ?? subjects.length}</p>
           <p>Subject query error: {liveDiagnostics?.subjectQueryError ?? "None"}</p>
         </div>

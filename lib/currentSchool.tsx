@@ -16,6 +16,7 @@ type MappingMutationResult = {
 type LiveDataDiagnostics = {
   schoolId: string;
   schoolSlug: string;
+  subjectQuerySelect: string;
   subjectQueryCount: number;
   subjectQueryError: string | null;
 };
@@ -317,8 +318,6 @@ type ReferenceRow = {
 
 type SubjectReferenceRow = ReferenceRow & {
   school_id: string;
-  display_order: number | null;
-  aoe_id: string | null;
 };
 
 type FrameworkReferenceRow = ReferenceRow & {
@@ -399,13 +398,12 @@ type FrameworkLinkRow = {
 async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, fallbackSchool?: School): Promise<LiveReferenceMaps> {
   const resolvedSchool = await resolveLiveSchool(client, schoolId, fallbackSchool);
   const querySchoolId = resolvedSchool?.id ?? schoolId;
+  const subjectQuerySelect = "id, school_id, name";
   const [subjectsResult, frameworksResult, strandsResult, elementsResult, themesResult] = await Promise.all([
     client
       .from("subjects")
-      .select("id,school_id,name,active,display_order,aoe_id")
+      .select(subjectQuerySelect)
       .eq("school_id", querySchoolId)
-      .eq("active", true)
-      .order("display_order", { ascending: true })
       .order("name", { ascending: true }),
     client.from("frameworks").select("id,name,short_name,active").eq("school_id", querySchoolId).order("display_order", { ascending: true }),
     client.from("strands").select("id,name,short_name,framework_id,active").eq("school_id", querySchoolId).order("display_order", { ascending: true }),
@@ -519,14 +517,14 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
       }))
   }));
 
-  const subjectConfigs = subjects.map((subject) => ({
+  const subjectConfigs = subjects.map((subject, index) => ({
     schoolId: subject.school_id,
     id: subject.id,
     name: subject.name,
     shortName: subject.name,
-    aoeId: subject.aoe_id ?? null,
-    active: subject.active ?? true,
-    displayOrder: subject.display_order ?? 0,
+    aoeId: null,
+    active: true,
+    displayOrder: index + 1,
     appearsInMappingDropdowns: true
   }));
 
@@ -535,6 +533,7 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
     diagnostics: {
       schoolId: querySchoolId,
       schoolSlug: resolvedSchool?.slug ?? fallbackSchool?.slug ?? "",
+      subjectQuerySelect,
       subjectQueryCount: subjectsResult.data?.length ?? 0,
       subjectQueryError: subjectsResult.error?.message ?? null
     },

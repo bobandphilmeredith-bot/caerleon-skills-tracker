@@ -305,6 +305,7 @@ export default function AddEntryPage() {
                 <div className="mt-3 rounded-md bg-white/70 px-3 py-2 text-xs leading-5 text-amber-950">
                   <p>Current school id: {currentSchool.id}</p>
                   <p>Current school slug: {currentSchool.slug}</p>
+                  <p>Subject query select: {liveDiagnostics?.subjectQuerySelect ?? "id, school_id, name"}</p>
                   <p>Raw subject query count: {liveDiagnostics?.subjectQueryCount ?? 0}</p>
                   <p>Subject query error: {liveDiagnostics?.subjectQueryError ?? "None"}</p>
                 </div>

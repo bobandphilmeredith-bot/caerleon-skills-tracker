@@ -6,14 +6,15 @@ import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
 import { descriptorForReference, secondaryProgressionReferences, suggestedProgressionForYear } from "@/lib/progression";
-import type { ElementDefinition, FrameworkDefinition, MappingEntry, ProgressionReference, StrandDefinition } from "@/lib/types";
+import type { ElementDefinition, FrameworkDefinition, MappingEntry, MappingFrameworkReference, ProgressionReference, StrandDefinition } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
 export default function AddEntryPage() {
   const { canEditMappings, currentUser } = useAuth();
   const { currentSchoolId, data, addMapping } = useCurrentSchool();
   const { frameworkLibrary, frameworkMap, subjectConfigs, subjectAoleMap, terms, yearGroups, crossCuttingThemes } = data;
-  const frameworkNames = Object.keys(frameworkMap);
+  const progressionFrameworkLibrary = frameworkLibrary.filter((item) => ["Literacy", "Numeracy", "DCF"].includes(item.shortName));
+  const frameworkNames = progressionFrameworkLibrary.map((item) => item.name);
   const [framework, setFramework] = useState(frameworkNames[0]);
   const activeSubjects = subjectConfigs
     .filter((subject) => subject.active && subject.appearsInMappingDropdowns)
@@ -34,6 +35,7 @@ export default function AddEntryPage() {
   const [schemeReference, setSchemeReference] = useState("");
   const [progressionReference, setProgressionReference] = useState<ProgressionReference>("Not specified");
   const [activityDescription, setActivityDescription] = useState("");
+  const [frameworkReferences, setFrameworkReferences] = useState<MappingFrameworkReference[]>([]);
   const [selectedThemeIds, setSelectedThemeIds] = useState<string[]>([]);
   const [themeNotes, setThemeNotes] = useState("");
   const [showValidation, setShowValidation] = useState(false);
@@ -47,7 +49,9 @@ export default function AddEntryPage() {
   const theme = themeForFramework(selectedFrameworkName);
   const selectedAole = selectedSubjectName ? subjectAoleMap[selectedSubjectName] : undefined;
   const suggestedProgression = suggestedProgressionForYear(yearGroup);
-  const progressionDescriptor = descriptorForReference(selectedElement, progressionReference);
+  const progressionOptions = selectedFramework?.shortName === "DCF" ? (["Step 3", "Step 4", "Step 5"] as ProgressionReference[]) : secondaryProgressionReferences;
+  const selectedProgressionReference = progressionOptions.includes(progressionReference) ? progressionReference : progressionOptions[0];
+  const progressionDescriptor = descriptorForReference(selectedElement, selectedProgressionReference);
   const hasSubjectRestrictedRole = currentUser?.role === "teacher" || currentUser?.role === "subject_lead";
   const hasEditableSubjects = !hasSubjectRestrictedRole || currentUser.assignedSubjects.length > 0;
   const canEditSelectedSubject = !selectedSubjectName || currentUser?.role === "platform_admin" || currentUser?.role === "school_admin" || hasAssignedSubject(currentUser?.assignedSubjects ?? [], selectedSubjectName);
@@ -91,7 +95,9 @@ export default function AddEntryPage() {
         ? "Unit/topic cannot be blank."
         : !trimmedSchemeReference
           ? "Scheme of learning reference cannot be blank."
-          : activityError;
+          : !frameworkReferences.length
+            ? "Add at least one framework reference."
+            : activityError;
 
   function buildMappingEntry(): MappingEntry {
     return {
@@ -100,6 +106,8 @@ export default function AddEntryPage() {
       frameworkId: selectedFramework.id,
       strandId: selectedStrand?.id,
       elementId: selectedElement?.id,
+      progressionDescriptorId: undefined,
+      frameworkReferences,
       id: `map-${currentSchoolId}-${Date.now()}`,
       subject: selectedSubjectName,
       framework: selectedFrameworkName,
@@ -111,13 +119,41 @@ export default function AddEntryPage() {
       unit: trimmedUnit,
       activityDescription: trimmedActivity,
       schemeReference: trimmedSchemeReference,
-      progressionReference,
+      progressionReference: frameworkReferences[0]?.progressionReference ?? selectedProgressionReference,
       crossCuttingThemeIds: selectedThemeIds,
       crossCuttingThemes: crossCuttingThemes.filter((theme) => selectedThemeIds.includes(theme.id)).map((theme) => theme.name),
       crossCuttingThemeNotes: themeNotes.trim(),
       note: "",
       lastMappedDate: new Date().toISOString().slice(0, 10)
     };
+  }
+
+  function addFrameworkReference() {
+    if (!selectedFramework?.id || !selectedStrand?.id || !selectedElement?.id) return;
+    const progressionStep = progressionStepNumber(selectedProgressionReference);
+    const reference: MappingFrameworkReference = {
+      id: `${selectedFramework.id}-${selectedStrand.id}-${selectedElement.id}-${progressionStep ?? "none"}`,
+      frameworkId: selectedFramework.id,
+      strandId: selectedStrand.id,
+      elementId: selectedElement.id,
+      progressionDescriptorId: undefined,
+      progressionStep,
+      framework: selectedFramework.name,
+      strand: selectedStrand.name,
+      element: selectedElement.name,
+      progressionReference: selectedProgressionReference,
+      descriptor: progressionDescriptor
+    };
+    setFrameworkReferences((current) => {
+      const exists = current.some(
+        (item) =>
+          item.frameworkId === reference.frameworkId &&
+          item.strandId === reference.strandId &&
+          item.elementId === reference.elementId &&
+          (item.progressionStep ?? null) === (reference.progressionStep ?? null)
+      );
+      return exists ? current : [...current, reference];
+    });
   }
 
   async function handleSave() {
@@ -140,6 +176,7 @@ export default function AddEntryPage() {
     setSchemeReference("");
     setProgressionReference("Not specified");
     setActivityDescription("");
+    setFrameworkReferences([]);
     setSelectedThemeIds([]);
     setThemeNotes("");
     setShowValidation(false);
@@ -224,12 +261,12 @@ export default function AddEntryPage() {
               </div>
             </FormSection>
 
-            <FormSection number="2" title="Framework link" description="Choose Framework → Strand → Element using quick buttons. Each choice updates the next row.">
+            <FormSection number="2" title="Framework references" description="Choose Literacy, Numeracy or DCF, then add one or more framework references for this piece of work.">
               <div>
                 <span className="mb-2 block text-sm font-semibold text-gray-700">Framework</span>
                 <div className="flex flex-wrap gap-2">
                   {frameworkNames.map((name) => {
-                    const frameworkItem = frameworkLibrary.find((item) => item.name === name);
+                    const frameworkItem = progressionFrameworkLibrary.find((item) => item.name === name);
                     const buttonTheme = themeForFramework(name);
                     const selected = selectedFrameworkName === name;
                     return (
@@ -266,12 +303,16 @@ export default function AddEntryPage() {
                         onClick={() => updateStrand(name)}
                         aria-pressed={selected}
                       >
-                        {name}
+                        {strandButtonLabel(selectedFrameworkName, name)}
                       </button>
                     );
                   })}
                 </div>
               </div>
+
+              {selectedFrameworkName === "Numeracy Framework" ? (
+                <p className="mt-3 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900">Full strand: {selectedStrandName}</p>
+              ) : null}
 
               <div className="mt-5">
                 <span className="mb-2 block text-sm font-semibold text-gray-700">Element</span>
@@ -293,23 +334,17 @@ export default function AddEntryPage() {
                   })}
                 </div>
               </div>
-            </FormSection>
-
-            <FormSection number="3" title="Activity and progression reference" description="Add the planned activity and optional curriculum progression reference.">
-              <Field label="Scheme of learning reference">
-                <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={schemeReference} onChange={(event) => setSchemeReference(event.target.value)} />
-              </Field>
-              <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="font-bold text-gray-950">Progression Step Reference</h2>
-                  <p className="mt-1 text-sm leading-6 text-gray-600">Optional curriculum reference for the selected framework element.</p>
+                  <p className="mt-1 text-sm leading-6 text-gray-600">Select the progression descriptor for the selected framework element.</p>
                 </div>
-                <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-gray-700">Default: Not specified</span>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-gray-700">{selectedFramework.shortName === "DCF" ? "DCF: steps 3-5" : "Secondary progression"}</span>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                {secondaryProgressionReferences.map((reference) => {
-                  const selected = progressionReference === reference;
+                {progressionOptions.map((reference) => {
+                  const selected = selectedProgressionReference === reference;
                   return (
                     <button
                       key={reference}
@@ -329,9 +364,10 @@ export default function AddEntryPage() {
                 Selected
               </h2>
               <p className="mt-2 text-sm font-semibold text-gray-800">
-                {selectedFrameworkName} → {selectedStrandName} → {selectedElementName} → {progressionReference}
+                {selectedFrameworkName} - {selectedStrandName} - {selectedElementName} - {selectedProgressionReference}
               </p>
               <dl className="mt-4 space-y-3 text-sm">
+                <GuidanceRow label="Full strand name" value={selectedStrandName} />
                 <GuidanceRow label="Descriptor" value={progressionDescriptor} />
                 <GuidanceRow label="Teacher-friendly explanation" value={selectedElement?.explanation ?? "Select an element to see guidance."} />
               </dl>
@@ -343,9 +379,42 @@ export default function AddEntryPage() {
                       {example}
                     </span>
                   ))}
-                </div>
               </div>
+              <button className="focus-ring btn btn-secondary mt-4" type="button" onClick={addFrameworkReference}>
+                Add reference
+              </button>
             </div>
+            </div>
+
+            {frameworkReferences.length ? (
+              <div className="mt-4 grid gap-3">
+                {frameworkReferences.map((reference) => (
+                  <div key={reference.id} className="rounded-md border border-gray-200 bg-white p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-gray-950">{reference.framework}</p>
+                        <p className="mt-1 text-sm text-gray-700">
+                          {reference.strand} - {reference.element} - {reference.progressionReference}
+                        </p>
+                      </div>
+                      <button
+                        className="focus-ring rounded-md border border-gray-300 px-2 py-1 text-xs font-bold text-gray-700"
+                        type="button"
+                        onClick={() => setFrameworkReferences((current) => current.filter((item) => item.id !== reference.id))}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            </FormSection>
+
+            <FormSection number="3" title="Activity details" description="Add the planned activity and scheme reference for this piece of work.">
+              <Field label="Scheme of learning reference">
+                <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={schemeReference} onChange={(event) => setSchemeReference(event.target.value)} />
+              </Field>
             <div className="mt-4">
             <Field label="Learning Activity / Task Description" wide>
               <textarea
@@ -456,6 +525,13 @@ export default function AddEntryPage() {
 
           <div className="mt-5 rounded-md bg-white p-4">
             <h3 className="font-bold text-gray-900">{selectedElement?.name}</h3>
+            <dl className="mt-3 space-y-2 text-sm">
+              <GuidanceRow label="Framework" value={selectedFramework.name} />
+              <GuidanceRow label="Strand" value={strandButtonLabel(selectedFrameworkName, selectedStrandName)} />
+              <GuidanceRow label="Full strand name" value={selectedStrandName} />
+              <GuidanceRow label="Progression step" value={selectedProgressionReference} />
+              <GuidanceRow label="Descriptor" value={progressionDescriptor} />
+            </dl>
             <p className="mt-2 text-sm leading-6 text-gray-700">{selectedElement?.explanation}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {selectedElement?.examples.map((example) => (
@@ -540,4 +616,21 @@ function normaliseSubjectName(subject: string) {
 function hasAssignedSubject(assignedSubjects: string[], subject: string) {
   const selected = normaliseSubjectName(subject);
   return assignedSubjects.some((assignedSubject) => normaliseSubjectName(assignedSubject) === selected);
+}
+
+function progressionStepNumber(reference: ProgressionReference | undefined) {
+  if (!reference || reference === "Not specified") return null;
+  const match = reference.match(/Step ([1-5])/);
+  return match ? Number(match[1]) : null;
+}
+
+function strandButtonLabel(framework: string, strand: string) {
+  if (framework !== "Numeracy Framework") return strand;
+  const labels: Record<string, string> = {
+    "Developing mathematical proficiency": "Mathematical proficiency",
+    "Understanding the number system helps us to represent and compare relationships between numbers and quantities": "Number system",
+    "Learning about geometry helps us understand shape, space and position, and learning about measurement helps us quantify in the real world": "Geometry and measurement",
+    "Learning that statistics represent data and that probability models chance helps us make informed inferences and decisions": "Statistics and probability"
+  };
+  return labels[strand] ?? strand;
 }

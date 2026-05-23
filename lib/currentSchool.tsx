@@ -97,12 +97,9 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
     const client = supabase;
     const refs = await loadLiveReferenceMaps(client, liveSchoolId);
     const { data: rows, error } = await client
-      .from("curriculum_entries")
-      .select(
-        "id,school_id,subject_id,framework_id,strand_id,element_id,year_group,term,unit_topic,learning_activity_description,scheme_reference,progression_reference,optional_note,last_mapped_date,created_at,updated_at"
-      )
+      .from("curriculum_mappings")
+      .select("id,school_id,subject_id,year_group,term,scheme_reference,activity_title,activity_description,task_description,created_at,updated_at")
       .eq("school_id", liveSchoolId)
-      .order("last_mapped_date", { ascending: false })
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -115,7 +112,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
     setLiveFrameworkLibrary(refs.frameworkLibrary);
     setLiveSubjectConfigs(refs.subjectConfigs);
     setLiveCrossCuttingThemes(refs.crossCuttingThemes);
-    setLiveMappings(((rows ?? []) as CurriculumEntryRow[]).map((row) => curriculumRowToMapping(row, refs)));
+    setLiveMappings(((rows ?? []) as CurriculumMappingRow[]).map((row) => curriculumRowToMapping(row, refs)));
   }, [liveSchoolId]);
 
   useEffect(() => {
@@ -187,30 +184,27 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
 
           const client = supabase;
           const refs = liveReferenceMaps ?? (await loadLiveReferenceMaps(client, liveSchoolId));
-          const ids = resolveLiveIds(entry, refs);
+          const ids = resolveSubjectId(entry, refs);
           if (!ids.ok) return { ok: false, message: ids.message };
+          const frameworkRefs = resolveLiveReferences(entry, refs);
+          if (!frameworkRefs.ok) return { ok: false, message: frameworkRefs.message };
 
-          const { data: insertedRows, error } = await client.from("curriculum_entries").insert({
+          const { data: insertedRows, error } = await client.from("curriculum_mappings").insert({
             school_id: liveSchoolId,
             subject_id: ids.subjectId,
-            framework_id: ids.frameworkId,
-            strand_id: ids.strandId,
-            element_id: ids.elementId,
-            progression_descriptor_id: ids.progressionDescriptorId,
             year_group: entry.year,
             term: entry.term,
-            unit_topic: entry.unit || entry.context,
-            learning_activity_description: entry.activityDescription,
+            activity_title: entry.unit || entry.context,
+            activity_description: entry.activityDescription,
+            task_description: entry.activityDescription,
             scheme_reference: entry.schemeReference,
-            progression_reference: toDatabaseProgression(entry.progressionReference),
-            optional_note: entry.note?.trim() || null,
-            last_mapped_date: entry.lastMappedDate,
-            created_by: currentUser?.id ?? null,
-            updated_by: currentUser?.id ?? null
+            created_by: currentUser?.id ?? null
           }).select("id").single();
 
           if (error) return { ok: false, message: error.message };
-          const linkResult = await replaceThemeLinks(client, insertedRows.id, liveSchoolId, entry.crossCuttingThemeIds ?? [], entry.crossCuttingThemeNotes ?? "", currentUser?.id);
+          const frameworkLinkResult = await replaceFrameworkLinks(client, insertedRows.id, frameworkRefs.references);
+          if (!frameworkLinkResult.ok) return frameworkLinkResult;
+          const linkResult = await replaceThemeLinks(client, insertedRows.id, entry.crossCuttingThemeIds ?? [], entry.crossCuttingThemeNotes ?? "", currentUser?.id);
           if (!linkResult.ok) return linkResult;
           await loadLiveMappings();
           return { ok: true };
@@ -233,32 +227,30 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
           const merged = { ...existing, ...patch };
           const client = supabase;
           const refs = liveReferenceMaps ?? (await loadLiveReferenceMaps(client, liveSchoolId));
-          const ids = resolveLiveIds(merged, refs);
+          const ids = resolveSubjectId(merged, refs);
           if (!ids.ok) return { ok: false, message: ids.message };
+          const frameworkRefs = resolveLiveReferences(merged, refs);
+          if (!frameworkRefs.ok) return { ok: false, message: frameworkRefs.message };
 
           const { error } = await client
-            .from("curriculum_entries")
+            .from("curriculum_mappings")
             .update({
               subject_id: ids.subjectId,
-              framework_id: ids.frameworkId,
-              strand_id: ids.strandId,
-              element_id: ids.elementId,
-              progression_descriptor_id: ids.progressionDescriptorId,
               year_group: merged.year,
               term: merged.term,
-              unit_topic: merged.unit || merged.context,
-              learning_activity_description: merged.activityDescription,
+              activity_title: merged.unit || merged.context,
+              activity_description: merged.activityDescription,
+              task_description: merged.activityDescription,
               scheme_reference: merged.schemeReference,
-              progression_reference: toDatabaseProgression(merged.progressionReference),
-              optional_note: merged.note?.trim() || null,
-              last_mapped_date: merged.lastMappedDate,
-              updated_by: currentUser?.id ?? null
+              updated_at: new Date().toISOString()
             })
             .eq("id", entryId)
             .eq("school_id", liveSchoolId);
 
           if (error) return { ok: false, message: error.message };
-          const linkResult = await replaceThemeLinks(client, entryId, liveSchoolId, merged.crossCuttingThemeIds ?? [], merged.crossCuttingThemeNotes ?? "", currentUser?.id);
+          const frameworkLinkResult = await replaceFrameworkLinks(client, entryId, frameworkRefs.references);
+          if (!frameworkLinkResult.ok) return frameworkLinkResult;
+          const linkResult = await replaceThemeLinks(client, entryId, merged.crossCuttingThemeIds ?? [], merged.crossCuttingThemeNotes ?? "", currentUser?.id);
           if (!linkResult.ok) return linkResult;
           await loadLiveMappings();
           return { ok: true };
@@ -275,7 +267,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
           if (!supabase) return { ok: false, message: "Supabase environment variables are missing." };
           if (!liveSchoolId) return { ok: false, message: "No live school is linked to this account." };
 
-          const { error } = await supabase.from("curriculum_entries").delete().eq("id", entryId).eq("school_id", liveSchoolId);
+          const { error } = await supabase.from("curriculum_mappings").delete().eq("id", entryId).eq("school_id", liveSchoolId);
           if (error) return { ok: false, message: error.message };
           await loadLiveMappings();
           return { ok: true };
@@ -327,8 +319,9 @@ type ElementReferenceRow = ReferenceRow & {
 type ProgressionDescriptorRow = {
   id: string;
   element_id: string;
-  progression_step: string;
-  descriptor: string;
+  progression_step: number | string;
+  descriptor?: string;
+  descriptor_text?: string;
 };
 
 type LiveReferenceMaps = {
@@ -344,28 +337,35 @@ type LiveReferenceMaps = {
   frameworkLibrary: SchoolDataBundle["frameworkLibrary"];
   subjectConfigs: SubjectConfig[];
   crossCuttingThemes: CrossCuttingTheme[];
+  frameworkLinksByMappingId: Map<string, FrameworkLinkRow[]>;
   themeNamesByMappingId: Map<string, string[]>;
   themeIdsByMappingId: Map<string, string[]>;
   themeNotesByMappingId: Map<string, string>;
 };
 
-type CurriculumEntryRow = {
+type CurriculumMappingRow = {
   id: string;
   school_id: string;
   subject_id: string;
+  year_group: string | null;
+  term: string | null;
+  activity_title: string | null;
+  activity_description: string | null;
+  task_description: string | null;
+  scheme_reference: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type FrameworkLinkRow = {
+  id: string;
+  mapping_id: string;
   framework_id: string;
   strand_id: string;
   element_id: string;
-  year_group: string;
-  term: string;
-  unit_topic: string;
-  learning_activity_description: string;
-  scheme_reference: string;
-  progression_reference: string;
-  optional_note: string | null;
-  last_mapped_date: string;
-  created_at: string;
-  updated_at: string;
+  progression_descriptor_id: string | null;
+  progression_step: number | null;
+  notes: string | null;
 };
 
 async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string): Promise<LiveReferenceMaps> {
@@ -382,7 +382,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string): 
   ]);
   const elementIds = ((elementsResult.data ?? []) as ElementReferenceRow[]).map((row) => row.id);
   const { data: descriptorRows } = elementIds.length
-    ? await client.from("progression_descriptors").select("id,element_id,progression_step,descriptor").in("element_id", elementIds)
+    ? await client.from("progression_descriptors").select("id,element_id,progression_step,descriptor,descriptor_text").in("element_id", elementIds)
     : { data: [] as ProgressionDescriptorRow[] };
 
   const subjects = ((subjectsResult.data ?? []) as ReferenceRow[]).map(normaliseReferenceName);
@@ -397,10 +397,17 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
   active: theme.active,
   displayOrder: theme.display_order,
 }));
-  const { data: linkRows } = await client
-    .from("curriculum_activity_theme_links")
+  const { data: mappingRows } = await client.from("curriculum_mappings").select("id").eq("school_id", schoolId);
+  const mappingIds = ((mappingRows ?? []) as { id: string }[]).map((row) => row.id);
+  const { data: frameworkLinkRows } = mappingIds.length
+    ? await client.from("curriculum_mapping_framework_links").select("id,mapping_id,framework_id,strand_id,element_id,progression_descriptor_id,progression_step,notes").in("mapping_id", mappingIds)
+    : { data: [] as FrameworkLinkRow[] };
+  const { data: linkRows } = mappingIds.length
+    ? await client
+    .from("curriculum_mapping_theme_links")
     .select("mapping_id,theme_id,notes,cross_cutting_themes(id,name)")
-    .eq("school_id", schoolId);
+        .in("mapping_id", mappingIds)
+    : { data: [] as ThemeLinkRow[] };
 
   const frameworksById = new Map(frameworks.map((row) => [row.id, row]));
   const strandsById = new Map(strands.map((row) => [row.id, row]));
@@ -409,7 +416,7 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
   const progressionDescriptorByElementAndStep = new Map<string, ProgressionDescriptorRow>();
 
   for (const descriptor of (descriptorRows ?? []) as ProgressionDescriptorRow[]) {
-    progressionDescriptorByElementAndStep.set(referenceKey(descriptor.element_id, descriptor.progression_step), descriptor);
+    progressionDescriptorByElementAndStep.set(referenceKey(descriptor.element_id, String(descriptor.progression_step)), descriptor);
   }
 
   for (const strand of strands) {
@@ -444,7 +451,10 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
             explanation: element.teacher_friendly_explanation,
             examples: element.example_classroom_opportunities ?? [],
             progressionDescriptors: Object.fromEntries(
-              (["Step 1", "Step 2", "Step 3", "Step 4", "Step 5"] as ProgressionStep[]).map((step) => [step, progressionDescriptorByElementAndStep.get(referenceKey(element.id, step))?.descriptor ?? "Descriptor can be edited in Admin Setup."])
+              (["Step 1", "Step 2", "Step 3", "Step 4", "Step 5"] as ProgressionStep[]).map((step) => {
+                const descriptor = progressionDescriptorByElementAndStep.get(referenceKey(element.id, step.replace("Step ", ""))) ?? progressionDescriptorByElementAndStep.get(referenceKey(element.id, step));
+                return [step, descriptorText(descriptor) ?? ""];
+              })
             ) as Record<ProgressionStep, string>,
             searchKeywords: element.search_keywords ?? [],
             relatedConnections: element.related_connections ?? []
@@ -474,6 +484,7 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
     frameworkLibrary,
     subjectConfigs,
     crossCuttingThemes: crossCuttingThemes.length ? crossCuttingThemes : defaultCrossCuttingThemes.map((theme) => ({ ...theme, schoolId })),
+    frameworkLinksByMappingId: buildFrameworkLinkMap((frameworkLinkRows ?? []) as FrameworkLinkRow[]),
     themeNamesByMappingId: buildThemeNameMap(linkRows ?? []),
     themeIdsByMappingId: buildThemeIdMap(linkRows ?? []),
     themeNotesByMappingId: buildThemeNotesMap(linkRows ?? [])
@@ -486,6 +497,12 @@ type ThemeLinkRow = {
   notes: string | null;
   cross_cutting_themes?: { id: string; name: string } | { id: string; name: string }[] | null;
 };
+
+function buildFrameworkLinkMap(rows: FrameworkLinkRow[]) {
+  const map = new Map<string, FrameworkLinkRow[]>();
+  for (const row of rows) map.set(row.mapping_id, [...(map.get(row.mapping_id) ?? []), row]);
+  return map;
+}
 
 function buildThemeNameMap(rows: ThemeLinkRow[]) {
   const map = new Map<string, string[]>();
@@ -519,73 +536,167 @@ function referenceKey(...parts: string[]) {
   return parts.map((part) => part.trim().toLowerCase()).join("::");
 }
 
-function resolveLiveIds(entry: MappingEntry, refs: LiveReferenceMaps):
-  | { ok: true; subjectId: string; frameworkId: string; strandId: string; elementId: string; progressionDescriptorId: string | null }
+function resolveSubjectId(entry: MappingEntry, refs: LiveReferenceMaps):
+  | { ok: true; subjectId: string }
   | { ok: false; message: string } {
-  if (!entry.subjectId || !entry.frameworkId || !entry.strandId || !entry.elementId) {
-    return { ok: false, message: "Mapping reference IDs are missing. Reload the page and select the framework, strand and element again." };
+  if (!entry.subjectId) {
+    return { ok: false, message: "Subject ID is missing. Reload the page and select the subject again." };
   }
 
   const subject = refs.subjectsById.get(entry.subjectId);
   if (!subject) return { ok: false, message: `Subject ID not found in Supabase: ${entry.subjectId}` };
-
-  const framework = refs.frameworksById.get(entry.frameworkId);
-  if (!framework) return { ok: false, message: `Framework not found in Supabase: ${entry.framework}` };
-
-  const strand = refs.strandsById.get(entry.strandId);
-  if (!strand) return { ok: false, message: `Strand not found in Supabase: ${entry.framework} → ${entry.strand}` };
-
-  const element = refs.elementsById.get(entry.elementId);
-  if (!element) return { ok: false, message: `Element not found in Supabase: ${entry.framework} → ${entry.strand} → ${entry.element}` };
-
-  const progressionDescriptorId =
-    entry.progressionDescriptorId ??
-    refs.progressionDescriptorByElementAndStep.get(referenceKey(element.id, toDatabaseProgression(entry.progressionReference)))?.id ??
-    null;
-
-  return { ok: true, subjectId: subject.id, frameworkId: framework.id, strandId: strand.id, elementId: element.id, progressionDescriptorId };
+  return { ok: true, subjectId: subject.id };
 }
 
-function curriculumRowToMapping(row: CurriculumEntryRow, refs: LiveReferenceMaps): MappingEntry {
+function resolveLiveReferences(entry: MappingEntry, refs: LiveReferenceMaps):
+  | { ok: true; references: ResolvedFrameworkLink[] }
+  | { ok: false; message: string } {
+  const entryReferences = entry.frameworkReferences?.length
+    ? entry.frameworkReferences
+    : entry.frameworkId && entry.strandId && entry.elementId
+      ? [
+          {
+            frameworkId: entry.frameworkId,
+            strandId: entry.strandId,
+            elementId: entry.elementId,
+            progressionDescriptorId: entry.progressionDescriptorId,
+            progressionReference: entry.progressionReference,
+            framework: entry.framework,
+            strand: entry.strand,
+            element: entry.element
+          }
+        ]
+      : [];
+
+  if (!entryReferences.length) return { ok: false, message: "Add at least one framework reference before saving." };
+
+  const references: ResolvedFrameworkLink[] = [];
+  for (const reference of entryReferences) {
+    if (!reference.frameworkId || !reference.strandId || !reference.elementId) {
+      return { ok: false, message: "Framework reference IDs are missing. Reload the page and select the framework, strand and element again." };
+    }
+
+    const framework = refs.frameworksById.get(reference.frameworkId);
+    if (!framework) return { ok: false, message: `Framework not found in Supabase: ${reference.framework}` };
+
+    const strand = refs.strandsById.get(reference.strandId);
+    if (!strand) return { ok: false, message: `Strand not found in Supabase: ${reference.framework} -> ${reference.strand}` };
+
+    const element = refs.elementsById.get(reference.elementId);
+    if (!element) return { ok: false, message: `Element not found in Supabase: ${reference.framework} -> ${reference.strand} -> ${reference.element}` };
+
+    const progressionStep = reference.progressionStep ?? progressionStepNumber(reference.progressionReference);
+    const progressionDescriptorId =
+      reference.progressionDescriptorId ??
+      (progressionStep ? refs.progressionDescriptorByElementAndStep.get(referenceKey(element.id, String(progressionStep)))?.id : undefined) ??
+      null;
+
+    references.push({
+      frameworkId: framework.id,
+      strandId: strand.id,
+      elementId: element.id,
+      progressionDescriptorId,
+      progressionStep,
+      notes: reference.notes
+    });
+  }
+
+  return { ok: true, references };
+}
+
+type ResolvedFrameworkLink = {
+  frameworkId: string;
+  strandId: string;
+  elementId: string;
+  progressionDescriptorId: string | null;
+  progressionStep: number | null;
+  notes?: string;
+};
+
+function curriculumRowToMapping(row: CurriculumMappingRow, refs: LiveReferenceMaps): MappingEntry {
   const subject = refs.subjectsById.get(row.subject_id)?.name ?? "Unknown subject";
-  const framework = refs.frameworksById.get(row.framework_id)?.name ?? "Unknown framework";
-  const strand = refs.strandsById.get(row.strand_id)?.name ?? "Unknown strand";
-  const element = refs.elementsById.get(row.element_id)?.name ?? "Unknown element";
+  const frameworkLinks = refs.frameworkLinksByMappingId.get(row.id) ?? [];
+  const frameworkReferences = frameworkLinks.map((link) => frameworkLinkToReference(link, refs));
+  const primaryReference = frameworkReferences[0];
+  const activityTitle = row.activity_title ?? row.task_description ?? "Untitled activity";
+  const activityDescription = row.activity_description ?? row.task_description ?? activityTitle;
 
   return {
     schoolId: row.school_id,
     id: row.id,
     subjectId: row.subject_id,
-    frameworkId: row.framework_id,
-    strandId: row.strand_id,
-    elementId: row.element_id,
+    frameworkId: primaryReference?.frameworkId,
+    strandId: primaryReference?.strandId,
+    elementId: primaryReference?.elementId,
+    progressionDescriptorId: primaryReference?.progressionDescriptorId ?? undefined,
+    frameworkReferences,
     subject,
-    framework,
-    strand,
-    element,
-    context: row.unit_topic,
-    year: row.year_group,
-    term: row.term,
-    unit: row.unit_topic,
-    activityDescription: row.learning_activity_description,
+    framework: primaryReference?.framework ?? "No framework reference",
+    strand: primaryReference?.strand ?? "No strand reference",
+    element: primaryReference?.element ?? "No element reference",
+    context: activityTitle,
+    year: row.year_group ?? "Year 7",
+    term: row.term ?? "Autumn",
+    unit: activityTitle,
+    activityDescription,
     schemeReference: row.scheme_reference,
-    progressionReference: fromDatabaseProgression(row.progression_reference),
-    note: row.optional_note ?? "",
+    progressionReference: primaryReference?.progressionReference ?? "Not specified",
+    note: "",
     crossCuttingThemeIds: refs.themeIdsByMappingId.get(row.id) ?? [],
     crossCuttingThemes: refs.themeNamesByMappingId.get(row.id) ?? [],
     crossCuttingThemeNotes: refs.themeNotesByMappingId.get(row.id) ?? "",
-    lastMappedDate: row.last_mapped_date || row.updated_at?.slice(0, 10) || row.created_at.slice(0, 10)
+    lastMappedDate: row.updated_at?.slice(0, 10) || row.created_at.slice(0, 10)
   };
 }
 
-async function replaceThemeLinks(client: SupabaseClient, mappingId: string, schoolId: string, themeIds: string[], notes: string, userId?: string): Promise<MappingMutationResult> {
-  const { error: deleteError } = await client.from("curriculum_activity_theme_links").delete().eq("mapping_id", mappingId).eq("school_id", schoolId);
+function frameworkLinkToReference(link: FrameworkLinkRow, refs: LiveReferenceMaps) {
+  const framework = refs.frameworksById.get(link.framework_id);
+  const strand = refs.strandsById.get(link.strand_id);
+  const element = refs.elementsById.get(link.element_id);
+  const descriptor = link.progression_descriptor_id ? [...refs.progressionDescriptorByElementAndStep.values()].find((item) => item.id === link.progression_descriptor_id) : undefined;
+  const progressionStep = link.progression_step ?? progressionStepNumberFromDescriptor(descriptor);
+  const progressionReference = progressionStep ? (`Step ${progressionStep}` as ProgressionReference) : "Not specified";
+
+  return {
+    id: link.id,
+    frameworkId: link.framework_id,
+    strandId: link.strand_id,
+    elementId: link.element_id,
+    progressionDescriptorId: link.progression_descriptor_id,
+    progressionStep,
+    framework: framework?.name ?? "Unknown framework",
+    strand: strand?.name ?? "Unknown strand",
+    element: element?.name ?? "Unknown element",
+    progressionReference,
+    descriptor: descriptorText(descriptor),
+    notes: link.notes ?? ""
+  };
+}
+
+async function replaceFrameworkLinks(client: SupabaseClient, mappingId: string, references: ResolvedFrameworkLink[]): Promise<MappingMutationResult> {
+  const { error: deleteError } = await client.from("curriculum_mapping_framework_links").delete().eq("mapping_id", mappingId);
+  if (deleteError) return { ok: false, message: deleteError.message };
+  const { error } = await client.from("curriculum_mapping_framework_links").insert(
+    references.map((reference) => ({
+      mapping_id: mappingId,
+      framework_id: reference.frameworkId,
+      strand_id: reference.strandId,
+      element_id: reference.elementId,
+      progression_descriptor_id: reference.progressionDescriptorId,
+      progression_step: reference.progressionStep,
+      notes: reference.notes?.trim() || null
+    }))
+  );
+  return error ? { ok: false, message: error.message } : { ok: true };
+}
+
+async function replaceThemeLinks(client: SupabaseClient, mappingId: string, themeIds: string[], notes: string, userId?: string): Promise<MappingMutationResult> {
+  const { error: deleteError } = await client.from("curriculum_mapping_theme_links").delete().eq("mapping_id", mappingId);
   if (deleteError) return { ok: false, message: deleteError.message };
   const uniqueThemeIds = Array.from(new Set(themeIds.filter(Boolean)));
   if (!uniqueThemeIds.length) return { ok: true };
-  const { error } = await client.from("curriculum_activity_theme_links").insert(
+  const { error } = await client.from("curriculum_mapping_theme_links").insert(
     uniqueThemeIds.map((themeId) => ({
-      school_id: schoolId,
       mapping_id: mappingId,
       theme_id: themeId,
       notes: notes.trim() || null,
@@ -595,17 +706,20 @@ async function replaceThemeLinks(client: SupabaseClient, mappingId: string, scho
   return error ? { ok: false, message: error.message } : { ok: true };
 }
 
-function toDatabaseProgression(reference: ProgressionReference | undefined) {
-  if (reference === "Step 3–4") return "Step 3-4";
-  if (reference === "Step 4–5") return "Step 4-5";
-  return reference ?? "Not specified";
+function progressionStepNumber(reference: ProgressionReference | undefined) {
+  if (!reference || reference === "Not specified") return null;
+  const match = reference.match(/Step ([1-5])/);
+  return match ? Number(match[1]) : null;
 }
 
-function fromDatabaseProgression(reference: string): ProgressionReference {
-  if (reference === "Step 3-4") return "Step 3–4";
-  if (reference === "Step 4-5") return "Step 4–5";
-  if (["Step 1", "Step 2", "Step 3", "Step 4", "Step 5", "Not specified"].includes(reference)) return reference as ProgressionReference;
-  return "Not specified";
+function progressionStepNumberFromDescriptor(descriptor: ProgressionDescriptorRow | undefined) {
+  if (!descriptor) return null;
+  const value = Number(descriptor.progression_step);
+  return Number.isFinite(value) ? value : progressionStepNumber(String(descriptor.progression_step) as ProgressionReference);
+}
+
+function descriptorText(descriptor: ProgressionDescriptorRow | undefined) {
+  return descriptor?.descriptor_text ?? descriptor?.descriptor ?? undefined;
 }
 
 export function useCurrentSchool() {

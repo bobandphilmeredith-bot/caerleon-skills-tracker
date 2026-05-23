@@ -28,10 +28,10 @@ export const officialFrameworkLibrary: FrameworkDefinition[] = [
     name: "Digital Competence Framework",
     shortName: "DCF",
     strands: [
-      strand("Citizenship", ["Identity, image and reputation", "Health and well-being", "Digital rights, licensing and ownership", "Online behaviour and cyberbullying"]),
+      strand("Citizenship", ["Identity, image and reputation", "Health and well-being", "Digital rights, licensing and ownership", "Online behaviour and online bullying"]),
       strand("Interacting and collaborating", ["Communication", "Collaboration", "Storing and sharing"]),
       strand("Producing", ["Sourcing, searching and planning digital content", "Creating digital content", "Evaluating and improving digital content"]),
-      strand("Data and computational thinking", ["Problem solving and modelling", "Data and information literacy"])
+      strand("Data and computational thinking", ["Problem-solving and modelling", "Data and information literacy"])
     ]
   }
 ];

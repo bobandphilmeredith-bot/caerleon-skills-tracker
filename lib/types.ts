@@ -43,6 +43,21 @@ export type FrameworkDefinition = {
   strands: StrandDefinition[];
 };
 
+export type MappingFrameworkReference = {
+  id?: string;
+  frameworkId: string;
+  strandId: string;
+  elementId: string;
+  progressionDescriptorId?: string | null;
+  progressionStep?: number | null;
+  framework: string;
+  strand: string;
+  element: string;
+  progressionReference?: ProgressionReference;
+  descriptor?: string;
+  notes?: string;
+};
+
 export type MappingEntry = {
   schoolId?: string;
   subjectId?: string;
@@ -50,6 +65,7 @@ export type MappingEntry = {
   strandId?: string;
   elementId?: string;
   progressionDescriptorId?: string;
+  frameworkReferences?: MappingFrameworkReference[];
   crossCuttingThemeIds?: string[];
   crossCuttingThemes?: string[];
   crossCuttingThemeNotes?: string;

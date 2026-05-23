@@ -245,6 +245,36 @@ create table if not exists public.curriculum_entries (
   constraint curriculum_entries_activity_length check (char_length(trim(learning_activity_description)) between 10 and 1000)
 );
 
+create table if not exists public.curriculum_mappings (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references public.schools(id) on delete cascade,
+  subject_id uuid references public.subjects(id) on delete restrict,
+  year_group text,
+  term text,
+  scheme_reference text,
+  activity_title text,
+  activity_description text,
+  task_description text,
+  created_by uuid references public.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint curriculum_mappings_year_group_check check (year_group is null or year_group in ('Year 7', 'Year 8', 'Year 9', 'Year 10', 'Year 11')),
+  constraint curriculum_mappings_term_check check (term is null or term in ('Autumn', 'Spring', 'Summer'))
+);
+
+create table if not exists public.curriculum_mapping_framework_links (
+  id uuid primary key default gen_random_uuid(),
+  mapping_id uuid not null references public.curriculum_mappings(id) on delete cascade,
+  framework_id uuid not null references public.frameworks(id),
+  strand_id uuid not null references public.strands(id),
+  element_id uuid not null references public.elements(id),
+  progression_descriptor_id uuid references public.progression_descriptors(id),
+  progression_step integer,
+  notes text,
+  created_at timestamptz not null default now(),
+  unique (mapping_id, framework_id, strand_id, element_id, progression_descriptor_id)
+);
+
 create table if not exists public.cross_cutting_themes (
   id uuid primary key default gen_random_uuid(),
   school_id uuid references public.schools(id) on delete cascade,
@@ -256,6 +286,16 @@ create table if not exists public.cross_cutting_themes (
   updated_at timestamptz not null default now(),
   unique (school_id, name),
   unique (id, school_id)
+);
+
+create table if not exists public.curriculum_mapping_theme_links (
+  id uuid primary key default gen_random_uuid(),
+  mapping_id uuid not null references public.curriculum_mappings(id) on delete cascade,
+  theme_id uuid not null references public.cross_cutting_themes(id),
+  notes text,
+  created_by uuid references public.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (mapping_id, theme_id)
 );
 
 create table if not exists public.curriculum_activity_theme_links (
@@ -349,6 +389,21 @@ create index if not exists curriculum_entries_element_idx on public.curriculum_e
 create index if not exists curriculum_entries_year_term_idx on public.curriculum_entries(school_id, year_group, term);
 create index if not exists curriculum_entries_progression_idx on public.curriculum_entries(school_id, progression_reference);
 create index if not exists curriculum_entries_progression_descriptor_idx on public.curriculum_entries(school_id, progression_descriptor_id);
+create index if not exists curriculum_mappings_school_idx on public.curriculum_mappings(school_id);
+create index if not exists curriculum_mappings_subject_idx on public.curriculum_mappings(subject_id);
+create index if not exists curriculum_mapping_framework_links_mapping_idx on public.curriculum_mapping_framework_links(mapping_id);
+create index if not exists curriculum_mapping_framework_links_framework_idx on public.curriculum_mapping_framework_links(framework_id);
+create index if not exists curriculum_mapping_framework_links_element_idx on public.curriculum_mapping_framework_links(element_id);
+create unique index if not exists curriculum_mapping_framework_links_no_duplicates_idx
+  on public.curriculum_mapping_framework_links (
+    mapping_id,
+    framework_id,
+    strand_id,
+    element_id,
+    coalesce(progression_descriptor_id, '00000000-0000-0000-0000-000000000000'::uuid)
+  );
+create index if not exists curriculum_mapping_theme_links_mapping_idx on public.curriculum_mapping_theme_links(mapping_id);
+create index if not exists curriculum_mapping_theme_links_theme_idx on public.curriculum_mapping_theme_links(theme_id);
 create index if not exists cross_cutting_themes_school_idx on public.cross_cutting_themes(school_id);
 create index if not exists curriculum_activity_theme_links_school_idx on public.curriculum_activity_theme_links(school_id);
 create index if not exists curriculum_activity_theme_links_mapping_idx on public.curriculum_activity_theme_links(mapping_id);

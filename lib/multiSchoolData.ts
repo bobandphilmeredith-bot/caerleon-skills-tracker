@@ -1,6 +1,6 @@
 import * as base from "@/lib/fakeData";
 import { defaultCrossCuttingThemes } from "@/lib/crossCuttingThemes";
-import type { AoleConfig, Card, CrossCuttingTheme, Dashboard, ElementCoverageRow, FrameworkCoverage, FrameworkDefinition, MappingEntry, School, SubjectConfig, SubjectDetail, SubjectOverview } from "@/lib/types";
+import type { AoleConfig, Card, CrossCuttingTheme, Dashboard, ElementCoverageRow, FrameworkCoverage, FrameworkDefinition, MappingEntry, MappingFrameworkReference, School, SubjectConfig, SubjectDetail, SubjectOverview } from "@/lib/types";
 
 export type SchoolDataBundle = {
   schoolId: string;
@@ -109,12 +109,13 @@ export function buildBundle(input: { schoolId: string; subjectConfigs: SubjectCo
   const frameworkMap = Object.fromEntries(
     input.frameworkLibrary.map((framework) => [framework.name, Object.fromEntries(framework.strands.map((strand) => [strand.name, strand.elements.map((elementItem) => elementItem.name)]))])
   );
-  const frameworkCoverage = Object.fromEntries(input.frameworkLibrary.map((framework) => [framework.name, buildCoverage(framework, input.mappings, subjects)]));
+  const frameworkReferences = expandFrameworkReferences(input.mappings);
+  const frameworkCoverage = Object.fromEntries(input.frameworkLibrary.map((framework) => [framework.name, buildCoverage(framework, input.mappings, frameworkReferences, subjects)]));
   const literacyFramework = findFrameworkName(input.frameworkLibrary, "Literacy");
   const numeracyFramework = findFrameworkName(input.frameworkLibrary, "Numeracy");
   const dcfFramework = findFrameworkName(input.frameworkLibrary, "DCF", "Digital Competence Framework");
   const crossCuttingThemes = input.crossCuttingThemes ?? withSchoolThemes(defaultCrossCuttingThemes, input.schoolId);
-  const subjectOverviews = makeSubjectOverviews(input.schoolId, subjects, input.subjectConfigs, input.mappings, {
+  const subjectOverviews = makeSubjectOverviews(input.schoolId, subjects, input.subjectConfigs, input.mappings, frameworkReferences, {
     literacy: literacyFramework,
     numeracy: numeracyFramework,
     dcf: dcfFramework,
@@ -138,10 +139,10 @@ export function buildBundle(input: { schoolId: string; subjectConfigs: SubjectCo
     frameworkMap,
     mappings: input.mappings,
     frameworkCoverage,
-    wholeSchoolDashboard: makeWholeSchoolDashboard(input.schoolId, subjects, input.mappings),
-    literacyDashboard: makeDashboard(literacyFramework, "Literacy Dashboard", "Reading, writing and oracy opportunities across subjects.", frameworkCoverage, input.mappings),
-    numeracyDashboard: makeDashboard(numeracyFramework, "Numeracy Dashboard", "Number, measurement, data and numerical reasoning opportunities across curriculum planning.", frameworkCoverage, input.mappings),
-    dcfDashboard: makeDashboard(dcfFramework, "DCF Dashboard", "Digital competence opportunities across digital citizenship, collaboration, producing and data thinking.", frameworkCoverage, input.mappings),
+    wholeSchoolDashboard: makeWholeSchoolDashboard(input.schoolId, subjects, input.mappings, frameworkReferences),
+    literacyDashboard: makeDashboard(literacyFramework, "Literacy Dashboard", "Reading, writing and oracy opportunities across subjects.", frameworkCoverage, input.mappings, frameworkReferences),
+    numeracyDashboard: makeDashboard(numeracyFramework, "Numeracy Dashboard", "Number, measurement, data and numerical reasoning opportunities across curriculum planning.", frameworkCoverage, input.mappings, frameworkReferences),
+    dcfDashboard: makeDashboard(dcfFramework, "DCF Dashboard", "Digital competence opportunities across digital citizenship, collaboration, producing and data thinking.", frameworkCoverage, input.mappings, frameworkReferences),
     themesDashboard: makeThemesDashboard(crossCuttingThemes, input.mappings),
     subjectOverviews,
     subjectDetails,
@@ -149,7 +150,7 @@ export function buildBundle(input: { schoolId: string; subjectConfigs: SubjectCo
   };
 }
 
-function makeWholeSchoolDashboard(schoolId: string, subjects: string[], mappings: MappingEntry[]): Dashboard {
+function makeWholeSchoolDashboard(schoolId: string, subjects: string[], mappings: MappingEntry[], frameworkReferences: ExpandedFrameworkReference[]): Dashboard {
   return {
     eyebrow: "Whole-school view",
     title: "Whole-school Dashboard",
@@ -163,7 +164,7 @@ function makeWholeSchoolDashboard(schoolId: string, subjects: string[], mappings
     heatmapTitle: "Framework Coverage by Year Group",
     heatmapRows: ["Literacy", "Numeracy", "DCF", "Cross-cutting themes"],
     heatmapColumns: base.yearGroups,
-    heatmapValues: wholeSchoolHeatValues(mappings),
+    heatmapValues: wholeSchoolHeatValues(mappings, frameworkReferences),
     reviewItems: [
       { title: "Year 11 visibility", status: "Mapping note", description: "Year 11 curriculum entries are represented across configured frameworks." },
       { title: "Framework balance", status: "Mapping note", description: "Mapped opportunities show curriculum connections across subjects." },
@@ -173,7 +174,7 @@ function makeWholeSchoolDashboard(schoolId: string, subjects: string[], mappings
   };
 }
 
-function makeDashboard(framework: string, title: string, description: string, coverage: Record<string, FrameworkCoverage>, mappings: MappingEntry[]): Dashboard {
+function makeDashboard(framework: string, title: string, description: string, coverage: Record<string, FrameworkCoverage>, mappings: MappingEntry[], frameworkReferences: ExpandedFrameworkReference[]): Dashboard {
   const frameworkCoverage = coverage[framework] ?? emptyCoverage(framework);
   return {
     eyebrow: "Framework view",
@@ -188,13 +189,13 @@ function makeDashboard(framework: string, title: string, description: string, co
     heatmapTitle: `${frameworkCoverage.framework} Coverage by Year Group`,
     heatmapRows: frameworkCoverage.strands.map((item) => item.strand),
     heatmapColumns: base.yearGroups,
-    heatmapValues: frameworkHeatValues(framework, frameworkCoverage.strands, mappings),
+    heatmapValues: frameworkHeatValues(framework, frameworkCoverage.strands, frameworkReferences),
     reviewItems: [
       { title: "Distribution by strand", status: "Visibility", description: "Shows how mapped opportunities are spread across this framework." },
       { title: "Element library", status: "Visibility", description: "Teachers can browse strand and element explanations before mapping." },
       { title: "Unmapped elements", status: "Visibility", description: "Elements with no current mappings are listed for curriculum planning conversations." }
     ],
-    entries: mappings.filter((entryItem) => entryItem.framework === framework).slice(0, 6),
+    entries: mappings.filter((entryItem) => entryHasFramework(entryItem, framework)).slice(0, 6),
     coverage: frameworkCoverage
   };
 }
@@ -235,8 +236,8 @@ function emptyCoverage(framework: string): FrameworkCoverage {
   return { framework, total: 0, strands: [], mostMappedElements: [], unmappedElements: [] };
 }
 
-function buildCoverage(framework: FrameworkDefinition, mappings: MappingEntry[], subjects: string[]): FrameworkCoverage {
-  const frameworkEntries = mappings.filter((item) => item.framework === framework.name);
+function buildCoverage(framework: FrameworkDefinition, mappings: MappingEntry[], frameworkReferences: ExpandedFrameworkReference[], subjects: string[]): FrameworkCoverage {
+  const frameworkEntries = frameworkReferences.filter((item) => item.framework === framework.name);
   const total = frameworkEntries.length || 1;
   const allRows: ElementCoverageRow[] = [];
   const strands = framework.strands.map((strand) => {
@@ -260,9 +261,10 @@ function buildCoverage(framework: FrameworkDefinition, mappings: MappingEntry[],
   return { framework: framework.name, total: frameworkEntries.length, strands, mostMappedElements: [...allRows].filter((item) => item.count > 0).sort((a, b) => b.count - a.count).slice(0, 5), unmappedElements: allRows.filter((item) => item.count === 0) };
 }
 
-function makeSubjectOverviews(schoolId: string, subjects: string[], subjectConfigs: SubjectConfig[], mappings: MappingEntry[], frameworkNames: { literacy: string; numeracy: string; dcf: string; themes: string }): SubjectOverview[] {
+function makeSubjectOverviews(schoolId: string, subjects: string[], subjectConfigs: SubjectConfig[], mappings: MappingEntry[], frameworkReferences: ExpandedFrameworkReference[], frameworkNames: { literacy: string; numeracy: string; dcf: string; themes: string }): SubjectOverview[] {
   return subjects.map((subjectName) => {
     const rows = mappings.filter((item) => item.subject === subjectName);
+    const subjectFrameworkReferences = frameworkReferences.filter((item) => item.subject === subjectName);
     const config = subjectConfigs.find((item) => item.name === subjectName);
     return {
       schoolId,
@@ -273,9 +275,9 @@ function makeSubjectOverviews(schoolId: string, subjects: string[], subjectConfi
       faculty: config?.aole ?? "Optional AoLE not set",
       department: subjectName,
       total: rows.length,
-      literacy: countFramework(rows, frameworkNames.literacy),
-      numeracy: countFramework(rows, frameworkNames.numeracy),
-      dcf: countFramework(rows, frameworkNames.dcf),
+      literacy: countFramework(subjectFrameworkReferences, frameworkNames.literacy),
+      numeracy: countFramework(subjectFrameworkReferences, frameworkNames.numeracy),
+      dcf: countFramework(subjectFrameworkReferences, frameworkNames.dcf),
       themes: rows.filter((item) => (item.crossCuttingThemeIds?.length ?? item.crossCuttingThemes?.length ?? 0) > 0).length,
       lastReviewedDate: "Not reviewed yet"
     };
@@ -342,7 +344,7 @@ function subject(name: string, aole: string | undefined, displayOrder: number, s
   return { schoolId, id: `${schoolId}-${name}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"), name, aole, active: true, displayOrder, appearsInMappingDropdowns: true };
 }
 
-function wholeSchoolHeatValues(mappings: MappingEntry[]) {
+function wholeSchoolHeatValues(mappings: MappingEntry[], frameworkReferences: ExpandedFrameworkReference[]) {
   const frameworkGroups = [
     ["Literacy", "Literacy Framework"],
     ["Numeracy", "Numeracy Framework"],
@@ -353,19 +355,58 @@ function wholeSchoolHeatValues(mappings: MappingEntry[]) {
     base.yearGroups.map((year) =>
       frameworks.includes("__theme_links__")
         ? mappings.filter((entry) => entry.year === year && (entry.crossCuttingThemeIds?.length ?? entry.crossCuttingThemes?.length ?? 0) > 0).length
-        : mappings.filter((entry) => frameworks.includes(entry.framework) && entry.year === year).length
+        : frameworkReferences.filter((entry) => frameworks.includes(entry.framework) && entry.year === year).length
     )
   );
 }
 
-function frameworkHeatValues(framework: string, strands: FrameworkCoverage["strands"], mappings: MappingEntry[]) {
-  return strands.map((strand) => base.yearGroups.map((year) => mappings.filter((entry) => entry.framework === framework && entry.strand === strand.strand && entry.year === year).length));
+function frameworkHeatValues(framework: string, strands: FrameworkCoverage["strands"], frameworkReferences: ExpandedFrameworkReference[]) {
+  return strands.map((strand) => base.yearGroups.map((year) => frameworkReferences.filter((entry) => entry.framework === framework && entry.strand === strand.strand && entry.year === year).length));
 }
 
-function countFramework(items: MappingEntry[], framework: string) {
+function countFramework(items: ExpandedFrameworkReference[], framework: string) {
   return items.filter((item) => item.framework === framework).length;
 }
 
 function unique(items: string[]) {
   return Array.from(new Set(items)).filter(Boolean);
+}
+
+type ExpandedFrameworkReference = MappingFrameworkReference & {
+  mappingId: string;
+  subject: string;
+  year: string;
+  lastMappedDate: string;
+};
+
+function expandFrameworkReferences(mappings: MappingEntry[]): ExpandedFrameworkReference[] {
+  return mappings.flatMap((entry) => {
+    const references = entry.frameworkReferences?.length
+      ? entry.frameworkReferences
+      : [
+          {
+            id: entry.id,
+            frameworkId: entry.frameworkId ?? "",
+            strandId: entry.strandId ?? "",
+            elementId: entry.elementId ?? "",
+            progressionDescriptorId: entry.progressionDescriptorId,
+            framework: entry.framework,
+            strand: entry.strand,
+            element: entry.element,
+            progressionReference: entry.progressionReference
+          }
+        ];
+
+    return references.map((reference) => ({
+      ...reference,
+      mappingId: entry.id,
+      subject: entry.subject,
+      year: entry.year,
+      lastMappedDate: entry.lastMappedDate
+    }));
+  });
+}
+
+function entryHasFramework(entry: MappingEntry, framework: string) {
+  return entry.frameworkReferences?.some((reference) => reference.framework === framework) ?? entry.framework === framework;
 }

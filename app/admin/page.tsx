@@ -500,7 +500,10 @@ export default function AdminPage() {
         <div className="mt-5 space-y-5">
           {frameworks.map((framework, frameworkIndex) => (
             <details key={`${framework.name}-${frameworkIndex}`} className="rounded-lg border border-gray-200 p-4" open={frameworkIndex === 0}>
-              <summary className="cursor-pointer font-bold text-gray-900">{framework.name}</summary>
+              <summary className="cursor-pointer font-bold text-gray-900">
+                <span>{framework.name}</span>
+                <StatusBadge active={framework.active} />
+              </summary>
               <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_160px_auto]">
                 <input className="focus-ring rounded-md border border-gray-300 px-3 py-2 font-semibold" value={framework.name} onChange={(event) => updateFramework(frameworkIndex, { name: event.target.value })} />
                 <input className="focus-ring rounded-md border border-gray-300 px-3 py-2" value={framework.shortName} onChange={(event) => updateFramework(frameworkIndex, { shortName: event.target.value })} />
@@ -521,6 +524,9 @@ export default function AdminPage() {
                         {strand.active ? "Archive" : "Reactivate"}
                       </button>
                     </div>
+                    <div className="mt-2">
+                      <StatusBadge active={strand.active} />
+                    </div>
                     <div className="mt-3 space-y-3">
                       {strand.elements.map((element, elementIndex) => (
                         <div key={`${element.name}-${elementIndex}`} className="rounded-md border border-gray-200 bg-white p-3">
@@ -535,6 +541,9 @@ export default function AdminPage() {
                             <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => updateElement(frameworkIndex, strandIndex, elementIndex, { active: !element.active })}>
                               {element.active ? "Archive" : "Reactivate"}
                             </button>
+                          </div>
+                          <div className="mt-2">
+                            <StatusBadge active={element.active} />
                           </div>
                           <textarea
                             className="focus-ring mt-3 min-h-20 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -680,6 +689,14 @@ function PracticeButton({ label, onClick }: { label: string; onClick: () => void
     <button className="focus-ring btn btn-secondary" type="button" onClick={onClick}>
       {label}
     </button>
+  );
+}
+
+function StatusBadge({ active }: { active: boolean }) {
+  return (
+    <span className={`ml-3 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${active ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-800"}`}>
+      {active ? "Active" : "Archived / deprecated"}
+    </span>
   );
 }
 

@@ -50,6 +50,9 @@ export type MappingEntry = {
   strandId?: string;
   elementId?: string;
   progressionDescriptorId?: string;
+  crossCuttingThemeIds?: string[];
+  crossCuttingThemes?: string[];
+  crossCuttingThemeNotes?: string;
   id: string;
   subject: string;
   framework: string;
@@ -85,6 +88,15 @@ export type AoleConfig = {
   id: string;
   name: string;
   active: boolean;
+};
+
+export type CrossCuttingTheme = {
+  id: string;
+  schoolId?: string | null;
+  name: string;
+  description?: string | null;
+  active: boolean;
+  displayOrder: number;
 };
 
 export type ReviewItem = {

@@ -1,5 +1,6 @@
 import * as base from "@/lib/fakeData";
-import type { AoleConfig, Card, Dashboard, ElementCoverageRow, FrameworkCoverage, FrameworkDefinition, MappingEntry, School, SubjectConfig, SubjectDetail, SubjectOverview } from "@/lib/types";
+import { defaultCrossCuttingThemes } from "@/lib/crossCuttingThemes";
+import type { AoleConfig, Card, CrossCuttingTheme, Dashboard, ElementCoverageRow, FrameworkCoverage, FrameworkDefinition, MappingEntry, School, SubjectConfig, SubjectDetail, SubjectOverview } from "@/lib/types";
 
 export type SchoolDataBundle = {
   schoolId: string;
@@ -13,6 +14,7 @@ export type SchoolDataBundle = {
   yearGroups: string[];
   terms: string[];
   frameworkLibrary: FrameworkDefinition[];
+  crossCuttingThemes: CrossCuttingTheme[];
   frameworkMap: Record<string, Record<string, string[]>>;
   mappings: MappingEntry[];
   frameworkCoverage: Record<string, FrameworkCoverage>;
@@ -70,6 +72,7 @@ export const schoolDataById: Record<string, SchoolDataBundle> = {
     subjectConfigs: base.subjectConfigs.map((item) => ({ ...item, schoolId: "school_caerleon" })),
     aoleConfigs: base.aoleConfigs.map((item) => ({ ...item, schoolId: "school_caerleon" })),
     frameworkLibrary: withSchoolFrameworks(base.frameworkLibrary, "school_caerleon"),
+    crossCuttingThemes: withSchoolThemes(defaultCrossCuttingThemes, "school_caerleon"),
     mappings: []
   }),
   school_newportsample: buildBundle({
@@ -77,6 +80,7 @@ export const schoolDataById: Record<string, SchoolDataBundle> = {
     subjectConfigs: newportSubjects,
     aoleConfigs: base.aoleConfigs.map((item) => ({ ...item, schoolId: "school_newportsample" })),
     frameworkLibrary: withSchoolFrameworks(base.frameworkLibrary, "school_newportsample"),
+    crossCuttingThemes: withSchoolThemes(defaultCrossCuttingThemes, "school_newportsample"),
     mappings: []
   })
 };
@@ -91,11 +95,12 @@ export function createEmptySchoolData(schoolId: string, subjectConfigs: SubjectC
     subjectConfigs: subjectConfigs.map((item, index) => ({ ...item, schoolId, displayOrder: item.displayOrder || index + 1 })),
     aoleConfigs: base.aoleConfigs.map((item) => ({ ...item, schoolId })),
     frameworkLibrary: withSchoolFrameworks(frameworkLibrary, schoolId),
+    crossCuttingThemes: withSchoolThemes(defaultCrossCuttingThemes, schoolId),
     mappings: []
   });
 }
 
-export function buildBundle(input: { schoolId: string; subjectConfigs: SubjectConfig[]; aoleConfigs: AoleConfig[]; frameworkLibrary: FrameworkDefinition[]; mappings: MappingEntry[] }): SchoolDataBundle {
+export function buildBundle(input: { schoolId: string; subjectConfigs: SubjectConfig[]; aoleConfigs: AoleConfig[]; frameworkLibrary: FrameworkDefinition[]; crossCuttingThemes?: CrossCuttingTheme[]; mappings: MappingEntry[] }): SchoolDataBundle {
   const subjects = input.subjectConfigs
     .filter((subjectItem) => subjectItem.active && subjectItem.appearsInMappingDropdowns)
     .map((subjectItem) => subjectItem.name)
@@ -108,12 +113,12 @@ export function buildBundle(input: { schoolId: string; subjectConfigs: SubjectCo
   const literacyFramework = findFrameworkName(input.frameworkLibrary, "Literacy");
   const numeracyFramework = findFrameworkName(input.frameworkLibrary, "Numeracy");
   const dcfFramework = findFrameworkName(input.frameworkLibrary, "DCF", "Digital Competence Framework");
-  const themesFramework = findFrameworkName(input.frameworkLibrary, "Themes", "Cross-cutting Themes");
+  const crossCuttingThemes = input.crossCuttingThemes ?? withSchoolThemes(defaultCrossCuttingThemes, input.schoolId);
   const subjectOverviews = makeSubjectOverviews(input.schoolId, subjects, input.subjectConfigs, input.mappings, {
     literacy: literacyFramework,
     numeracy: numeracyFramework,
     dcf: dcfFramework,
-    themes: themesFramework
+    themes: ""
   });
   const subjectDetails = makeSubjectDetails(subjectOverviews, input.mappings);
 
@@ -129,6 +134,7 @@ export function buildBundle(input: { schoolId: string; subjectConfigs: SubjectCo
     yearGroups: base.yearGroups,
     terms: base.terms,
     frameworkLibrary: input.frameworkLibrary,
+    crossCuttingThemes,
     frameworkMap,
     mappings: input.mappings,
     frameworkCoverage,
@@ -136,7 +142,7 @@ export function buildBundle(input: { schoolId: string; subjectConfigs: SubjectCo
     literacyDashboard: makeDashboard(literacyFramework, "Literacy Dashboard", "Reading, writing and oracy opportunities across subjects.", frameworkCoverage, input.mappings),
     numeracyDashboard: makeDashboard(numeracyFramework, "Numeracy Dashboard", "Number, measurement, data and numerical reasoning opportunities across curriculum planning.", frameworkCoverage, input.mappings),
     dcfDashboard: makeDashboard(dcfFramework, "DCF Dashboard", "Digital competence opportunities across digital citizenship, collaboration, producing and data thinking.", frameworkCoverage, input.mappings),
-    themesDashboard: makeDashboard(themesFramework, "Cross-cutting Themes Dashboard", "Visibility for RSE, human rights, diversity and careers-related learning across curriculum plans.", frameworkCoverage, input.mappings),
+    themesDashboard: makeThemesDashboard(crossCuttingThemes, input.mappings),
     subjectOverviews,
     subjectDetails,
     subjectProfiles: makeSubjectProfiles(subjectDetails)
@@ -193,6 +199,34 @@ function makeDashboard(framework: string, title: string, description: string, co
   };
 }
 
+function makeThemesDashboard(themes: CrossCuttingTheme[], mappings: MappingEntry[]): Dashboard {
+  const activeThemes = themes.filter((theme) => theme.active);
+  const linkedMappings = mappings.filter((entry) => (entry.crossCuttingThemeIds?.length ?? entry.crossCuttingThemes?.length ?? 0) > 0);
+  return {
+    eyebrow: "Cross-cutting themes",
+    title: "Cross-cutting Themes Dashboard",
+    description: "Theme tagging for curriculum activities. These are references only and do not use progression steps.",
+    cards: [
+      { label: "Theme-linked mappings", value: String(linkedMappings.length), note: "Curriculum entries with one or more cross-cutting themes." },
+      { label: "Active themes", value: String(activeThemes.length), note: "Theme tags available for new mappings." },
+      { label: "Mappings without themes", value: String(mappings.length - linkedMappings.length), note: "Entries with no cross-cutting theme selected." },
+      { label: "Theme links", value: String(mappings.reduce((sum, entry) => sum + (entry.crossCuttingThemeIds?.length ?? entry.crossCuttingThemes?.length ?? 0), 0)), note: "Total theme references across mapped opportunities." }
+    ],
+    heatmapTitle: "Cross-cutting Theme Links by Year Group",
+    heatmapRows: activeThemes.map((theme) => theme.name),
+    heatmapColumns: base.yearGroups,
+    heatmapValues: activeThemes.map((theme) =>
+      base.yearGroups.map((year) => mappings.filter((entry) => entry.year === year && ((entry.crossCuttingThemeIds?.includes(theme.id) ?? false) || (entry.crossCuttingThemes?.includes(theme.name) ?? false))).length)
+    ),
+    reviewItems: [
+      { title: "Theme references", status: "Visibility", description: "Shows where planned curriculum activities link to cross-cutting themes." },
+      { title: "Entries without themes", status: "Review suggested", description: "Mapped opportunities can be reviewed where no cross-cutting theme has been selected." },
+      { title: "No progression steps", status: "Reference only", description: "Cross-cutting themes are tags, not a progression framework." }
+    ],
+    entries: linkedMappings.slice(0, 8)
+  };
+}
+
 function findFrameworkName(frameworks: FrameworkDefinition[], shortName: string, fallback = shortName) {
   return frameworks.find((framework) => framework.shortName === shortName || framework.name === fallback || framework.name === shortName)?.name ?? fallback;
 }
@@ -242,7 +276,7 @@ function makeSubjectOverviews(schoolId: string, subjects: string[], subjectConfi
       literacy: countFramework(rows, frameworkNames.literacy),
       numeracy: countFramework(rows, frameworkNames.numeracy),
       dcf: countFramework(rows, frameworkNames.dcf),
-      themes: countFramework(rows, frameworkNames.themes),
+      themes: rows.filter((item) => (item.crossCuttingThemeIds?.length ?? item.crossCuttingThemes?.length ?? 0) > 0).length,
       lastReviewedDate: "Not reviewed yet"
     };
   });
@@ -300,6 +334,10 @@ function withSchoolFrameworks(frameworks: FrameworkDefinition[], schoolId: strin
   return frameworks.map((framework) => ({ ...framework, schoolId, strands: framework.strands.map((strand) => ({ ...strand, schoolId, elements: strand.elements.map((elementItem) => ({ ...elementItem, schoolId })) })) }));
 }
 
+function withSchoolThemes(themes: CrossCuttingTheme[], schoolId: string): CrossCuttingTheme[] {
+  return themes.map((theme) => ({ ...theme, schoolId }));
+}
+
 function subject(name: string, aole: string | undefined, displayOrder: number, schoolId: string): SubjectConfig {
   return { schoolId, id: `${schoolId}-${name}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"), name, aole, active: true, displayOrder, appearsInMappingDropdowns: true };
 }
@@ -309,9 +347,15 @@ function wholeSchoolHeatValues(mappings: MappingEntry[]) {
     ["Literacy", "Literacy Framework"],
     ["Numeracy", "Numeracy Framework"],
     ["Digital Competence Framework"],
-    ["Cross-cutting Themes"]
+    ["__theme_links__"]
   ];
-  return frameworkGroups.map((frameworks) => base.yearGroups.map((year) => mappings.filter((entry) => frameworks.includes(entry.framework) && entry.year === year).length));
+  return frameworkGroups.map((frameworks) =>
+    base.yearGroups.map((year) =>
+      frameworks.includes("__theme_links__")
+        ? mappings.filter((entry) => entry.year === year && (entry.crossCuttingThemeIds?.length ?? entry.crossCuttingThemes?.length ?? 0) > 0).length
+        : mappings.filter((entry) => frameworks.includes(entry.framework) && entry.year === year).length
+    )
+  );
 }
 
 function frameworkHeatValues(framework: string, strands: FrameworkCoverage["strands"], mappings: MappingEntry[]) {

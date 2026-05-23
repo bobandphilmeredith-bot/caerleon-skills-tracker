@@ -206,7 +206,7 @@ export const adminSetupGroups = [
 export const subjectAoleMap: Record<string, string | undefined> = Object.fromEntries(subjectConfigs.map((subject) => [subject.name, subject.aole]));
 
 function makeDashboard(framework: string, title: string, description: string, values: number[][]): Dashboard {
-  const coverage = frameworkCoverage[framework];
+  const coverage = frameworkCoverage[framework] ?? emptyCoverage(framework);
 
   return {
     eyebrow: "Framework view",
@@ -225,6 +225,10 @@ function makeDashboard(framework: string, title: string, description: string, va
     entries: mappings.filter((entryItem) => entryItem.framework === framework).slice(0, 6),
     coverage
   };
+}
+
+function emptyCoverage(framework: string): FrameworkCoverage {
+  return { framework, total: 0, strands: [], mostMappedElements: [], unmappedElements: [] };
 }
 
 function frameworkCards(coverage: FrameworkCoverage): Card[] {

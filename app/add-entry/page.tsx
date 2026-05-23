@@ -12,7 +12,7 @@ import { areaThemes, themeForFramework } from "@/lib/theme";
 export default function AddEntryPage() {
   const { canEditMappings, currentUser } = useAuth();
   const { currentSchoolId, data, addMapping } = useCurrentSchool();
-  const { frameworkLibrary, frameworkMap, subjectConfigs, subjectAoleMap, terms, yearGroups } = data;
+  const { frameworkLibrary, frameworkMap, subjectConfigs, subjectAoleMap, terms, yearGroups, crossCuttingThemes } = data;
   const frameworkNames = Object.keys(frameworkMap);
   const [framework, setFramework] = useState(frameworkNames[0]);
   const activeSubjects = subjectConfigs
@@ -34,6 +34,8 @@ export default function AddEntryPage() {
   const [schemeReference, setSchemeReference] = useState("");
   const [progressionReference, setProgressionReference] = useState<ProgressionReference>("Not specified");
   const [activityDescription, setActivityDescription] = useState("");
+  const [selectedThemeIds, setSelectedThemeIds] = useState<string[]>([]);
+  const [themeNotes, setThemeNotes] = useState("");
   const [showValidation, setShowValidation] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -110,6 +112,9 @@ export default function AddEntryPage() {
       activityDescription: trimmedActivity,
       schemeReference: trimmedSchemeReference,
       progressionReference,
+      crossCuttingThemeIds: selectedThemeIds,
+      crossCuttingThemes: crossCuttingThemes.filter((theme) => selectedThemeIds.includes(theme.id)).map((theme) => theme.name),
+      crossCuttingThemeNotes: themeNotes.trim(),
       note: "",
       lastMappedDate: new Date().toISOString().slice(0, 10)
     };
@@ -135,6 +140,8 @@ export default function AddEntryPage() {
     setSchemeReference("");
     setProgressionReference("Not specified");
     setActivityDescription("");
+    setSelectedThemeIds([]);
+    setThemeNotes("");
     setShowValidation(false);
     setSaveMessage(message);
     updateFramework(frameworkNames[0]);
@@ -362,6 +369,32 @@ export default function AddEntryPage() {
               </div>
             </Field>
             </div>
+            </FormSection>
+
+            <FormSection number="4" title="Cross-cutting themes" description="Optional theme references for later curriculum coverage analysis. These do not use progression steps.">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {crossCuttingThemes.filter((themeItem) => themeItem.active).map((themeItem) => (
+                  <label key={themeItem.id} className="flex items-start gap-3 rounded-md border border-gray-200 bg-white p-3 text-sm font-semibold text-gray-800">
+                    <input
+                      className="mt-1 h-4 w-4"
+                      type="checkbox"
+                      checked={selectedThemeIds.includes(themeItem.id)}
+                      onChange={(event) =>
+                        setSelectedThemeIds((current) =>
+                          event.target.checked ? Array.from(new Set([...current, themeItem.id])) : current.filter((id) => id !== themeItem.id)
+                        )
+                      }
+                    />
+                    <span>
+                      {themeItem.name}
+                      {themeItem.description ? <span className="mt-1 block text-xs font-normal leading-5 text-gray-500">{themeItem.description}</span> : null}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <Field label="How does this piece of work link to the selected theme(s)?" wide>
+                <textarea className="focus-ring min-h-20 w-full rounded-md border border-gray-300 px-3 py-2" value={themeNotes} onChange={(event) => setThemeNotes(event.target.value)} />
+              </Field>
             </FormSection>
           </div>
 

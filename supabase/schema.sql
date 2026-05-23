@@ -232,6 +232,7 @@ create table if not exists public.curriculum_entries (
   updated_by uuid references public.users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  unique (id, school_id),
   foreign key (subject_id, school_id) references public.subjects(id, school_id) on delete restrict,
   foreign key (framework_id, school_id) references public.frameworks(id, school_id) on delete restrict,
   foreign key (strand_id, school_id) references public.strands(id, school_id) on delete restrict,
@@ -242,6 +243,32 @@ create table if not exists public.curriculum_entries (
   constraint curriculum_entries_unit_not_blank check (char_length(trim(unit_topic)) > 0),
   constraint curriculum_entries_scheme_not_blank check (char_length(trim(scheme_reference)) > 0),
   constraint curriculum_entries_activity_length check (char_length(trim(learning_activity_description)) between 10 and 1000)
+);
+
+create table if not exists public.cross_cutting_themes (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid references public.schools(id) on delete cascade,
+  name text not null,
+  description text,
+  active boolean not null default true,
+  display_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (school_id, name),
+  unique (id, school_id)
+);
+
+create table if not exists public.curriculum_activity_theme_links (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references public.schools(id) on delete cascade,
+  mapping_id uuid not null,
+  theme_id uuid not null,
+  notes text,
+  created_by uuid references public.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (mapping_id, theme_id),
+  foreign key (mapping_id, school_id) references public.curriculum_entries(id, school_id) on delete cascade,
+  foreign key (theme_id, school_id) references public.cross_cutting_themes(id, school_id) on delete restrict
 );
 
 create table if not exists public.branding_settings (
@@ -322,6 +349,10 @@ create index if not exists curriculum_entries_element_idx on public.curriculum_e
 create index if not exists curriculum_entries_year_term_idx on public.curriculum_entries(school_id, year_group, term);
 create index if not exists curriculum_entries_progression_idx on public.curriculum_entries(school_id, progression_reference);
 create index if not exists curriculum_entries_progression_descriptor_idx on public.curriculum_entries(school_id, progression_descriptor_id);
+create index if not exists cross_cutting_themes_school_idx on public.cross_cutting_themes(school_id);
+create index if not exists curriculum_activity_theme_links_school_idx on public.curriculum_activity_theme_links(school_id);
+create index if not exists curriculum_activity_theme_links_mapping_idx on public.curriculum_activity_theme_links(mapping_id);
+create index if not exists curriculum_activity_theme_links_theme_idx on public.curriculum_activity_theme_links(theme_id);
 create index if not exists review_cycles_school_idx on public.review_cycles(school_id);
 create index if not exists audit_logs_school_created_idx on public.audit_logs(school_id, created_at desc);
 create index if not exists audit_logs_entity_idx on public.audit_logs(entity_type, entity_id);
@@ -358,6 +389,8 @@ drop trigger if exists set_progression_descriptors_updated_at on public.progress
 create trigger set_progression_descriptors_updated_at before update on public.progression_descriptors for each row execute function public.set_updated_at();
 drop trigger if exists set_curriculum_entries_updated_at on public.curriculum_entries;
 create trigger set_curriculum_entries_updated_at before update on public.curriculum_entries for each row execute function public.set_updated_at();
+drop trigger if exists set_cross_cutting_themes_updated_at on public.cross_cutting_themes;
+create trigger set_cross_cutting_themes_updated_at before update on public.cross_cutting_themes for each row execute function public.set_updated_at();
 drop trigger if exists set_branding_settings_updated_at on public.branding_settings;
 create trigger set_branding_settings_updated_at before update on public.branding_settings for each row execute function public.set_updated_at();
 drop trigger if exists set_framework_colour_themes_updated_at on public.framework_colour_themes;
@@ -600,6 +633,8 @@ alter table public.strands enable row level security;
 alter table public.elements enable row level security;
 alter table public.progression_descriptors enable row level security;
 alter table public.curriculum_entries enable row level security;
+alter table public.cross_cutting_themes enable row level security;
+alter table public.curriculum_activity_theme_links enable row level security;
 alter table public.branding_settings enable row level security;
 alter table public.framework_colour_themes enable row level security;
 alter table public.review_cycles enable row level security;
@@ -852,6 +887,44 @@ with check (public.can_edit_curriculum_subject(school_id, subject_id));
 drop policy if exists "curriculum_entries_delete" on public.curriculum_entries;
 create policy "curriculum_entries_delete" on public.curriculum_entries for delete to authenticated
 using (public.can_delete_curriculum_subject(school_id, subject_id));
+
+drop policy if exists "cross_cutting_themes_select" on public.cross_cutting_themes;
+create policy "cross_cutting_themes_select" on public.cross_cutting_themes for select to authenticated
+using (school_id is null or public.can_view_school(school_id));
+drop policy if exists "cross_cutting_themes_insert" on public.cross_cutting_themes;
+create policy "cross_cutting_themes_insert" on public.cross_cutting_themes for insert to authenticated
+with check (school_id is not null and public.can_manage_school_setup(school_id));
+drop policy if exists "cross_cutting_themes_update" on public.cross_cutting_themes;
+create policy "cross_cutting_themes_update" on public.cross_cutting_themes for update to authenticated
+using (school_id is not null and public.can_manage_school_setup(school_id))
+with check (school_id is not null and public.can_manage_school_setup(school_id));
+drop policy if exists "cross_cutting_themes_delete" on public.cross_cutting_themes;
+create policy "cross_cutting_themes_delete" on public.cross_cutting_themes for delete to authenticated
+using (school_id is not null and public.can_manage_school_setup(school_id));
+
+drop policy if exists "curriculum_activity_theme_links_select" on public.curriculum_activity_theme_links;
+create policy "curriculum_activity_theme_links_select" on public.curriculum_activity_theme_links for select to authenticated
+using (public.can_view_school(school_id));
+drop policy if exists "curriculum_activity_theme_links_insert" on public.curriculum_activity_theme_links;
+create policy "curriculum_activity_theme_links_insert" on public.curriculum_activity_theme_links for insert to authenticated
+with check (
+  exists (
+    select 1 from public.curriculum_entries entry
+    where entry.id = mapping_id
+      and entry.school_id = school_id
+      and public.can_edit_curriculum_subject(entry.school_id, entry.subject_id)
+  )
+);
+drop policy if exists "curriculum_activity_theme_links_delete" on public.curriculum_activity_theme_links;
+create policy "curriculum_activity_theme_links_delete" on public.curriculum_activity_theme_links for delete to authenticated
+using (
+  exists (
+    select 1 from public.curriculum_entries entry
+    where entry.id = mapping_id
+      and entry.school_id = school_id
+      and public.can_edit_curriculum_subject(entry.school_id, entry.subject_id)
+  )
+);
 
 drop policy if exists "branding_settings_select" on public.branding_settings;
 create policy "branding_settings_select" on public.branding_settings for select to authenticated

@@ -131,10 +131,10 @@ with element_rows(framework_name, strand_name, element_name, display_order) as (
     ('Literacy Framework', 'Writing', 'Planning and organising for different purposes, audiences and context', 4),
     ('Literacy Framework', 'Writing', 'Proofreading, editing and improving', 5),
     ('Numeracy Framework', 'Developing mathematical proficiency', 'Conceptual understanding', 1),
-    ('Numeracy Framework', 'Developing mathematical proficiency', 'Communication using symbols', 2),
+    ('Numeracy Framework', 'Developing mathematical proficiency', 'Logical reasoning', 2),
     ('Numeracy Framework', 'Developing mathematical proficiency', 'Fluency', 3),
-    ('Numeracy Framework', 'Developing mathematical proficiency', 'Logical reasoning', 4),
-    ('Numeracy Framework', 'Developing mathematical proficiency', 'Strategic competence', 5),
+    ('Numeracy Framework', 'Developing mathematical proficiency', 'Strategic competence', 4),
+    ('Numeracy Framework', 'Developing mathematical proficiency', 'Communicating with symbols', 5),
     ('Numeracy Framework', 'Understanding the number system helps us to represent and compare relationships between numbers and quantities', 'The number system', 1),
     ('Numeracy Framework', 'Understanding the number system helps us to represent and compare relationships between numbers and quantities', 'Relationships within the number system', 2),
     ('Numeracy Framework', 'Understanding the number system helps us to represent and compare relationships between numbers and quantities', 'Calculation', 3),
@@ -253,6 +253,66 @@ join public.elements old_element on old_element.id = entry.element_id and old_el
 where entry.school_id = target.school_id
   and old_element.name = 'Evaluating outputs';
 
+-- Migrate known old/prototype Numeracy mapping references to official targets.
+with target as (
+  select frameworks.school_id, frameworks.id as framework_id, strands.id as strand_id, elements.id as element_id
+  from public.frameworks
+  join public.strands on strands.framework_id = frameworks.id and strands.school_id = frameworks.school_id
+  join public.elements on elements.strand_id = strands.id and elements.school_id = frameworks.school_id
+  where frameworks.name = 'Numeracy Framework'
+    and strands.name = 'Understanding the number system helps us to represent and compare relationships between numbers and quantities'
+    and elements.name = 'Calculation'
+)
+update public.curriculum_entries entry
+set framework_id = target.framework_id,
+    strand_id = target.strand_id,
+    element_id = target.element_id,
+    updated_at = now()
+from target
+join public.elements old_element on old_element.id = entry.element_id and old_element.school_id = entry.school_id
+join public.strands old_strand on old_strand.id = old_element.strand_id and old_strand.school_id = old_element.school_id
+where entry.school_id = target.school_id
+  and old_strand.name = 'Using number skills'
+  and old_element.name = 'Use of calculation';
+
+with target as (
+  select frameworks.school_id, frameworks.id as framework_id, strands.id as strand_id, elements.id as element_id
+  from public.frameworks
+  join public.strands on strands.framework_id = frameworks.id and strands.school_id = frameworks.school_id
+  join public.elements on elements.strand_id = strands.id and elements.school_id = frameworks.school_id
+  where frameworks.name = 'Numeracy Framework'
+    and strands.name = 'Learning that statistics represent data and that probability models chance helps us make informed inferences and decisions'
+    and elements.name = 'Interpreting data'
+)
+update public.curriculum_entries entry
+set framework_id = target.framework_id,
+    strand_id = target.strand_id,
+    element_id = target.element_id,
+    updated_at = now()
+from target
+join public.elements old_element on old_element.id = entry.element_id and old_element.school_id = entry.school_id
+where entry.school_id = target.school_id
+  and old_element.name in ('Interpreting trends', 'Evaluating accuracy');
+
+with target as (
+  select frameworks.school_id, frameworks.id as framework_id, strands.id as strand_id, elements.id as element_id
+  from public.frameworks
+  join public.strands on strands.framework_id = frameworks.id and strands.school_id = frameworks.school_id
+  join public.elements on elements.strand_id = strands.id and elements.school_id = frameworks.school_id
+  where frameworks.name = 'Numeracy Framework'
+    and strands.name = 'Developing mathematical proficiency'
+    and elements.name = 'Communicating with symbols'
+)
+update public.curriculum_entries entry
+set framework_id = target.framework_id,
+    strand_id = target.strand_id,
+    element_id = target.element_id,
+    updated_at = now()
+from target
+join public.elements old_element on old_element.id = entry.element_id and old_element.school_id = entry.school_id
+where entry.school_id = target.school_id
+  and old_element.name = 'Communication using symbols';
+
 -- Link existing entries to a progression descriptor where the column is available.
 update public.curriculum_entries entry
 set progression_descriptor_id = descriptor.id
@@ -262,7 +322,9 @@ where descriptor.school_id = entry.school_id
   and descriptor.progression_step = entry.progression_reference
   and entry.progression_reference in ('Step 1','Step 2','Step 3','Step 4','Step 5');
 
--- Inactivate old/prototype labels only when no mapping still references them.
+-- Archive/deprecate old/prototype labels for new mappings. They are not deleted.
+-- The app keeps archived reference rows available for displaying historical mappings,
+-- but only active rows are shown in the mapping form.
 update public.elements element
 set active = false
 where element.name in (
@@ -271,13 +333,18 @@ where element.name in (
     'Planning digital products',
     'Problem solving',
     'Data handling',
-    'Modelling'
-  )
-  and not exists (
-    select 1
-    from public.curriculum_entries entry
-    where entry.element_id = element.id
-      and entry.school_id = element.school_id
+    'Modelling',
+    'Communication using symbols',
+    'Use of calculation',
+    'Interpreting trends',
+    'Evaluating accuracy',
+    'Estimating and checking',
+    'Financial contexts',
+    'Time and scale',
+    'Area and volume',
+    'Interpreting units',
+    'Selecting strategies',
+    'Justifying decisions'
   );
 
 update public.strands strand
@@ -288,12 +355,6 @@ where strand.name in (
     'Using measuring skills',
     'Using data skills',
     'Developing numerical reasoning'
-  )
-  and not exists (
-    select 1
-    from public.curriculum_entries entry
-    where entry.strand_id = strand.id
-      and entry.school_id = strand.school_id
   );
 
 -- Diagnostic queries to run after this script:

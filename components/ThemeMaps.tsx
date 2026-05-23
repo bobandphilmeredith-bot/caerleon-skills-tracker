@@ -4,12 +4,12 @@ import { useCurrentSchoolData } from "@/lib/currentSchool";
 import { themeForFramework } from "@/lib/theme";
 
 export function ThemeMaps() {
-  const { mappings } = useCurrentSchoolData();
+  const { mappings, crossCuttingThemes } = useCurrentSchoolData();
   const theme = themeForFramework("Cross-cutting Themes");
-  const themeMapOutputs = ["Relationships and sexuality education", "Human rights", "Diversity", "Careers and work-related experiences"].map((strand) => {
-    const entries = mappings.filter((entry) => entry.framework === "Cross-cutting Themes" && entry.strand === strand);
+  const themeMapOutputs = crossCuttingThemes.map((themeItem) => {
+    const entries = mappings.filter((entry) => entry.crossCuttingThemeIds?.includes(themeItem.id) || entry.crossCuttingThemes?.includes(themeItem.name));
     return {
-      theme: strand === "Relationships and sexuality education" ? "RSE" : strand,
+      theme: themeItem.name,
       subjects: unique(entries.map((entry) => entry.subject)),
       yearGroups: unique(entries.map((entry) => entry.year)),
       examples: entries.map((entry) => entry.unit).slice(0, 3),
@@ -37,11 +37,11 @@ export function ThemeMaps() {
             <div className="mt-3 grid gap-3 text-sm text-gray-700 sm:grid-cols-2">
               <p>
                 <span className="font-bold text-gray-900">Subjects: </span>
-                {item.subjects.join(", ") || "Currently mapped in future planning examples"}
+                {item.subjects.join(", ") || "No mapped opportunities yet"}
               </p>
               <p>
                 <span className="font-bold text-gray-900">Year groups: </span>
-                {item.yearGroups.join(", ") || "Review suggested"}
+                {item.yearGroups.join(", ") || "No mapped opportunities yet"}
               </p>
             </div>
             <div className="mt-3 space-y-2 text-sm text-gray-700">

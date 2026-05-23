@@ -196,7 +196,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
             term: entry.term,
             activity_title: entry.unit || entry.context,
             activity_description: entry.activityDescription,
-            task_description: entry.activityDescription,
+            task_description: entry.taskDescription ?? entry.activityDescription,
             scheme_reference: entry.schemeReference,
             created_by: currentUser?.id ?? null
           }).select("id").single();
@@ -240,7 +240,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
               term: merged.term,
               activity_title: merged.unit || merged.context,
               activity_description: merged.activityDescription,
-              task_description: merged.activityDescription,
+              task_description: merged.taskDescription ?? merged.activityDescription,
               scheme_reference: merged.schemeReference,
               updated_at: new Date().toISOString()
             })
@@ -456,6 +456,21 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
                 return [step, descriptorText(descriptor) ?? ""];
               })
             ) as Record<ProgressionStep, string>,
+            progressionDescriptorRefs: (["Step 1", "Step 2", "Step 3", "Step 4", "Step 5"] as ProgressionStep[])
+              .map((step) => {
+                const descriptor = progressionDescriptorByElementAndStep.get(referenceKey(element.id, step.replace("Step ", ""))) ?? progressionDescriptorByElementAndStep.get(referenceKey(element.id, step));
+                const stepNumber = Number(step.replace("Step ", ""));
+                const text = descriptorText(descriptor);
+                return descriptor && text
+                  ? {
+                      id: descriptor.id,
+                      progressionStep: step,
+                      progressionStepNumber: stepNumber,
+                      descriptorText: text
+                    }
+                  : null;
+              })
+              .filter((descriptor) => descriptor !== null),
             searchKeywords: element.search_keywords ?? [],
             relatedConnections: element.related_connections ?? []
           }))
@@ -568,7 +583,7 @@ function resolveLiveReferences(entry: MappingEntry, refs: LiveReferenceMaps):
         ]
       : [];
 
-  if (!entryReferences.length) return { ok: false, message: "Add at least one framework reference before saving." };
+  if (!entryReferences.length) return { ok: true, references: [] };
 
   const references: ResolvedFrameworkLink[] = [];
   for (const reference of entryReferences) {
@@ -639,6 +654,7 @@ function curriculumRowToMapping(row: CurriculumMappingRow, refs: LiveReferenceMa
     term: row.term ?? "Autumn",
     unit: activityTitle,
     activityDescription,
+    taskDescription: row.task_description ?? activityDescription,
     schemeReference: row.scheme_reference,
     progressionReference: primaryReference?.progressionReference ?? "Not specified",
     note: "",
@@ -676,6 +692,7 @@ function frameworkLinkToReference(link: FrameworkLinkRow, refs: LiveReferenceMap
 async function replaceFrameworkLinks(client: SupabaseClient, mappingId: string, references: ResolvedFrameworkLink[]): Promise<MappingMutationResult> {
   const { error: deleteError } = await client.from("curriculum_mapping_framework_links").delete().eq("mapping_id", mappingId);
   if (deleteError) return { ok: false, message: deleteError.message };
+  if (!references.length) return { ok: true };
   const { error } = await client.from("curriculum_mapping_framework_links").insert(
     references.map((reference) => ({
       mapping_id: mappingId,

@@ -292,40 +292,12 @@ function element(name: string, explanation: string, examples: string[]) {
 }
 
 function progressionDescriptors(name: string, explanation: string) {
-  const lower = `${name} ${explanation}`.toLowerCase();
-  if (lower.includes("infer") || lower.includes("viewpoint") || lower.includes("source") || lower.includes("reliability")) {
-    return {
-      "Step 1": "Learners identify simple information and begin to notice meaning in familiar texts.",
-      "Step 2": "Learners find relevant information and give simple reasons for their responses.",
-      "Step 3": "Learners use evidence to infer meaning and identify simple viewpoints in texts and sources.",
-      "Step 4": "Learners infer meaning and recognise viewpoint, bias and purpose in increasingly complex texts.",
-      "Step 5": "Learners evaluate complex texts and sources, explaining how viewpoint, purpose and bias shape meaning."
-    };
-  }
-  if (lower.includes("data") || lower.includes("trend") || lower.includes("number") || lower.includes("calculation")) {
-    return {
-      "Step 1": "Learners use simple numerical information in familiar contexts.",
-      "Step 2": "Learners collect, read or use numerical information with support.",
-      "Step 3": "Learners select and use numerical information to describe patterns or solve familiar problems.",
-      "Step 4": "Learners interpret numerical information, explain patterns and justify decisions in varied contexts.",
-      "Step 5": "Learners evaluate numerical information and communicate reasoned conclusions in complex contexts."
-    };
-  }
-  if (lower.includes("digital") || lower.includes("online") || lower.includes("spreadsheet") || lower.includes("model")) {
-    return {
-      "Step 1": "Learners use digital tools safely for simple purposeful tasks.",
-      "Step 2": "Learners choose familiar digital tools and follow routines for safe, organised work.",
-      "Step 3": "Learners select digital tools to create, organise or communicate information for a purpose.",
-      "Step 4": "Learners use digital tools to collaborate, refine outputs and explain choices for audience and purpose.",
-      "Step 5": "Learners evaluate digital processes and outputs, adapting choices for complex audiences or problems."
-    };
-  }
   return {
-    "Step 1": `Learners begin to explore ${name.toLowerCase()} through familiar classroom opportunities.`,
-    "Step 2": `Learners use supported strategies connected to ${name.toLowerCase()} in planned learning.`,
-    "Step 3": `Learners apply ${name.toLowerCase()} in familiar curriculum contexts and explain simple choices.`,
-    "Step 4": `Learners apply ${name.toLowerCase()} in varied contexts, making connections and explaining decisions.`,
-    "Step 5": `Learners use ${name.toLowerCase()} independently in more complex contexts and evaluate their choices.`
+    "Step 1": "",
+    "Step 2": "",
+    "Step 3": "",
+    "Step 4": "",
+    "Step 5": ""
   };
 }
 

@@ -1,6 +1,4 @@
-import type { ElementDefinition, FrameworkDefinition, ProgressionStep } from "@/lib/types";
-
-const progressionSteps: ProgressionStep[] = ["Step 1", "Step 2", "Step 3", "Step 4", "Step 5"];
+import type { ElementDefinition, FrameworkDefinition } from "@/lib/types";
 
 export const officialFrameworkLibrary: FrameworkDefinition[] = [
   {
@@ -39,31 +37,25 @@ export const officialFrameworkLibrary: FrameworkDefinition[] = [
 function strand(name: string, elementNames: string[]) {
   return {
     name,
-    elements: elementNames.map((elementName) => element(elementName, explanationFor(elementName), examplesFor(elementName)))
+    elements: elementNames.map((elementName) => element(elementName))
   };
 }
 
-function element(name: string, explanation: string, examples: string[]): ElementDefinition {
+function element(name: string): ElementDefinition {
   return {
     name,
-    officialWording: explanation,
-    explanation,
-    examples,
-    progressionDescriptors: Object.fromEntries(progressionSteps.map((step) => [step, `${step}: curriculum opportunities linked to ${name}.`])) as Record<ProgressionStep, string>,
+    officialWording: "",
+    explanation: "",
+    examples: [],
+    progressionDescriptors: {
+      "Step 1": "",
+      "Step 2": "",
+      "Step 3": "",
+      "Step 4": "",
+      "Step 5": ""
+    },
+    progressionDescriptorRefs: [],
     searchKeywords: name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean),
     relatedConnections: []
   };
-}
-
-function explanationFor(name: string) {
-  return `Learners develop ${name.toLowerCase()} through planned curriculum opportunities.`;
-}
-
-function examplesFor(name: string) {
-  const lower = name.toLowerCase();
-  if (lower.includes("data")) return ["Collecting information", "Representing findings", "Discussing patterns"];
-  if (lower.includes("digital") || lower.includes("online")) return ["Digital scenario review", "Shared document task", "Online safety discussion"];
-  if (lower.includes("writing") || lower.includes("punctuation") || lower.includes("grammar")) return ["Drafting task", "Peer review", "Editing checklist"];
-  if (lower.includes("reading") || lower.includes("listening") || lower.includes("speaking")) return ["Source discussion", "Collaborative talk", "Response task"];
-  return ["Classroom discussion", "Subject task", "Reflection activity"];
 }

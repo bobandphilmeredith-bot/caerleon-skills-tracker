@@ -383,7 +383,8 @@ function expandFrameworkReferences(mappings: MappingEntry[]): ExpandedFrameworkR
   return mappings.flatMap((entry) => {
     const references = entry.frameworkReferences?.length
       ? entry.frameworkReferences
-      : [
+      : entry.frameworkId && entry.strandId && entry.elementId
+        ? [
           {
             id: entry.id,
             frameworkId: entry.frameworkId ?? "",
@@ -395,7 +396,8 @@ function expandFrameworkReferences(mappings: MappingEntry[]): ExpandedFrameworkR
             element: entry.element,
             progressionReference: entry.progressionReference
           }
-        ];
+        ]
+        : [];
 
     return references.map((reference) => ({
       ...reference,

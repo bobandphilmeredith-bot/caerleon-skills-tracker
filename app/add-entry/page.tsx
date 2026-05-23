@@ -5,7 +5,7 @@ import { AccessDenied } from "@/components/AccessDenied";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
-import { descriptorForReference, secondaryProgressionReferences, suggestedProgressionForYear } from "@/lib/progression";
+import { suggestedProgressionForYear } from "@/lib/progression";
 import type { ElementDefinition, FrameworkDefinition, MappingEntry, MappingFrameworkReference, ProgressionReference, StrandDefinition } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
@@ -31,10 +31,12 @@ export default function AddEntryPage() {
   const selectedElementName = elements.includes(element) ? element : elements[0];
   const [yearGroup, setYearGroup] = useState("Year 7");
   const [term, setTerm] = useState("Autumn");
-  const [unit, setUnit] = useState("");
+  const [activityTitle, setActivityTitle] = useState("");
   const [schemeReference, setSchemeReference] = useState("");
   const [progressionReference, setProgressionReference] = useState<ProgressionReference>("Not specified");
   const [activityDescription, setActivityDescription] = useState("");
+  const [taskDescription, setTaskDescription] = useState("");
+  const [frameworkNotes, setFrameworkNotes] = useState("");
   const [frameworkReferences, setFrameworkReferences] = useState<MappingFrameworkReference[]>([]);
   const [selectedThemeIds, setSelectedThemeIds] = useState<string[]>([]);
   const [themeNotes, setThemeNotes] = useState("");
@@ -49,9 +51,11 @@ export default function AddEntryPage() {
   const theme = themeForFramework(selectedFrameworkName);
   const selectedAole = selectedSubjectName ? subjectAoleMap[selectedSubjectName] : undefined;
   const suggestedProgression = suggestedProgressionForYear(yearGroup);
-  const progressionOptions = selectedFramework?.shortName === "DCF" ? (["Step 3", "Step 4", "Step 5"] as ProgressionReference[]) : secondaryProgressionReferences;
-  const selectedProgressionReference = progressionOptions.includes(progressionReference) ? progressionReference : progressionOptions[0];
-  const progressionDescriptor = descriptorForReference(selectedElement, selectedProgressionReference);
+  const availableDescriptors = (selectedElement?.progressionDescriptorRefs ?? []).filter((descriptor) => selectedFramework?.shortName !== "DCF" || descriptor.progressionStepNumber >= 3);
+  const progressionOptions = availableDescriptors.map((descriptor) => descriptor.progressionStep);
+  const selectedProgressionReference: ProgressionReference = progressionOptions.some((option) => option === progressionReference) ? progressionReference : (progressionOptions[0] ?? "Not specified");
+  const selectedDescriptor = availableDescriptors.find((descriptor) => descriptor.progressionStep === selectedProgressionReference);
+  const progressionDescriptor = selectedDescriptor?.descriptorText ?? "No official progression descriptor found for this selection. Please check the framework seed data.";
   const hasSubjectRestrictedRole = currentUser?.role === "teacher" || currentUser?.role === "subject_lead";
   const hasEditableSubjects = !hasSubjectRestrictedRole || currentUser.assignedSubjects.length > 0;
   const canEditSelectedSubject = !selectedSubjectName || currentUser?.role === "platform_admin" || currentUser?.role === "school_admin" || hasAssignedSubject(currentUser?.assignedSubjects ?? [], selectedSubjectName);
@@ -73,17 +77,19 @@ export default function AddEntryPage() {
     setElement(frameworkMap[selectedFrameworkName][nextStrand][0]);
   }
 
-  const trimmedActivity = activityDescription.trim();
-  const trimmedUnit = unit.trim();
+  const trimmedActivityTitle = activityTitle.trim();
+  const trimmedActivityDescription = activityDescription.trim();
+  const trimmedTaskDescription = taskDescription.trim();
   const trimmedSchemeReference = schemeReference.trim();
-  const activityError =
-    trimmedActivity.length === 0
-      ? "Learning Activity / Task Description cannot be blank."
-      : trimmedActivity.length < 20
+  const taskError =
+    trimmedTaskDescription.length === 0
+      ? "What pupils actually do cannot be blank."
+      : trimmedTaskDescription.length < 20
         ? "Use at least 20 characters."
-        : trimmedActivity.length > 250
-          ? "Use 250 characters or fewer."
+        : trimmedTaskDescription.length > 500
+          ? "Use 500 characters or fewer."
           : "";
+  const hasAnyLink = frameworkReferences.length > 0 || selectedThemeIds.length > 0;
   const formError =
     hasSubjectRestrictedRole && !hasEditableSubjects
       ? "No editable subjects are assigned to your account. Contact a school administrator."
@@ -91,33 +97,38 @@ export default function AddEntryPage() {
       ? "Select a subject."
       : !canEditSelectedSubject
         ? "You can view this subject, but you do not have permission to edit it."
-        : !trimmedUnit
-        ? "Unit/topic cannot be blank."
+        : !trimmedActivityTitle
+        ? "Piece of work / activity title cannot be blank."
         : !trimmedSchemeReference
           ? "Scheme of learning reference cannot be blank."
-          : !frameworkReferences.length
-            ? "Add at least one framework reference."
-            : activityError;
+          : !trimmedActivityDescription
+            ? "Description of the activity cannot be blank."
+            : taskError
+              ? taskError
+              : !hasAnyLink
+                ? "Add at least one framework reference or cross-cutting theme."
+                : "";
 
   function buildMappingEntry(): MappingEntry {
     return {
       schoolId: currentSchoolId,
       subjectId: selectedSubject?.id,
-      frameworkId: selectedFramework.id,
-      strandId: selectedStrand?.id,
-      elementId: selectedElement?.id,
+      frameworkId: frameworkReferences[0]?.frameworkId,
+      strandId: frameworkReferences[0]?.strandId,
+      elementId: frameworkReferences[0]?.elementId,
       progressionDescriptorId: undefined,
       frameworkReferences,
       id: `map-${currentSchoolId}-${Date.now()}`,
       subject: selectedSubjectName,
-      framework: selectedFrameworkName,
-      strand: selectedStrandName,
-      element: selectedElementName,
-      context: trimmedUnit,
+      framework: frameworkReferences[0]?.framework ?? "No framework reference",
+      strand: frameworkReferences[0]?.strand ?? "No strand reference",
+      element: frameworkReferences[0]?.element ?? "No element reference",
+      context: trimmedActivityTitle,
       year: yearGroup,
       term,
-      unit: trimmedUnit,
-      activityDescription: trimmedActivity,
+      unit: trimmedActivityTitle,
+      activityDescription: trimmedActivityDescription,
+      taskDescription: trimmedTaskDescription,
       schemeReference: trimmedSchemeReference,
       progressionReference: frameworkReferences[0]?.progressionReference ?? selectedProgressionReference,
       crossCuttingThemeIds: selectedThemeIds,
@@ -129,20 +140,26 @@ export default function AddEntryPage() {
   }
 
   function addFrameworkReference() {
-    if (!selectedFramework?.id || !selectedStrand?.id || !selectedElement?.id) return;
-    const progressionStep = progressionStepNumber(selectedProgressionReference);
+    console.log("Add reference clicked");
+    console.log("selected framework", selectedFramework);
+    console.log("selected strand", selectedStrand);
+    console.log("selected element", selectedElement);
+    console.log("selected descriptor", selectedDescriptor);
+    if (!selectedFramework?.id || !selectedStrand?.id || !selectedElement?.id || !selectedDescriptor?.id) return;
+    const progressionStep = selectedDescriptor.progressionStepNumber;
     const reference: MappingFrameworkReference = {
-      id: `${selectedFramework.id}-${selectedStrand.id}-${selectedElement.id}-${progressionStep ?? "none"}`,
+      id: `${selectedFramework.id}-${selectedStrand.id}-${selectedElement.id}-${selectedDescriptor.id}`,
       frameworkId: selectedFramework.id,
       strandId: selectedStrand.id,
       elementId: selectedElement.id,
-      progressionDescriptorId: undefined,
+      progressionDescriptorId: selectedDescriptor.id,
       progressionStep,
       framework: selectedFramework.name,
       strand: selectedStrand.name,
       element: selectedElement.name,
-      progressionReference: selectedProgressionReference,
-      descriptor: progressionDescriptor
+      progressionReference: selectedDescriptor.progressionStep,
+      descriptor: progressionDescriptor,
+      notes: frameworkNotes.trim()
     };
     setFrameworkReferences((current) => {
       const exists = current.some(
@@ -152,8 +169,11 @@ export default function AddEntryPage() {
           item.elementId === reference.elementId &&
           (item.progressionStep ?? null) === (reference.progressionStep ?? null)
       );
-      return exists ? current : [...current, reference];
+      const nextReferences = exists ? current : [...current, reference];
+      console.log("selected references after add", nextReferences);
+      return nextReferences;
     });
+    setFrameworkNotes("");
   }
 
   async function handleSave() {
@@ -172,10 +192,12 @@ export default function AddEntryPage() {
     setSubject("");
     setYearGroup("Year 7");
     setTerm("Autumn");
-    setUnit("");
+    setActivityTitle("");
     setSchemeReference("");
     setProgressionReference("Not specified");
     setActivityDescription("");
+    setTaskDescription("");
+    setFrameworkNotes("");
     setFrameworkReferences([]);
     setSelectedThemeIds([]);
     setThemeNotes("");
@@ -209,16 +231,17 @@ export default function AddEntryPage() {
       <PageHeader
         title="Add Curriculum Mapping Entry"
         eyebrow="Planning visibility"
-        description="Create a curriculum mapping entry showing where a skill appears in planned learning."
+        description="Describe one piece of curriculum work, then attach the framework references and wider theme tags it genuinely develops."
         accent={areaThemes.overview.accent}
       />
 
       <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
         <form className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" onSubmit={(event) => event.preventDefault()}>
-          <div className="mb-5 grid gap-3 md:grid-cols-3">
-            <StepPill number="1" title="Context" />
-            <StepPill number="2" title="Framework link" />
-            <StepPill number="3" title="Activity and reference" />
+          <div className="mb-5 grid gap-3 md:grid-cols-4">
+            <StepPill number="1" title="Activity" />
+            <StepPill number="2" title="Frameworks" />
+            <StepPill number="3" title="Themes" />
+            <StepPill number="4" title="Save" />
           </div>
 
           <div className="space-y-5">
@@ -227,12 +250,7 @@ export default function AddEntryPage() {
                 No editable subjects are assigned to your account. Contact a school administrator.
               </div>
             ) : null}
-            {currentUser ? (
-              <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-600">
-                Permission check: role {currentUser.role}; assigned subjects {currentUser.assignedSubjects.length ? currentUser.assignedSubjects.join(", ") : "none"}; selected subject {selectedSubjectName || "none"}; can_edit_selected_subject {String(canEditSelectedSubject)}
-              </div>
-            ) : null}
-            <FormSection number="1" title="Context" description="Choose the subject, year, term and planning reference before adding framework detail.">
+            <FormSection number="1" title="Curriculum activity" description="Describe the piece of work you want to map.">
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Subject">
                   <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" value={selectedSubjectName} onChange={(event) => setSubject(event.target.value)}>
@@ -250,18 +268,48 @@ export default function AddEntryPage() {
                 </Field>
                 <Field label="Year group">
                   <SegmentedButtons options={yearGroups} value={yearGroup} onChange={setYearGroup} />
-                  <p className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700">Suggested progression reference based on year group. This can be changed. Suggested: {suggestedProgression}</p>
                 </Field>
-                <Field label="Term">
-                  <SegmentedButtons options={terms} value={term} onChange={setTerm} />
+                <Field label="Scheme of learning reference">
+                  <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={schemeReference} onChange={(event) => setSchemeReference(event.target.value)} />
                 </Field>
-                <Field label="Unit/topic">
-                  <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={unit} onChange={(event) => setUnit(event.target.value)} />
+                <Field label="Piece of work / activity title">
+                  <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} />
+                </Field>
+              </div>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <Field label="Description of the activity" wide>
+                  <textarea
+                    className="focus-ring min-h-24 w-full rounded-md border border-gray-300 px-3 py-2"
+                    value={activityDescription}
+                    onChange={(event) => setActivityDescription(event.target.value)}
+                    placeholder="A source investigation exploring migration, identity and post-war Britain."
+                  />
+                </Field>
+                <Field label="What pupils actually do in this task" wide>
+                  <textarea
+                    className="focus-ring min-h-28 w-full rounded-md border px-3 py-2"
+                    style={{ borderColor: showValidation && taskError ? "#dc2626" : "#d1d5db" }}
+                    value={taskDescription}
+                    onChange={(event) => setTaskDescription(event.target.value)}
+                    placeholder="Pupils compare sources, annotate evidence, discuss reliability and write a supported conclusion."
+                    aria-describedby="task-help task-count"
+                    required
+                    minLength={20}
+                    maxLength={500}
+                  />
+                  <div className="mt-1 flex flex-wrap items-start justify-between gap-2 text-xs">
+                    <p id="task-help" className={showValidation && taskError ? "font-semibold text-red-700" : "text-gray-500"}>
+                      {showValidation && taskError ? taskError : "Briefly describe the learner activity, not just the topic."}
+                    </p>
+                    <span id="task-count" className="font-semibold text-gray-500">
+                      {taskDescription.length}/500
+                    </span>
+                  </div>
                 </Field>
               </div>
             </FormSection>
 
-            <FormSection number="2" title="Framework references" description="Choose Literacy, Numeracy or DCF, then add one or more framework references for this piece of work.">
+            <FormSection number="2" title="Skills framework references" description="Add Literacy, Numeracy or DCF references that this activity genuinely develops.">
               <div>
                 <span className="mb-2 block text-sm font-semibold text-gray-700">Framework</span>
                 <div className="flex flex-wrap gap-2">
@@ -335,112 +383,104 @@ export default function AddEntryPage() {
                 </div>
               </div>
               <div className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="font-bold text-gray-950">Progression Step Reference</h2>
-                  <p className="mt-1 text-sm leading-6 text-gray-600">Select the progression descriptor for the selected framework element.</p>
-                </div>
-                <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-gray-700">{selectedFramework.shortName === "DCF" ? "DCF: steps 3-5" : "Secondary progression"}</span>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {progressionOptions.map((reference) => {
-                  const selected = selectedProgressionReference === reference;
-                  return (
-                    <button
-                      key={reference}
-                      className="focus-ring rounded-full border px-3 py-2 text-sm font-bold"
-                      style={selected ? { borderColor: theme.accent, backgroundColor: theme.soft, color: theme.text } : { borderColor: "#d1d5db", backgroundColor: "#ffffff", color: "#374151" }}
-                      type="button"
-                      onClick={() => setProgressionReference(reference)}
-                    >
-                      {reference}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="mt-4 rounded-lg border p-4" style={{ borderColor: theme.border, backgroundColor: theme.soft }}>
-              <h2 className="font-bold" style={{ color: theme.text }}>
-                Selected
-              </h2>
-              <p className="mt-2 text-sm font-semibold text-gray-800">
-                {selectedFrameworkName} - {selectedStrandName} - {selectedElementName} - {selectedProgressionReference}
-              </p>
-              <dl className="mt-4 space-y-3 text-sm">
-                <GuidanceRow label="Full strand name" value={selectedStrandName} />
-                <GuidanceRow label="Descriptor" value={progressionDescriptor} />
-                <GuidanceRow label="Teacher-friendly explanation" value={selectedElement?.explanation ?? "Select an element to see guidance."} />
-              </dl>
-              <div className="mt-4">
-                <h3 className="text-sm font-bold text-gray-900">Example classroom opportunities</h3>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {selectedElement?.examples.map((example) => (
-                    <span key={example} className="rounded-full bg-white px-3 py-1 text-xs font-semibold" style={{ color: theme.text }}>
-                      {example}
-                    </span>
-                  ))}
-              </div>
-              <button className="focus-ring btn btn-secondary mt-4" type="button" onClick={addFrameworkReference}>
-                Add reference
-              </button>
-            </div>
-            </div>
-
-            {frameworkReferences.length ? (
-              <div className="mt-4 grid gap-3">
-                {frameworkReferences.map((reference) => (
-                  <div key={reference.id} className="rounded-md border border-gray-200 bg-white p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-bold text-gray-950">{reference.framework}</p>
-                        <p className="mt-1 text-sm text-gray-700">
-                          {reference.strand} - {reference.element} - {reference.progressionReference}
-                        </p>
-                      </div>
-                      <button
-                        className="focus-ring rounded-md border border-gray-300 px-2 py-1 text-xs font-bold text-gray-700"
-                        type="button"
-                        onClick={() => setFrameworkReferences((current) => current.filter((item) => item.id !== reference.id))}
-                      >
-                        Remove
-                      </button>
-                    </div>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="font-bold text-gray-950">Progression descriptor</h2>
+                    <p className="mt-1 text-sm leading-6 text-gray-600">{selectedFramework.shortName === "DCF" ? "Only steps 3, 4 and 5 are shown for DCF." : "Choose from the official descriptor records available for this element."}</p>
                   </div>
-                ))}
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-gray-700">Suggested: {suggestedProgression}</span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {progressionOptions.length ? (
+                    progressionOptions.map((reference) => {
+                      const selected = selectedProgressionReference === reference;
+                      return (
+                        <button
+                          key={reference}
+                          className="focus-ring rounded-md border px-3 py-2 text-sm font-bold"
+                          style={selected ? { borderColor: theme.accent, backgroundColor: theme.soft, color: theme.text } : { borderColor: "#d1d5db", backgroundColor: "#ffffff", color: "#374151" }}
+                          type="button"
+                          onClick={() => setProgressionReference(reference)}
+                        >
+                          {reference}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">No official progression descriptor found. Please check the framework data.</p>
+                  )}
+                </div>
               </div>
-            ) : null}
+
+              <div className="mt-4 rounded-lg border p-4" style={{ borderColor: theme.border, backgroundColor: theme.soft }}>
+                <h2 className="font-bold" style={{ color: theme.text }}>
+                  Reference detail
+                </h2>
+                <dl className="mt-4 space-y-3 text-sm">
+                  <GuidanceRow label="Framework" value={selectedFrameworkName} />
+                  <GuidanceRow label="Strand button label" value={strandButtonLabel(selectedFrameworkName, selectedStrandName)} />
+                  <GuidanceRow label="Full official strand name" value={selectedStrandName} />
+                  <GuidanceRow label="Element" value={selectedElementName} />
+                  <GuidanceRow label="Progression step" value={selectedProgressionReference} />
+                  <GuidanceRow label="Official progression descriptor" value={progressionDescriptor} />
+                  {selectedElement?.explanation ? <GuidanceRow label="How this might look in a lesson" value={selectedElement.explanation} /> : null}
+                </dl>
+                <Field label="Optional explanation/notes about how the activity meets this reference" wide>
+                  <textarea className="focus-ring mt-2 min-h-20 w-full rounded-md border border-gray-300 px-3 py-2" value={frameworkNotes} onChange={(event) => setFrameworkNotes(event.target.value)} />
+                </Field>
+                <button className="focus-ring btn btn-secondary mt-4" type="button" onClick={addFrameworkReference} disabled={!selectedDescriptor?.id}>
+                  Add framework reference
+                </button>
+              </div>
             </FormSection>
 
-            <FormSection number="3" title="Activity details" description="Add the planned activity and scheme reference for this piece of work.">
-              <Field label="Scheme of learning reference">
-                <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={schemeReference} onChange={(event) => setSchemeReference(event.target.value)} />
-              </Field>
-            <div className="mt-4">
-            <Field label="Learning Activity / Task Description" wide>
-              <textarea
-                className="focus-ring min-h-28 w-full rounded-md border px-3 py-2"
-                style={{ borderColor: showValidation && activityError ? "#dc2626" : "#d1d5db" }}
-                value={activityDescription}
-                onChange={(event) => setActivityDescription(event.target.value)}
-                placeholder="Pupils interpret reaction graphs and use data to justify conclusions."
-                aria-describedby="activity-help activity-count"
-                required
-                minLength={20}
-                maxLength={250}
-              />
-              <div className="mt-1 flex flex-wrap items-start justify-between gap-2 text-xs">
-                <p id="activity-help" className={showValidation && activityError ? "font-semibold text-red-700" : "text-gray-500"}>
-                  {showValidation && activityError ? activityError : "Briefly describe what pupils actually do in this task."}
-                </p>
-                <span id="activity-count" className="font-semibold text-gray-500">
-                  {activityDescription.length}/250
-                </span>
-              </div>
-            </Field>
-            </div>
+            <FormSection number="3" title="Selected framework references" description="These references will be saved for this piece of work.">
+              {frameworkReferences.length ? (
+                <div className="grid gap-3">
+                  {frameworkReferences.map((reference) => (
+                    <div key={reference.id} className="rounded-md border border-gray-200 bg-white p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-bold text-gray-950">{reference.framework}</p>
+                          <p className="mt-1 text-sm text-gray-700">
+                            {reference.strand} - {reference.element} - {reference.progressionReference}
+                          </p>
+                          <p className="mt-2 line-clamp-2 text-xs leading-5 text-gray-500">{reference.descriptor}</p>
+                          {reference.notes ? <p className="mt-2 text-xs font-semibold leading-5 text-gray-600">Notes: {reference.notes}</p> : null}
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            className="focus-ring rounded-md border border-gray-300 px-2 py-1 text-xs font-bold text-gray-700"
+                            type="button"
+                            onClick={() => {
+                              setFramework(reference.framework);
+                              setStrand(reference.strand);
+                              setElement(reference.element);
+                              setProgressionReference(reference.progressionReference ?? "Not specified");
+                              setFrameworkNotes(reference.notes ?? "");
+                              setFrameworkReferences((current) => current.filter((item) => item.id !== reference.id));
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="focus-ring rounded-md border border-gray-300 px-2 py-1 text-xs font-bold text-gray-700"
+                            type="button"
+                            onClick={() => setFrameworkReferences((current) => current.filter((item) => item.id !== reference.id))}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-600">No framework references added yet.</p>
+              )}
             </FormSection>
 
-            <FormSection number="4" title="Cross-cutting themes" description="Optional theme references for later curriculum coverage analysis. These do not use progression steps.">
+            <FormSection number="4" title="Cross-cutting themes" description="Tag any wider curriculum themes represented in this activity.">
               <div className="grid gap-2 sm:grid-cols-2">
                 {crossCuttingThemes.filter((themeItem) => themeItem.active).map((themeItem) => (
                   <label key={themeItem.id} className="flex items-start gap-3 rounded-md border border-gray-200 bg-white p-3 text-sm font-semibold text-gray-800">
@@ -530,7 +570,7 @@ export default function AddEntryPage() {
               <GuidanceRow label="Strand" value={strandButtonLabel(selectedFrameworkName, selectedStrandName)} />
               <GuidanceRow label="Full strand name" value={selectedStrandName} />
               <GuidanceRow label="Progression step" value={selectedProgressionReference} />
-              <GuidanceRow label="Descriptor" value={progressionDescriptor} />
+              <GuidanceRow label="Official progression descriptor" value={progressionDescriptor} />
             </dl>
             <p className="mt-2 text-sm leading-6 text-gray-700">{selectedElement?.explanation}</p>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -616,12 +656,6 @@ function normaliseSubjectName(subject: string) {
 function hasAssignedSubject(assignedSubjects: string[], subject: string) {
   const selected = normaliseSubjectName(subject);
   return assignedSubjects.some((assignedSubject) => normaliseSubjectName(assignedSubject) === selected);
-}
-
-function progressionStepNumber(reference: ProgressionReference | undefined) {
-  if (!reference || reference === "Not specified") return null;
-  const match = reference.match(/Step ([1-5])/);
-  return match ? Number(match[1]) : null;
 }
 
 function strandButtonLabel(framework: string, strand: string) {

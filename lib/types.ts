@@ -24,6 +24,7 @@ export type ElementDefinition = {
   explanation: string;
   examples: string[];
   progressionDescriptors: Record<ProgressionStep, string>;
+  progressionDescriptorRefs?: ProgressionDescriptorDefinition[];
   searchKeywords: string[];
   relatedConnections: string[];
 };
@@ -58,6 +59,13 @@ export type MappingFrameworkReference = {
   notes?: string;
 };
 
+export type ProgressionDescriptorDefinition = {
+  id: string;
+  progressionStep: ProgressionStep;
+  progressionStepNumber: number;
+  descriptorText: string;
+};
+
 export type MappingEntry = {
   schoolId?: string;
   subjectId?: string;
@@ -79,6 +87,7 @@ export type MappingEntry = {
   term: string;
   unit: string;
   activityDescription: string;
+  taskDescription?: string;
   schemeReference: string;
   progressionReference?: ProgressionReference;
   note?: string;

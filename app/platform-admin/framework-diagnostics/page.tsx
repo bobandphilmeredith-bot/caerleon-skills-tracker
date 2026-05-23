@@ -26,6 +26,7 @@ export default function FrameworkDiagnosticsPage() {
   const frameworkDiagnostics = buildFrameworkDiagnostics(frameworkLibrary);
   const themeDiagnostics = buildThemeDiagnostics(crossCuttingThemes, mappings);
   const junkFindings = findPrototypeLabels(frameworkLibrary);
+  const placeholderDescriptors = findPlaceholderDescriptors(frameworkLibrary);
 
   const payload = useMemo(
     () => ({
@@ -148,6 +149,16 @@ export default function FrameworkDiagnosticsPage() {
         </article>
       )}
 
+      {placeholderDescriptors.length ? (
+        <article className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm font-bold text-red-800 shadow-sm">
+          Placeholder progression descriptor text detected: {placeholderDescriptors.join(", ")}
+        </article>
+      ) : (
+        <article className="rounded-lg border border-green-200 bg-green-50 p-5 text-sm font-bold text-green-800 shadow-sm">
+          No active descriptor text contains "curriculum opportunities linked to".
+        </article>
+      )}
+
       <article className="rounded-lg border border-gray-200 bg-gray-950 p-5 text-sm text-white shadow-sm">
         <h2 className="text-lg font-bold">Final save payload preview</h2>
         <pre className="mt-4 overflow-auto rounded-md bg-black/40 p-4 text-xs leading-6">{JSON.stringify(payload, null, 2)}</pre>
@@ -228,4 +239,16 @@ function findPrototypeLabels(frameworkLibrary: FrameworkDefinition[]) {
   ]);
   const labels = frameworkLibrary.flatMap((framework) => [framework.name, ...framework.strands.flatMap((strand) => [strand.name, ...strand.elements.map((element) => element.name)])]);
   return labels.filter((label) => blocked.has(label));
+}
+
+function findPlaceholderDescriptors(frameworkLibrary: FrameworkDefinition[]) {
+  return frameworkLibrary.flatMap((framework) =>
+    framework.strands.flatMap((strand) =>
+      strand.elements.flatMap((element) =>
+        Object.entries(element.progressionDescriptors)
+          .filter(([, descriptor]) => descriptor.includes("curriculum opportunities linked to"))
+          .map(([step]) => `${framework.name} / ${strand.name} / ${element.name} / ${step}`)
+      )
+    )
+  );
 }

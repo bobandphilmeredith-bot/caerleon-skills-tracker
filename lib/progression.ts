@@ -25,8 +25,8 @@ export function progressionReferenceForEntry(entry: Pick<MappingEntry, "year" | 
 
 export function descriptorForReference(element: ElementDefinition | undefined, reference: ProgressionReference) {
   const step = referenceToStep(reference);
-  if (!element || !step) return "No progression descriptor selected for this mapping entry.";
-  return element.progressionDescriptors?.[step] ?? "Progression descriptor can be edited in Admin Setup.";
+  if (!element || !step) return "No official progression descriptor found for this selection. Please check the framework seed data.";
+  return element.progressionDescriptors?.[step] || "No official progression descriptor found for this selection. Please check the framework seed data.";
 }
 
 export function referenceToStep(reference: ProgressionReference): ProgressionStep | null {

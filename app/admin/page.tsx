@@ -20,7 +20,7 @@ const adminTabs: AdminTab[] = ["School", "Branding", "Subjects", "AoLE", "Framew
 export default function AdminPage() {
   const { canManageSchool } = useAuth();
   const { settings, updateBranding, updateFrameworkTheme, resetBranding, resetAllSettings } = useSchoolSettings();
-  const { schools, currentSchool, currentSchoolId, data, switchSchool, addSchool, updateSchool, toggleSchoolActive } = useCurrentSchool();
+  const { schools, currentSchool, currentSchoolId, data, liveDiagnostics, switchSchool, addSchool, updateSchool, toggleSchoolActive } = useCurrentSchool();
   const [subjects, setSubjects] = useState<SubjectConfig[]>(data.subjectConfigs);
   const [aoles, setAoles] = useState<AoleConfig[]>(data.aoleConfigs);
   const [frameworks, setFrameworks] = useState<AdminFramework[]>(() => loadAdminFrameworks(data.frameworkLibrary, currentSchoolId));
@@ -33,6 +33,7 @@ export default function AdminPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
   const [activeTab, setActiveTab] = useState<AdminTab>("School");
+  const schoolOptions = schools.some((school) => school.id === currentSchoolId) ? schools : [currentSchool, ...schools];
 
   if (!canManageSchool) {
     return <AccessDenied title="Admin setup restricted" message="Only platform admins and school admins can manage school setup, users, frameworks, branding and practice records." />;
@@ -231,7 +232,7 @@ export default function AdminPage() {
           </div>
           <div className="flex flex-wrap gap-3">
             <select className="focus-ring rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold" value={currentSchoolId} onChange={(event) => switchSchool(event.target.value)}>
-              {schools.filter((school) => school.active).map((school) => (
+              {schoolOptions.filter((school) => school.active).map((school) => (
                 <option key={school.id} value={school.id}>
                   {school.name}
                 </option>
@@ -364,6 +365,12 @@ export default function AdminPage() {
           <button className="focus-ring btn btn-primary" type="button" onClick={addSubject}>
             Add subject
           </button>
+        </div>
+        <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-700">
+          <p>Current school id: {currentSchool.id}</p>
+          <p>Current school slug: {currentSchool.slug}</p>
+          <p>Raw subject query count: {liveDiagnostics?.subjectQueryCount ?? subjects.length}</p>
+          <p>Subject query error: {liveDiagnostics?.subjectQueryError ?? "None"}</p>
         </div>
 
         <div className="mt-4 overflow-x-auto">

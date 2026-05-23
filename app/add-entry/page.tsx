@@ -10,7 +10,7 @@ import { areaThemes, themeForFramework } from "@/lib/theme";
 
 export default function AddEntryPage() {
   const { canEditMappings, currentUser } = useAuth();
-  const { currentSchoolId, data, addMapping } = useCurrentSchool();
+  const { currentSchool, currentSchoolId, data, liveDiagnostics, addMapping } = useCurrentSchool();
   const { frameworkLibrary, subjectConfigs, terms, yearGroups, crossCuttingThemes } = data;
   const progressionFrameworkLibrary = useMemo(
     () => frameworkLibrary.filter((item) => ["Literacy", "Numeracy", "DCF"].includes(item.shortName)),
@@ -301,6 +301,14 @@ export default function AddEntryPage() {
           {activeSubjects.length === 0 ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
               No subjects found for this school. Add subjects in Admin first.
+              {isDevelopment || liveDiagnostics ? (
+                <div className="mt-3 rounded-md bg-white/70 px-3 py-2 text-xs leading-5 text-amber-950">
+                  <p>Current school id: {currentSchool.id}</p>
+                  <p>Current school slug: {currentSchool.slug}</p>
+                  <p>Raw subject query count: {liveDiagnostics?.subjectQueryCount ?? 0}</p>
+                  <p>Subject query error: {liveDiagnostics?.subjectQueryError ?? "None"}</p>
+                </div>
+              ) : null}
             </div>
           ) : null}
 

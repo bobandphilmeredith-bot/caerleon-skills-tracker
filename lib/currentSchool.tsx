@@ -13,11 +13,19 @@ type MappingMutationResult = {
   message?: string;
 };
 
+type LiveDataDiagnostics = {
+  schoolId: string;
+  schoolSlug: string;
+  subjectQueryCount: number;
+  subjectQueryError: string | null;
+};
+
 type CurrentSchoolContextValue = {
   schools: School[];
   currentSchool: School;
   currentSchoolId: string;
   data: SchoolDataBundle;
+  liveDiagnostics?: LiveDataDiagnostics | null;
   switchSchool: (schoolId: string) => void;
   addSchool: () => School;
   updateSchool: (schoolId: string, patch: Partial<School>) => void;
@@ -39,6 +47,8 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   const [mappingOverrides, setMappingOverrides] = useState<Record<string, MappingEntry[]>>({});
   const [liveMappings, setLiveMappings] = useState<MappingEntry[]>([]);
   const [liveReferenceMaps, setLiveReferenceMaps] = useState<LiveReferenceMaps | null>(null);
+  const [liveSchool, setLiveSchool] = useState<School | null>(null);
+  const [liveDiagnostics, setLiveDiagnostics] = useState<LiveDataDiagnostics | null>(null);
   const [liveFrameworkLibrary, setLiveFrameworkLibrary] = useState<SchoolDataBundle["frameworkLibrary"]>([]);
   const [liveSubjectConfigs, setLiveSubjectConfigs] = useState<SubjectConfig[]>([]);
   const [liveCrossCuttingThemes, setLiveCrossCuttingThemes] = useState<CrossCuttingTheme[]>([]);
@@ -56,9 +66,10 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
     if (savedCurrent) setCurrentSchoolId(savedCurrent);
   }, []);
 
-  const currentSchool = schools.find((school) => school.id === currentSchoolId) ?? schools[0] ?? sampleSchools[0];
+  const localCurrentSchool = schools.find((school) => school.id === currentSchoolId) ?? schools[0] ?? sampleSchools[0];
+  const currentSchool = !isDemoLoginEnabled && liveSchool ? liveSchool : localCurrentSchool;
   const baseData = customData[currentSchool.id] ?? schoolDataById[currentSchool.id] ?? createEmptySchoolData(currentSchool.id);
-  const liveSchoolId = isDemoLoginEnabled ? currentSchool.id : currentUser?.schoolId;
+  const liveSchoolId = isDemoLoginEnabled ? currentSchool.id : (liveSchool?.id ?? currentUser?.schoolId);
   const useLiveData = !isDemoLoginEnabled && Boolean(liveSchoolId);
   const currentMappings = useLiveData ? liveMappings : (mappingOverrides[currentSchool.id] ?? baseData.mappings);
   const currentFrameworkLibrary = useLiveData ? liveFrameworkLibrary : baseData.frameworkLibrary;
@@ -96,11 +107,13 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
     }
 
     const client = supabase;
-    const refs = await loadLiveReferenceMaps(client, liveSchoolId);
+    const refs = await loadLiveReferenceMaps(client, liveSchoolId, localCurrentSchool);
+    if (refs.school) setLiveSchool(refs.school);
+    setLiveDiagnostics(refs.diagnostics);
     const { data: rows, error } = await client
       .from("curriculum_mappings")
       .select("id,school_id,subject_id,year_group,term,scheme_reference,activity_title,activity_description,task_description,created_at,updated_at")
-      .eq("school_id", liveSchoolId)
+      .eq("school_id", refs.diagnostics.schoolId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -114,7 +127,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
     setLiveSubjectConfigs(refs.subjectConfigs);
     setLiveCrossCuttingThemes(refs.crossCuttingThemes);
     setLiveMappings(((rows ?? []) as CurriculumMappingRow[]).map((row) => curriculumRowToMapping(row, refs)));
-  }, [liveSchoolId]);
+  }, [liveSchoolId, localCurrentSchool]);
 
   useEffect(() => {
     void loadLiveMappings();
@@ -147,6 +160,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
       currentSchool,
       currentSchoolId: currentSchool.id,
       data,
+      liveDiagnostics,
       switchSchool: (schoolId) => {
         const next = schools.find((school) => school.id === schoolId && school.active);
         if (next) setCurrentSchoolId(next.id);
@@ -184,14 +198,15 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
           if (!liveSchoolId) return { ok: false, message: "No live school is linked to this account." };
 
           const client = supabase;
-          const refs = liveReferenceMaps ?? (await loadLiveReferenceMaps(client, liveSchoolId));
+          const refs = liveReferenceMaps ?? (await loadLiveReferenceMaps(client, liveSchoolId, localCurrentSchool));
+          const schoolIdForWrite = refs.diagnostics.schoolId;
           const ids = resolveSubjectId(entry, refs);
           if (!ids.ok) return { ok: false, message: ids.message };
           const frameworkRefs = resolveLiveReferences(entry, refs);
           if (!frameworkRefs.ok) return { ok: false, message: frameworkRefs.message };
 
           const { data: insertedRows, error } = await client.from("curriculum_mappings").insert({
-            school_id: liveSchoolId,
+            school_id: schoolIdForWrite,
             subject_id: ids.subjectId,
             year_group: entry.year,
             term: entry.term,
@@ -227,7 +242,8 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
 
           const merged = { ...existing, ...patch };
           const client = supabase;
-          const refs = liveReferenceMaps ?? (await loadLiveReferenceMaps(client, liveSchoolId));
+          const refs = liveReferenceMaps ?? (await loadLiveReferenceMaps(client, liveSchoolId, localCurrentSchool));
+          const schoolIdForWrite = refs.diagnostics.schoolId;
           const ids = resolveSubjectId(merged, refs);
           if (!ids.ok) return { ok: false, message: ids.message };
           const frameworkRefs = resolveLiveReferences(merged, refs);
@@ -246,7 +262,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
               updated_at: new Date().toISOString()
             })
             .eq("id", entryId)
-            .eq("school_id", liveSchoolId);
+            .eq("school_id", schoolIdForWrite);
 
           if (error) return { ok: false, message: error.message };
           const frameworkLinkResult = await replaceFrameworkLinks(client, entryId, frameworkRefs.references);
@@ -268,7 +284,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
           if (!supabase) return { ok: false, message: "Supabase environment variables are missing." };
           if (!liveSchoolId) return { ok: false, message: "No live school is linked to this account." };
 
-          const { error } = await supabase.from("curriculum_mappings").delete().eq("id", entryId).eq("school_id", liveSchoolId);
+          const { error } = await supabase.from("curriculum_mappings").delete().eq("id", entryId).eq("school_id", liveSchool?.id ?? liveSchoolId);
           if (error) return { ok: false, message: error.message };
           await loadLiveMappings();
           return { ok: true };
@@ -281,7 +297,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
         return { ok: true };
       }
     }),
-    [currentSchool, currentUser?.id, data, liveMappings, liveReferenceMaps, liveSchoolId, loadLiveMappings, schools]
+    [currentSchool, currentUser?.id, data, liveDiagnostics, liveMappings, liveReferenceMaps, liveSchool?.id, liveSchoolId, loadLiveMappings, localCurrentSchool, schools]
   );
 
   return <CurrentSchoolContext.Provider value={value}>{children}</CurrentSchoolContext.Provider>;
@@ -297,6 +313,13 @@ type ReferenceRow = {
   id: string;
   name: string;
   active?: boolean;
+};
+
+type SubjectReferenceRow = ReferenceRow & {
+  school_id: string;
+  short_name: string | null;
+  display_order: number | null;
+  aoe_id: string | null;
 };
 
 type FrameworkReferenceRow = ReferenceRow & {
@@ -329,8 +352,10 @@ type ProgressionDescriptorRow = {
 };
 
 type LiveReferenceMaps = {
-  subjectsByName: Map<string, ReferenceRow>;
-  subjectsById: Map<string, ReferenceRow>;
+  school?: School;
+  diagnostics: LiveDataDiagnostics;
+  subjectsByName: Map<string, SubjectReferenceRow>;
+  subjectsById: Map<string, SubjectReferenceRow>;
   frameworksByName: Map<string, FrameworkReferenceRow>;
   frameworksById: Map<string, FrameworkReferenceRow>;
   strandsByKey: Map<string, StrandReferenceRow>;
@@ -372,17 +397,25 @@ type FrameworkLinkRow = {
   notes: string | null;
 };
 
-async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string): Promise<LiveReferenceMaps> {
+async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, fallbackSchool?: School): Promise<LiveReferenceMaps> {
+  const resolvedSchool = await resolveLiveSchool(client, schoolId, fallbackSchool);
+  const querySchoolId = resolvedSchool?.id ?? schoolId;
   const [subjectsResult, frameworksResult, strandsResult, elementsResult, themesResult] = await Promise.all([
-    client.from("subjects").select("id,name").eq("school_id", schoolId).eq("active", true).order("name", { ascending: true }),
-    client.from("frameworks").select("id,name,short_name,active").eq("school_id", schoolId).order("display_order", { ascending: true }),
-    client.from("strands").select("id,name,short_name,framework_id,active").eq("school_id", schoolId).order("display_order", { ascending: true }),
+    client
+      .from("subjects")
+      .select("id,school_id,name,short_name,active,display_order,aoe_id")
+      .eq("school_id", querySchoolId)
+      .eq("active", true)
+      .order("display_order", { ascending: true })
+      .order("name", { ascending: true }),
+    client.from("frameworks").select("id,name,short_name,active").eq("school_id", querySchoolId).order("display_order", { ascending: true }),
+    client.from("strands").select("id,name,short_name,framework_id,active").eq("school_id", querySchoolId).order("display_order", { ascending: true }),
     client
       .from("elements")
       .select("id,name,strand_id,official_wording,teacher_friendly_explanation,example_classroom_opportunities,search_keywords,related_connections,display_order,active")
-      .eq("school_id", schoolId)
+      .eq("school_id", querySchoolId)
       .order("display_order", { ascending: true }),
-    client.from("cross_cutting_themes").select("id,school_id,name,description,active,display_order").or(`school_id.eq.${schoolId},school_id.is.null`).order("display_order", { ascending: true })
+    client.from("cross_cutting_themes").select("id,school_id,name,description,active,display_order").or(`school_id.eq.${querySchoolId},school_id.is.null`).order("display_order", { ascending: true })
   ]);
   const elementIds = ((elementsResult.data ?? []) as ElementReferenceRow[]).map((row) => row.id);
   const { data: descriptorRows } = elementIds.length
@@ -394,7 +427,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string): 
         .order("display_order", { ascending: true })
     : { data: [] as ProgressionDescriptorRow[] };
 
-  const subjects = ((subjectsResult.data ?? []) as ReferenceRow[]).map(normaliseReferenceName);
+  const subjects = ((subjectsResult.data ?? []) as SubjectReferenceRow[]).map(normaliseReferenceName);
   const frameworks = ((frameworksResult.data ?? []) as FrameworkReferenceRow[]).map(normaliseReferenceName);
   const strands = ((strandsResult.data ?? []) as StrandReferenceRow[]).map(normaliseReferenceName);
   const elements = ((elementsResult.data ?? []) as ElementReferenceRow[]).map(normaliseReferenceName);
@@ -406,7 +439,7 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
   active: theme.active,
   displayOrder: theme.display_order,
 }));
-  const { data: mappingRows } = await client.from("curriculum_mappings").select("id").eq("school_id", schoolId);
+  const { data: mappingRows } = await client.from("curriculum_mappings").select("id").eq("school_id", querySchoolId);
   const mappingIds = ((mappingRows ?? []) as { id: string }[]).map((row) => row.id);
   const { data: frameworkLinkRows } = mappingIds.length
     ? await client.from("curriculum_mapping_framework_links").select("id,mapping_id,framework_id,strand_id,element_id,progression_descriptor_id,progression_step,notes").in("mapping_id", mappingIds)
@@ -441,21 +474,21 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
 
   const frameworkLibrary = frameworks.filter((framework) => framework.active !== false).map((framework) => ({
     id: framework.id,
-    schoolId,
+    schoolId: querySchoolId,
     name: framework.name,
     shortName: framework.short_name,
     strands: strands
       .filter((strand) => strand.framework_id === framework.id && strand.active !== false)
       .map((strand) => ({
         id: strand.id,
-        schoolId,
+        schoolId: querySchoolId,
         name: strand.name,
         shortName: strand.short_name,
         elements: elements
           .filter((element) => element.strand_id === strand.id && element.active !== false)
           .map((element) => ({
             id: element.id,
-            schoolId,
+            schoolId: querySchoolId,
             name: element.name,
             officialWording: element.official_wording ?? element.teacher_friendly_explanation,
             explanation: element.teacher_friendly_explanation,
@@ -488,15 +521,24 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
   }));
 
   const subjectConfigs = subjects.map((subject, index) => ({
-    schoolId,
+    schoolId: subject.school_id,
     id: subject.id,
     name: subject.name,
+    shortName: subject.short_name,
+    aoeId: subject.aoe_id,
     active: true,
-    displayOrder: index + 1,
+    displayOrder: subject.display_order ?? index + 1,
     appearsInMappingDropdowns: true
   }));
 
   return {
+    school: resolvedSchool,
+    diagnostics: {
+      schoolId: querySchoolId,
+      schoolSlug: resolvedSchool?.slug ?? fallbackSchool?.slug ?? "",
+      subjectQueryCount: subjectsResult.data?.length ?? 0,
+      subjectQueryError: subjectsResult.error?.message ?? null
+    },
     subjectsByName: new Map(subjects.map((row) => [row.name, row])),
     subjectsById: new Map(subjects.map((row) => [row.id, row])),
     frameworksByName: new Map(frameworks.map((row) => [row.name, row])),
@@ -508,7 +550,7 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
     progressionDescriptorByElementAndStep,
     frameworkLibrary,
     subjectConfigs,
-    crossCuttingThemes: crossCuttingThemes.length ? crossCuttingThemes : defaultCrossCuttingThemes.map((theme) => ({ ...theme, schoolId })),
+    crossCuttingThemes: crossCuttingThemes.length ? crossCuttingThemes : defaultCrossCuttingThemes.map((theme) => ({ ...theme, schoolId: querySchoolId })),
     frameworkLinksByMappingId: buildFrameworkLinkMap((frameworkLinkRows ?? []) as FrameworkLinkRow[]),
     themeNamesByMappingId: buildThemeNameMap(linkRows ?? []),
     themeIdsByMappingId: buildThemeIdMap(linkRows ?? []),
@@ -555,6 +597,31 @@ function buildThemeNotesMap(rows: ThemeLinkRow[]) {
 
 function normaliseReferenceName<T extends ReferenceRow>(row: T): T {
   return { ...row, name: row.name.trim() };
+}
+
+async function resolveLiveSchool(client: SupabaseClient, schoolId: string, fallbackSchool?: School): Promise<School | undefined> {
+  const byId = await client.from("schools").select("id,slug,name").eq("id", schoolId).maybeSingle();
+  const row =
+    byId.data ??
+    (fallbackSchool?.slug
+      ? (await client.from("schools").select("id,slug,name").eq("slug", fallbackSchool.slug).maybeSingle()).data
+      : null) ??
+    (fallbackSchool?.name
+      ? (await client.from("schools").select("id,slug,name").eq("name", fallbackSchool.name).maybeSingle()).data
+      : null);
+
+  if (!row) return undefined;
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    motto: fallbackSchool?.motto ?? "Curriculum visibility",
+    logoUrl: fallbackSchool?.logoUrl ?? "/schlogo.png",
+    primaryColour: fallbackSchool?.primaryColour ?? "#741B47",
+    secondaryColour: fallbackSchool?.secondaryColour ?? "#571435",
+    active: true,
+    createdAt: fallbackSchool?.createdAt ?? new Date().toISOString().slice(0, 10)
+  };
 }
 
 function referenceKey(...parts: string[]) {

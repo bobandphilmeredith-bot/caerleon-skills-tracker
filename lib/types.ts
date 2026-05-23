@@ -105,6 +105,8 @@ export type SubjectConfig = {
   schoolId?: string;
   id: string;
   name: string;
+  shortName?: string | null;
+  aoeId?: string | null;
   aole?: string;
   active: boolean;
   displayOrder: number;

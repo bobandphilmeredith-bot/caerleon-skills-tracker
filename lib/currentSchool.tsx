@@ -412,7 +412,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
   const strandQuerySelect = "id, school_id, framework_id, name, short_name, description, display_order, active";
   const elementQuerySelect = "id, school_id, strand_id, name, description, official_wording, teacher_friendly_explanation, display_order, active";
   const descriptorQuerySelect = "id, school_id, element_id, progression_step, descriptor_text, display_order, active";
-  const [subjectsResult, frameworksResult, strandsResult, elementsResult, descriptorsResult, themesResult] = await Promise.all([
+  let [subjectsResult, frameworksResult, strandsResult, elementsResult, descriptorsResult, themesResult] = await Promise.all([
     client
       .from("subjects")
       .select(subjectQuerySelect)
@@ -451,6 +451,16 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
       .order("name", { ascending: true })
   ]);
 
+  if (!themesResult.error && !themesResult.data?.length) {
+    themesResult = await client
+      .from("cross_cutting_themes")
+      .select("id,school_id,name,description,active,display_order")
+      .or(`school_id.eq.${querySchoolId},school_id.is.null`)
+      .eq("active", true)
+      .order("display_order", { ascending: true })
+      .order("name", { ascending: true });
+  }
+
   const subjects = ((subjectsResult.data ?? []) as SubjectReferenceRow[]).map(normaliseReferenceName);
   const frameworks = ((frameworksResult.data ?? []) as FrameworkReferenceRow[]).map(normaliseReferenceName);
   const strands = ((strandsResult.data ?? []) as StrandReferenceRow[]).map(normaliseReferenceName);
@@ -461,8 +471,8 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
     schoolId: theme.school_id ?? null,
     name: theme.name,
     description: theme.description,
-    active: theme.active,
-    displayOrder: theme.display_order
+    active: theme.active ?? true,
+    displayOrder: theme.display_order ?? 0
   }));
   const { data: mappingRows } = await client.from("curriculum_mappings").select("id").eq("school_id", querySchoolId);
   const mappingIds = ((mappingRows ?? []) as { id: string }[]).map((row) => row.id);

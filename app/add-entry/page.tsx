@@ -5,12 +5,12 @@ import { AccessDenied } from "@/components/AccessDenied";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
-import type { ElementDefinition, FrameworkDefinition, MappingEntry, MappingFrameworkReference, ProgressionDescriptorDefinition, StrandDefinition, SubjectConfig } from "@/lib/types";
+import type { ElementDefinition, FrameworkDefinition, MappingEntry, MappingFrameworkReference, ProgressionDescriptorDefinition, StrandDefinition } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
 export default function AddEntryPage() {
   const { canEditMappings, currentUser } = useAuth();
-  const { currentSchool, currentSchoolId, data, liveDiagnostics, addMapping } = useCurrentSchool();
+  const { currentSchoolId, data, addMapping } = useCurrentSchool();
   const { frameworkLibrary, subjectConfigs, terms, yearGroups, crossCuttingThemes } = data;
   const progressionFrameworkLibrary = useMemo(
     () => frameworkLibrary.filter((item) => ["Literacy", "Numeracy", "DCF"].includes(item.shortName)),
@@ -31,7 +31,6 @@ export default function AddEntryPage() {
   const [activityTitle, setActivityTitle] = useState("");
   const [schemeReference, setSchemeReference] = useState("");
   const [activityDescription, setActivityDescription] = useState("");
-  const [taskDescription, setTaskDescription] = useState("");
   const [frameworkNotes, setFrameworkNotes] = useState("");
   const [frameworkReferences, setFrameworkReferences] = useState<MappingFrameworkReference[]>([]);
   const [selectedThemeIds, setSelectedThemeIds] = useState<string[]>([]);
@@ -41,10 +40,11 @@ export default function AddEntryPage() {
   const [saveMessage, setSaveMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  const selectedThemes = useMemo(
-    () => crossCuttingThemes.filter((themeItem) => selectedThemeIds.includes(themeItem.id)),
-    [crossCuttingThemes, selectedThemeIds]
+  const themeOptions = useMemo(
+    () => crossCuttingThemes.filter((themeItem) => themeItem.active && looksLikeUuid(themeItem.id)),
+    [crossCuttingThemes]
   );
+  const selectedThemes = useMemo(() => themeOptions.filter((themeItem) => selectedThemeIds.includes(themeItem.id)), [themeOptions, selectedThemeIds]);
   const selectedSubject = activeSubjects.find((subject) => subject.id === subjectId);
   const selectedFramework = progressionFrameworkLibrary.find((item) => item.id === frameworkId) ?? progressionFrameworkLibrary[0];
   const strands = selectedFramework?.strands ?? [];
@@ -68,8 +68,6 @@ export default function AddEntryPage() {
     currentUser?.role === "platform_admin" ||
     currentUser?.role === "school_admin" ||
     hasAssignedSubject(currentUser?.assignedSubjects ?? [], selectedSubject.name);
-  const isDevelopment = process.env.NODE_ENV === "development";
-
   useEffect(() => {
     if (!selectedFramework?.id) {
       setFrameworkId("");
@@ -113,10 +111,9 @@ export default function AddEntryPage() {
   }, [progressionDescriptorId, selectedDescriptor?.id]);
 
   useEffect(() => {
-    if (!liveDiagnostics) return;
-    const liveThemeIds = new Set(crossCuttingThemes.map((themeItem) => themeItem.id));
-    setSelectedThemeIds((current) => current.filter((id) => liveThemeIds.has(id) && looksLikeUuid(id)));
-  }, [crossCuttingThemes, liveDiagnostics]);
+    const optionIds = new Set(themeOptions.map((themeItem) => themeItem.id));
+    setSelectedThemeIds((current) => current.filter((id) => optionIds.has(id)));
+  }, [themeOptions]);
 
   if (!canEditMappings) {
     return <AccessDenied title="Add mapping restricted" message="Your current role is read-only. Switch to a teacher, subject lead or school admin account to add curriculum mapping entries." />;
@@ -124,17 +121,8 @@ export default function AddEntryPage() {
 
   const trimmedActivityTitle = activityTitle.trim();
   const trimmedActivityDescription = activityDescription.trim();
-  const trimmedTaskDescription = taskDescription.trim();
   const trimmedSchemeReference = schemeReference.trim();
-  const taskError =
-    trimmedTaskDescription.length === 0
-      ? "What pupils actually do cannot be blank."
-      : trimmedTaskDescription.length < 20
-        ? "Use at least 20 characters."
-        : trimmedTaskDescription.length > 500
-          ? "Use 500 characters or fewer."
-          : "";
-  const hasAnyLink = frameworkReferences.length > 0 || selectedThemeIds.length > 0;
+  const hasAnyLink = frameworkReferences.length > 0 || selectedThemes.length > 0;
   const formError =
     hasSubjectRestrictedRole && !hasEditableSubjects
       ? "No editable subjects are assigned to your account. Contact a school administrator."
@@ -150,11 +138,9 @@ export default function AddEntryPage() {
                 ? "Scheme of learning reference cannot be blank."
                 : !trimmedActivityDescription
                   ? "Description of the activity cannot be blank."
-                  : taskError
-                    ? taskError
-                    : !hasAnyLink
-                      ? "Add at least one framework reference or cross-cutting theme."
-                      : "";
+                  : !hasAnyLink
+                    ? "Add at least one framework reference or cross-cutting theme."
+                    : "";
 
   function updateFramework(nextFrameworkId: string) {
     setFrameworkId(nextFrameworkId);
@@ -196,7 +182,7 @@ export default function AddEntryPage() {
       term,
       unit: trimmedActivityTitle,
       activityDescription: trimmedActivityDescription,
-      taskDescription: trimmedTaskDescription,
+      taskDescription: "",
       schemeReference: trimmedSchemeReference,
       progressionReference: frameworkReferences[0]?.progressionReference ?? "Not specified",
       crossCuttingThemeIds: selectedThemes.map((themeItem) => themeItem.id),
@@ -263,7 +249,6 @@ export default function AddEntryPage() {
     setActivityTitle("");
     setSchemeReference("");
     setActivityDescription("");
-    setTaskDescription("");
     setFrameworkNotes("");
     setFrameworkReferences([]);
     setSelectedThemeIds([]);
@@ -317,18 +302,6 @@ export default function AddEntryPage() {
           <StepPill number="4" title="Themes" />
           <StepPill number="5" title="Save" />
         </div>
-        {liveDiagnostics ? (
-          <div className="mb-5 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-700">
-            <p>Resolved school id: {liveDiagnostics.schoolId}</p>
-            <p>Subjects count: {liveDiagnostics.subjectQueryCount}</p>
-            <p>Subjects error: {liveDiagnostics.subjectQueryError ?? "None"}</p>
-            <p>Frameworks count: {liveDiagnostics.frameworkQueryCount}</p>
-            <p>Frameworks error: {liveDiagnostics.frameworkQueryError ?? "None"}</p>
-            <p>Strands count: {liveDiagnostics.strandQueryCount}</p>
-            <p>Elements count: {liveDiagnostics.elementQueryCount}</p>
-            <p>Descriptors count: {liveDiagnostics.descriptorQueryCount}</p>
-          </div>
-        ) : null}
 
         <div className="space-y-5">
           {hasSubjectRestrictedRole && !hasEditableSubjects ? (
@@ -339,15 +312,6 @@ export default function AddEntryPage() {
           {activeSubjects.length === 0 ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
               No subjects found for this school. Add subjects in Admin first.
-              {isDevelopment || liveDiagnostics ? (
-                <div className="mt-3 rounded-md bg-white/70 px-3 py-2 text-xs leading-5 text-amber-950">
-                  <p>Current school id: {currentSchool.id}</p>
-                  <p>Current school slug: {currentSchool.slug}</p>
-                  <p>Subject query select: {liveDiagnostics?.subjectQuerySelect ?? "id, school_id, name"}</p>
-                  <p>Raw subject query count: {liveDiagnostics?.subjectQueryCount ?? 0}</p>
-                  <p>Subject query error: {liveDiagnostics?.subjectQueryError ?? "None"}</p>
-                </div>
-              ) : null}
             </div>
           ) : null}
 
@@ -393,22 +357,6 @@ export default function AddEntryPage() {
                   onChange={(event) => setActivityDescription(event.target.value)}
                   placeholder="A source investigation exploring migration, identity and post-war Britain."
                 />
-              </Field>
-              <Field label="What pupils actually do in this task" wide>
-                <textarea
-                  className="focus-ring min-h-24 w-full rounded-md border px-3 py-2"
-                  style={{ borderColor: showValidation && taskError ? "#dc2626" : "#d1d5db" }}
-                  value={taskDescription}
-                  onChange={(event) => setTaskDescription(event.target.value)}
-                  placeholder="Pupils compare sources, annotate evidence, discuss reliability and write a supported conclusion."
-                  maxLength={500}
-                />
-                <div className="mt-1 flex flex-wrap items-start justify-between gap-2 text-xs">
-                  <p className={showValidation && taskError ? "font-semibold text-red-700" : "text-gray-500"}>
-                    {showValidation && taskError ? taskError : "Briefly describe the learner activity, not just the topic."}
-                  </p>
-                  <span className="font-semibold text-gray-500">{taskDescription.length}/500</span>
-                </div>
               </Field>
             </div>
           </FormSection>
@@ -469,15 +417,6 @@ export default function AddEntryPage() {
                       <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">No progression descriptors found for this element.</p>
                     )}
                   </div>
-                  {isDevelopment ? (
-                    <div className="mt-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs leading-5 text-gray-600">
-                      <p>Framework: {selectedFramework?.name ?? "None"} ({selectedFramework?.id ?? "no id"})</p>
-                      <p>Strand: {selectedStrand?.name ?? "None"} ({selectedStrand?.id ?? "no id"})</p>
-                      <p>Element: {selectedElement?.name ?? "None"} ({selectedElement?.id ?? "no id"})</p>
-                      <p>Descriptors loaded globally: {countDescriptors(progressionFrameworkLibrary)}</p>
-                      <p>Matching selected element: {availableDescriptors.length}</p>
-                    </div>
-                  ) : null}
                 </div>
 
                 {selectedFramework && selectedStrand && selectedElement && selectedDescriptor ? (
@@ -529,7 +468,7 @@ export default function AddEntryPage() {
 
           <FormSection number="4" title="Cross-cutting themes" description="Tag any wider curriculum themes represented in this activity.">
             <div className="grid gap-2 sm:grid-cols-2">
-              {crossCuttingThemes.filter((themeItem) => themeItem.active).map((themeItem) => (
+              {themeOptions.map((themeItem) => (
                 <label key={themeItem.id} className="flex items-start gap-3 rounded-md border border-gray-200 bg-white p-3 text-sm font-semibold text-gray-800">
                   <input
                     className="mt-1 h-4 w-4"
@@ -682,10 +621,6 @@ function previewReference(framework: FrameworkDefinition, strand: StrandDefiniti
     progressionReference: descriptor.progressionStep,
     descriptor: descriptor.descriptorText
   };
-}
-
-function countDescriptors(frameworks: FrameworkDefinition[]) {
-  return frameworks.reduce((frameworkTotal, framework) => frameworkTotal + framework.strands.reduce((strandTotal, strand) => strandTotal + strand.elements.reduce((elementTotal, element) => elementTotal + (element.progressionDescriptorRefs?.length ?? 0), 0), 0), 0);
 }
 
 function normaliseSubjectName(subject: string) {

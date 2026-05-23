@@ -5,7 +5,8 @@ import { AccessDenied } from "@/components/AccessDenied";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
-import type { ElementDefinition, FrameworkDefinition, MappingEntry, MappingFrameworkReference, ProgressionDescriptorDefinition, StrandDefinition } from "@/lib/types";
+import { supabase } from "@/lib/supabaseClient";
+import type { CrossCuttingTheme, ElementDefinition, FrameworkDefinition, MappingEntry, MappingFrameworkReference, ProgressionDescriptorDefinition, StrandDefinition } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
 export default function AddEntryPage() {
@@ -35,12 +36,13 @@ export default function AddEntryPage() {
   const [frameworkReferences, setFrameworkReferences] = useState<MappingFrameworkReference[]>([]);
   const [selectedThemeIds, setSelectedThemeIds] = useState<string[]>([]);
   const [themeNotes, setThemeNotes] = useState("");
+  const [themeRows, setThemeRows] = useState<CrossCuttingTheme[]>([]);
   const [showDescriptor, setShowDescriptor] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  const themeOptions = useMemo(() => crossCuttingThemes.filter((themeItem) => themeItem.active), [crossCuttingThemes]);
+  const themeOptions = useMemo(() => (themeRows.length ? themeRows : crossCuttingThemes).filter((themeItem) => themeItem.active), [crossCuttingThemes, themeRows]);
   const selectedThemes = useMemo(() => themeOptions.filter((themeItem) => selectedThemeIds.includes(themeItem.id)), [themeOptions, selectedThemeIds]);
   const selectedSubject = activeSubjects.find((subject) => subject.id === subjectId);
   const selectedFramework = progressionFrameworkLibrary.find((item) => item.id === frameworkId) ?? progressionFrameworkLibrary[0];
@@ -110,6 +112,33 @@ export default function AddEntryPage() {
     const optionIds = new Set(themeOptions.map((themeItem) => themeItem.id));
     setSelectedThemeIds((current) => current.filter((id) => optionIds.has(id)));
   }, [themeOptions]);
+
+  useEffect(() => {
+    if (!supabase || !looksLikeUuid(currentSchoolId)) return;
+    let cancelled = false;
+    void supabase
+      .from("themes")
+      .select("id,school_id,name,description,active")
+      .eq("school_id", currentSchoolId)
+      .eq("active", true)
+      .order("name", { ascending: true })
+      .then(({ data: rows }) => {
+        if (cancelled) return;
+        setThemeRows(
+          (rows ?? []).map((row, index) => ({
+            id: row.id,
+            schoolId: row.school_id,
+            name: row.name,
+            description: row.description,
+            active: row.active ?? true,
+            displayOrder: index + 1
+          }))
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSchoolId]);
 
   if (!canEditMappings) {
     return <AccessDenied title="Add mapping restricted" message="Your current role is read-only. Switch to a teacher, subject lead or school admin account to add curriculum mapping entries." />;

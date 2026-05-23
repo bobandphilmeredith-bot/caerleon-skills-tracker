@@ -19,6 +19,14 @@ type LiveDataDiagnostics = {
   subjectQuerySelect: string;
   subjectQueryCount: number;
   subjectQueryError: string | null;
+  frameworkQueryCount: number;
+  frameworkQueryError: string | null;
+  strandQueryCount: number;
+  strandQueryError: string | null;
+  elementQueryCount: number;
+  elementQueryError: string | null;
+  descriptorQueryCount: number;
+  descriptorQueryError: string | null;
 };
 
 type CurrentSchoolContextValue = {
@@ -70,8 +78,8 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   const localCurrentSchool = schools.find((school) => school.id === currentSchoolId) ?? schools[0] ?? sampleSchools[0];
   const currentSchool = !isDemoLoginEnabled && liveSchool ? liveSchool : localCurrentSchool;
   const baseData = customData[currentSchool.id] ?? schoolDataById[currentSchool.id] ?? createEmptySchoolData(currentSchool.id);
-  const liveSchoolId = isDemoLoginEnabled ? currentSchool.id : (liveSchool?.id ?? currentUser?.schoolId);
-  const useLiveData = !isDemoLoginEnabled && Boolean(liveSchoolId);
+  const liveSchoolId = isDemoLoginEnabled ? currentSchool.id : (liveSchool?.id ?? currentUser?.schoolId ?? "caerleon");
+  const useLiveData = !isDemoLoginEnabled && Boolean(liveReferenceMaps);
   const currentMappings = useLiveData ? liveMappings : (mappingOverrides[currentSchool.id] ?? baseData.mappings);
   const currentFrameworkLibrary = useLiveData ? liveFrameworkLibrary : baseData.frameworkLibrary;
   const currentSubjectConfigs = useLiveData ? liveSubjectConfigs : baseData.subjectConfigs;
@@ -321,32 +329,40 @@ type SubjectReferenceRow = ReferenceRow & {
 };
 
 type FrameworkReferenceRow = ReferenceRow & {
-  short_name: string;
+  school_id: string;
+  short_name: string | null;
+  description: string | null;
+  display_order: number | null;
+  active?: boolean;
 };
 
 type StrandReferenceRow = ReferenceRow & {
+  school_id: string;
   framework_id: string;
   short_name: string | null;
+  description: string | null;
+  display_order: number | null;
+  active?: boolean;
 };
 
 type ElementReferenceRow = ReferenceRow & {
+  school_id: string;
   strand_id: string;
+  description: string | null;
   official_wording: string | null;
-  teacher_friendly_explanation: string;
-  example_classroom_opportunities: string[];
-  search_keywords: string[];
-  related_connections: string[];
-  display_order: number;
+  teacher_friendly_explanation: string | null;
+  display_order: number | null;
+  active?: boolean;
 };
 
 type ProgressionDescriptorRow = {
   id: string;
+  school_id: string;
   element_id: string;
   progression_step: number | string;
-  descriptor?: string;
-  descriptor_text?: string;
+  descriptor_text: string | null;
   active?: boolean;
-  display_order?: number;
+  display_order: number | null;
 };
 
 type LiveReferenceMaps = {
@@ -399,35 +415,48 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
   const resolvedSchool = await resolveLiveSchool(client, schoolId, fallbackSchool);
   const querySchoolId = resolvedSchool?.id ?? schoolId;
   const subjectQuerySelect = "id, school_id, name";
-  const [subjectsResult, frameworksResult, strandsResult, elementsResult, themesResult] = await Promise.all([
+  const frameworkQuerySelect = "id, school_id, name, short_name, description, display_order, active";
+  const strandQuerySelect = "id, school_id, framework_id, name, short_name, description, display_order, active";
+  const elementQuerySelect = "id, school_id, strand_id, name, description, official_wording, teacher_friendly_explanation, display_order, active";
+  const descriptorQuerySelect = "id, school_id, element_id, progression_step, descriptor_text, display_order, active";
+  const [subjectsResult, frameworksResult, strandsResult, elementsResult, descriptorsResult, themesResult] = await Promise.all([
     client
       .from("subjects")
       .select(subjectQuerySelect)
       .eq("school_id", querySchoolId)
       .order("name", { ascending: true }),
-    client.from("frameworks").select("id,name,short_name,active").eq("school_id", querySchoolId).order("display_order", { ascending: true }),
-    client.from("strands").select("id,name,short_name,framework_id,active").eq("school_id", querySchoolId).order("display_order", { ascending: true }),
+    client
+      .from("frameworks")
+      .select(frameworkQuerySelect)
+      .eq("school_id", querySchoolId)
+      .eq("active", true)
+      .order("display_order", { ascending: true }),
+    client
+      .from("strands")
+      .select(strandQuerySelect)
+      .eq("school_id", querySchoolId)
+      .eq("active", true)
+      .order("display_order", { ascending: true }),
     client
       .from("elements")
-      .select("id,name,strand_id,official_wording,teacher_friendly_explanation,example_classroom_opportunities,search_keywords,related_connections,display_order,active")
+      .select(elementQuerySelect)
       .eq("school_id", querySchoolId)
+      .eq("active", true)
       .order("display_order", { ascending: true }),
+    client
+      .from("progression_descriptors")
+      .select(descriptorQuerySelect)
+      .eq("school_id", querySchoolId)
+      .eq("active", true)
+      .order("progression_step", { ascending: true }),
     client.from("cross_cutting_themes").select("id,school_id,name,description,active,display_order").or(`school_id.eq.${querySchoolId},school_id.is.null`).order("display_order", { ascending: true })
   ]);
-  const elementIds = ((elementsResult.data ?? []) as ElementReferenceRow[]).map((row) => row.id);
-  const { data: descriptorRows } = elementIds.length
-    ? await client
-        .from("progression_descriptors")
-        .select("id,element_id,progression_step,descriptor,descriptor_text,active,display_order")
-        .in("element_id", elementIds)
-        .eq("active", true)
-        .order("display_order", { ascending: true })
-    : { data: [] as ProgressionDescriptorRow[] };
 
   const subjects = ((subjectsResult.data ?? []) as SubjectReferenceRow[]).map(normaliseReferenceName);
   const frameworks = ((frameworksResult.data ?? []) as FrameworkReferenceRow[]).map(normaliseReferenceName);
   const strands = ((strandsResult.data ?? []) as StrandReferenceRow[]).map(normaliseReferenceName);
   const elements = ((elementsResult.data ?? []) as ElementReferenceRow[]).map(normaliseReferenceName);
+  const descriptorRows = ((descriptorsResult.data ?? []) as ProgressionDescriptorRow[]).filter((descriptor) => descriptorText(descriptor));
 const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((theme) => ({
   id: theme.id,
   schoolId: theme.school_id ?? null,
@@ -454,7 +483,7 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
   const elementsByKey = new Map<string, ElementReferenceRow>();
   const progressionDescriptorByElementAndStep = new Map<string, ProgressionDescriptorRow>();
 
-  for (const descriptor of (descriptorRows ?? []) as ProgressionDescriptorRow[]) {
+  for (const descriptor of descriptorRows) {
     progressionDescriptorByElementAndStep.set(referenceKey(descriptor.element_id, String(descriptor.progression_step)), descriptor);
   }
 
@@ -473,7 +502,7 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
     id: framework.id,
     schoolId: querySchoolId,
     name: framework.name,
-    shortName: framework.short_name,
+    shortName: framework.short_name ?? framework.name,
     strands: strands
       .filter((strand) => strand.framework_id === framework.id && strand.active !== false)
       .map((strand) => ({
@@ -487,9 +516,9 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
             id: element.id,
             schoolId: querySchoolId,
             name: element.name,
-            officialWording: element.official_wording ?? element.teacher_friendly_explanation,
-            explanation: element.teacher_friendly_explanation,
-            examples: element.example_classroom_opportunities ?? [],
+            officialWording: element.official_wording ?? element.description ?? element.teacher_friendly_explanation ?? element.name,
+            explanation: element.teacher_friendly_explanation ?? element.description ?? "",
+            examples: [],
             progressionDescriptors: Object.fromEntries(
               (["Step 1", "Step 2", "Step 3", "Step 4", "Step 5"] as ProgressionStep[]).map((step) => {
                 const descriptor = progressionDescriptorByElementAndStep.get(referenceKey(element.id, step.replace("Step ", ""))) ?? progressionDescriptorByElementAndStep.get(referenceKey(element.id, step));
@@ -511,8 +540,8 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
                   : null;
               })
               .filter((descriptor) => descriptor !== null),
-            searchKeywords: element.search_keywords ?? [],
-            relatedConnections: element.related_connections ?? []
+            searchKeywords: [],
+            relatedConnections: []
           }))
       }))
   }));
@@ -535,7 +564,15 @@ const crossCuttingThemes: CrossCuttingTheme[] = (themesResult.data ?? []).map((t
       schoolSlug: resolvedSchool?.slug ?? fallbackSchool?.slug ?? "",
       subjectQuerySelect,
       subjectQueryCount: subjectsResult.data?.length ?? 0,
-      subjectQueryError: subjectsResult.error?.message ?? null
+      subjectQueryError: subjectsResult.error?.message ?? null,
+      frameworkQueryCount: frameworksResult.data?.length ?? 0,
+      frameworkQueryError: frameworksResult.error?.message ?? null,
+      strandQueryCount: strandsResult.data?.length ?? 0,
+      strandQueryError: strandsResult.error?.message ?? null,
+      elementQueryCount: elementsResult.data?.length ?? 0,
+      elementQueryError: elementsResult.error?.message ?? null,
+      descriptorQueryCount: descriptorRows.length,
+      descriptorQueryError: descriptorsResult.error?.message ?? null
     },
     subjectsByName: new Map(subjects.map((row) => [row.name, row])),
     subjectsById: new Map(subjects.map((row) => [row.id, row])),
@@ -598,26 +635,18 @@ function normaliseReferenceName<T extends ReferenceRow>(row: T): T {
 }
 
 async function resolveLiveSchool(client: SupabaseClient, schoolId: string, fallbackSchool?: School): Promise<School | undefined> {
-  const byId = await client.from("schools").select("id,slug,name").eq("id", schoolId).maybeSingle();
-  const row =
-    byId.data ??
-    (fallbackSchool?.slug
-      ? (await client.from("schools").select("id,slug,name").eq("slug", fallbackSchool.slug).maybeSingle()).data
-      : null) ??
-    (fallbackSchool?.name
-      ? (await client.from("schools").select("id,slug,name").eq("name", fallbackSchool.name).maybeSingle()).data
-      : null);
+  const { data: row } = await client.from("schools").select("id, slug, name, motto, active").eq("slug", "caerleon").single();
 
   if (!row) return undefined;
   return {
     id: row.id,
     slug: row.slug,
     name: row.name,
-    motto: fallbackSchool?.motto ?? "Curriculum visibility",
+    motto: row.motto ?? fallbackSchool?.motto ?? "Curriculum visibility",
     logoUrl: fallbackSchool?.logoUrl ?? "/schlogo.png",
     primaryColour: fallbackSchool?.primaryColour ?? "#741B47",
     secondaryColour: fallbackSchool?.secondaryColour ?? "#571435",
-    active: true,
+    active: row.active ?? true,
     createdAt: fallbackSchool?.createdAt ?? new Date().toISOString().slice(0, 10)
   };
 }
@@ -813,7 +842,7 @@ function progressionStepNumberFromDescriptor(descriptor: ProgressionDescriptorRo
 }
 
 function descriptorText(descriptor: ProgressionDescriptorRow | undefined) {
-  const text = descriptor?.descriptor_text ?? descriptor?.descriptor ?? undefined;
+  const text = descriptor?.descriptor_text ?? undefined;
   return text?.trim() ? text : undefined;
 }
 

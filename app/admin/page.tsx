@@ -367,11 +367,16 @@ export default function AdminPage() {
           </button>
         </div>
         <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-700">
-          <p>Current school id: {currentSchool.id}</p>
+          <p>Resolved school id: {liveDiagnostics?.schoolId ?? currentSchool.id}</p>
           <p>Current school slug: {currentSchool.slug}</p>
           <p>Subject query select: {liveDiagnostics?.subjectQuerySelect ?? "id, school_id, name"}</p>
-          <p>Raw subject query count: {liveDiagnostics?.subjectQueryCount ?? subjects.length}</p>
-          <p>Subject query error: {liveDiagnostics?.subjectQueryError ?? "None"}</p>
+          <p>Subjects count: {liveDiagnostics?.subjectQueryCount ?? subjects.length}</p>
+          <p>Subjects error: {liveDiagnostics?.subjectQueryError ?? "None"}</p>
+          <p>Frameworks count: {liveDiagnostics?.frameworkQueryCount ?? data.frameworkLibrary.length}</p>
+          <p>Frameworks error: {liveDiagnostics?.frameworkQueryError ?? "None"}</p>
+          <p>Strands count: {liveDiagnostics?.strandQueryCount ?? data.frameworkLibrary.reduce((count, framework) => count + framework.strands.length, 0)}</p>
+          <p>Elements count: {liveDiagnostics?.elementQueryCount ?? data.frameworkLibrary.reduce((count, framework) => count + framework.strands.reduce((strandCount, strand) => strandCount + strand.elements.length, 0), 0)}</p>
+          <p>Descriptors count: {liveDiagnostics?.descriptorQueryCount ?? 0}</p>
         </div>
 
         <div className="mt-4 overflow-x-auto">

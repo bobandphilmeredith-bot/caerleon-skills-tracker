@@ -291,6 +291,18 @@ export default function AddEntryPage() {
           <StepPill number="4" title="Themes" />
           <StepPill number="5" title="Save" />
         </div>
+        {liveDiagnostics ? (
+          <div className="mb-5 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-700">
+            <p>Resolved school id: {liveDiagnostics.schoolId}</p>
+            <p>Subjects count: {liveDiagnostics.subjectQueryCount}</p>
+            <p>Subjects error: {liveDiagnostics.subjectQueryError ?? "None"}</p>
+            <p>Frameworks count: {liveDiagnostics.frameworkQueryCount}</p>
+            <p>Frameworks error: {liveDiagnostics.frameworkQueryError ?? "None"}</p>
+            <p>Strands count: {liveDiagnostics.strandQueryCount}</p>
+            <p>Elements count: {liveDiagnostics.elementQueryCount}</p>
+            <p>Descriptors count: {liveDiagnostics.descriptorQueryCount}</p>
+          </div>
+        ) : null}
 
         <div className="space-y-5">
           {hasSubjectRestrictedRole && !hasEditableSubjects ? (

@@ -79,7 +79,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   const currentMappings = useLiveData ? liveMappings : (mappingOverrides[currentSchool.id] ?? baseData.mappings);
   const currentFrameworkLibrary = useLiveData ? (liveReferenceMaps?.frameworkLibrary ?? []) : baseData.frameworkLibrary;
   const currentSubjectConfigs = useLiveData ? (liveReferenceMaps?.subjectConfigs ?? []) : baseData.subjectConfigs;
-  const currentCrossCuttingThemes = useLiveData ? (liveReferenceMaps?.crossCuttingThemes ?? []) : baseData.crossCuttingThemes;
+  const currentCrossCuttingThemes = isDemoLoginEnabled ? baseData.crossCuttingThemes : (liveReferenceMaps?.crossCuttingThemes ?? []);
   const data = useMemo(
     () =>
       buildBundle({

@@ -40,10 +40,7 @@ export default function AddEntryPage() {
   const [saveMessage, setSaveMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  const themeOptions = useMemo(
-    () => crossCuttingThemes.filter((themeItem) => themeItem.active && looksLikeUuid(themeItem.id)),
-    [crossCuttingThemes]
-  );
+  const themeOptions = useMemo(() => crossCuttingThemes.filter((themeItem) => themeItem.active), [crossCuttingThemes]);
   const selectedThemes = useMemo(() => themeOptions.filter((themeItem) => selectedThemeIds.includes(themeItem.id)), [themeOptions, selectedThemeIds]);
   const selectedSubject = activeSubjects.find((subject) => subject.id === subjectId);
   const selectedFramework = progressionFrameworkLibrary.find((item) => item.id === frameworkId) ?? progressionFrameworkLibrary[0];
@@ -59,7 +56,8 @@ export default function AddEntryPage() {
         .sort((a, b) => a.progressionStepNumber - b.progressionStepNumber),
     [selectedElement, selectedFramework]
   );
-  const selectedDescriptor = availableDescriptors.find((descriptor) => descriptor.id === progressionDescriptorId) ?? availableDescriptors[0];
+  const preferredDescriptor = useMemo(() => getPreferredDescriptor(availableDescriptors), [availableDescriptors]);
+  const selectedDescriptor = availableDescriptors.find((descriptor) => descriptor.id === progressionDescriptorId) ?? preferredDescriptor;
   const theme = themeForFramework(selectedFramework?.name ?? "Literacy Framework");
   const hasSubjectRestrictedRole = currentUser?.role === "teacher" || currentUser?.role === "subject_lead";
   const hasEditableSubjects = !hasSubjectRestrictedRole || currentUser.assignedSubjects.length > 0;
@@ -103,12 +101,10 @@ export default function AddEntryPage() {
   }, [elementId, selectedElement?.id]);
 
   useEffect(() => {
-    if (!selectedDescriptor?.id) {
-      setProgressionDescriptorId("");
-      return;
-    }
-    if (selectedDescriptor.id !== progressionDescriptorId) setProgressionDescriptorId(selectedDescriptor.id);
-  }, [progressionDescriptorId, selectedDescriptor?.id]);
+    const nextDescriptor = getPreferredDescriptor(availableDescriptors);
+    setProgressionDescriptorId(nextDescriptor?.id ?? "");
+    setShowDescriptor(false);
+  }, [availableDescriptors, selectedElement?.id]);
 
   useEffect(() => {
     const optionIds = new Set(themeOptions.map((themeItem) => themeItem.id));
@@ -194,11 +190,6 @@ export default function AddEntryPage() {
   }
 
   function addFrameworkReference() {
-    console.log("Add reference clicked");
-    console.log("selected framework", selectedFramework);
-    console.log("selected strand", selectedStrand);
-    console.log("selected element", selectedElement);
-    console.log("selected descriptor", selectedDescriptor);
     if (!selectedFramework?.id || !selectedStrand?.id || !selectedElement?.id || !selectedDescriptor?.id) return;
     const reference: MappingFrameworkReference = {
       id: `${selectedFramework.id}-${selectedStrand.id}-${selectedElement.id}-${selectedDescriptor.id}`,
@@ -218,9 +209,7 @@ export default function AddEntryPage() {
     };
     setFrameworkReferences((current) => {
       const exists = current.some((item) => item.progressionDescriptorId === reference.progressionDescriptorId);
-      const nextReferences = exists ? current : [...current, reference];
-      console.log("selected references after add", nextReferences);
-      return nextReferences;
+      return exists ? current : [...current, reference];
     });
     setFrameworkNotes("");
     setSaveMessage("");
@@ -232,7 +221,6 @@ export default function AddEntryPage() {
       setSaveMessage("");
       return;
     }
-    console.log("Selected themes before save", selectedThemes);
     if (!validateThemeIdsBeforeSave()) {
       return;
     }
@@ -264,7 +252,6 @@ export default function AddEntryPage() {
       setSaveMessage("");
       return;
     }
-    console.log("Selected themes before save", selectedThemes);
     if (!validateThemeIdsBeforeSave()) {
       return;
     }
@@ -278,7 +265,7 @@ export default function AddEntryPage() {
   const canAddReference = Boolean(selectedFramework?.id && selectedStrand?.id && selectedElement?.id && selectedDescriptor?.id);
 
   function validateThemeIdsBeforeSave() {
-    if (selectedThemeIds.some((id) => !looksLikeUuid(id))) {
+    if (selectedThemes.some((themeItem) => !looksLikeUuid(themeItem.id))) {
       setSaveMessage("Theme data is still using prototype IDs. Reload cross-cutting themes from Supabase.");
       return false;
     }
@@ -467,22 +454,34 @@ export default function AddEntryPage() {
           </FormSection>
 
           <FormSection number="4" title="Cross-cutting themes" description="Tag any wider curriculum themes represented in this activity.">
-            <div className="grid gap-2 sm:grid-cols-2">
-              {themeOptions.map((themeItem) => (
-                <label key={themeItem.id} className="flex items-start gap-3 rounded-md border border-gray-200 bg-white p-3 text-sm font-semibold text-gray-800">
-                  <input
-                    className="mt-1 h-4 w-4"
-                    type="checkbox"
-                    checked={selectedThemeIds.includes(themeItem.id)}
-                    onChange={(event) => setSelectedThemeIds((current) => (event.target.checked ? Array.from(new Set([...current, themeItem.id])) : current.filter((id) => id !== themeItem.id)))}
-                  />
-                  <span>
-                    {themeItem.name}
-                    {themeItem.description ? <span className="mt-1 block text-xs font-normal leading-5 text-gray-500">{themeItem.description}</span> : null}
-                  </span>
-                </label>
-              ))}
-            </div>
+            {themeOptions.length ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {themeOptions.map((themeItem) => {
+                  const selected = selectedThemeIds.includes(themeItem.id);
+                  return (
+                    <label
+                      key={themeItem.id}
+                      className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm font-semibold transition ${
+                        selected ? "border-[#741B47] bg-[#f7edf3] text-[#571435]" : "border-gray-200 bg-white text-gray-800 hover:border-[#d7b7ca]"
+                      }`}
+                    >
+                      <input
+                        className="mt-1 h-4 w-4"
+                        type="checkbox"
+                        checked={selected}
+                        onChange={(event) => setSelectedThemeIds((current) => (event.target.checked ? Array.from(new Set([...current, themeItem.id])) : current.filter((id) => id !== themeItem.id)))}
+                      />
+                      <span>
+                        {themeItem.name}
+                        {themeItem.description ? <span className="mt-1 block text-xs font-normal leading-5 text-gray-500">{themeItem.description}</span> : null}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">No active cross-cutting themes found for this school.</p>
+            )}
             <Field label="How does this piece of work link to the selected theme(s)?" wide>
               <textarea className="focus-ring min-h-16 w-full rounded-md border border-gray-300 px-3 py-2" value={themeNotes} onChange={(event) => setThemeNotes(event.target.value)} />
             </Field>
@@ -621,6 +620,10 @@ function previewReference(framework: FrameworkDefinition, strand: StrandDefiniti
     progressionReference: descriptor.progressionStep,
     descriptor: descriptor.descriptorText
   };
+}
+
+function getPreferredDescriptor(descriptors: ProgressionDescriptorDefinition[]) {
+  return descriptors.find((descriptor) => descriptor.progressionStepNumber === 4) ?? descriptors[0];
 }
 
 function normaliseSubjectName(subject: string) {

@@ -5,7 +5,6 @@ import { AccessDenied } from "@/components/AccessDenied";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
-import { supabase } from "@/lib/supabaseClient";
 import type { CrossCuttingTheme, ElementDefinition, FrameworkDefinition, MappingEntry, MappingFrameworkReference, ProgressionDescriptorDefinition, StrandDefinition } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
@@ -44,7 +43,10 @@ export default function AddEntryPage() {
   const [saveMessage, setSaveMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  const themeOptions = useMemo(() => (themeRows.length ? themeRows : crossCuttingThemes).filter((themeItem) => themeItem.active), [crossCuttingThemes, themeRows]);
+  const themeOptions = useMemo(
+    () => (themeRows.length ? themeRows : crossCuttingThemes).filter((themeItem) => themeItem.active && looksLikeUuid(themeItem.id)),
+    [crossCuttingThemes, themeRows]
+  );
   const selectedThemes = useMemo(() => themeOptions.filter((themeItem) => selectedThemeIds.includes(themeItem.id)), [themeOptions, selectedThemeIds]);
   const selectedSubject = activeSubjects.find((subject) => subject.id === subjectId);
   const selectedFramework = progressionFrameworkLibrary.find((item) => item.id === frameworkId) ?? progressionFrameworkLibrary[0];
@@ -116,19 +118,14 @@ export default function AddEntryPage() {
   }, [themeOptions]);
 
   useEffect(() => {
-    if (!supabase) return;
     const schoolIdForThemes = looksLikeUuid(currentSchoolId) ? currentSchoolId : caerleonSchoolId;
     let cancelled = false;
-    void supabase
-      .from("themes")
-      .select("id,school_id,name,description,active")
-      .eq("school_id", schoolIdForThemes)
-      .eq("active", true)
-      .order("name", { ascending: true })
-      .then(({ data: rows }) => {
+    void fetch(`/api/themes?schoolId=${encodeURIComponent(schoolIdForThemes)}`)
+      .then((response) => (response.ok ? response.json() : { themes: [] }))
+      .then(({ themes }: { themes?: Array<{ id: string; school_id: string; name: string; description: string | null; active: boolean | null }> }) => {
         if (cancelled) return;
         setThemeRows(
-          (rows ?? []).map((row, index) => ({
+          (themes ?? []).map((row, index) => ({
             id: row.id,
             schoolId: row.school_id,
             name: row.name,
@@ -137,6 +134,9 @@ export default function AddEntryPage() {
             displayOrder: index + 1
           }))
         );
+      })
+      .catch(() => {
+        if (!cancelled) setThemeRows([]);
       });
     return () => {
       cancelled = true;

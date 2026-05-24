@@ -8,6 +8,7 @@ import { CctElementSelector } from "@/components/CctElementSelector";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
+import { useLiveSubjects } from "@/lib/useLiveSubjects";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 import type {
   CrossCuttingTheme,
@@ -62,7 +63,8 @@ export default function EditCurriculumMappingPage() {
   const router = useRouter();
   const { canEditMappings, canEditSubject } = useAuth();
   const { currentSchoolId, data, updateMapping } = useCurrentSchool();
-  const { crossCuttingThemes, frameworkLibrary, mappings, subjectConfigs, terms, yearGroups } = data;
+  const { crossCuttingThemes, frameworkLibrary, mappings, terms, yearGroups } = data;
+  const { subjects: databaseSubjects } = useLiveSubjects(currentSchoolId);
   const mappingId = Array.isArray(params.id) ? params.id[0] : params.id;
   const entry = mappings.find((item) => item.id === mappingId);
   const [themeRows, setThemeRows] = useState<CrossCuttingTheme[]>([]);
@@ -75,10 +77,10 @@ export default function EditCurriculumMappingPage() {
 
   const editableSubjects = useMemo(
     () =>
-      subjectConfigs
+      databaseSubjects
         .filter((subject) => subject.active && subject.appearsInMappingDropdowns && canEditSubject(subject.name))
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [canEditSubject, subjectConfigs]
+    [canEditSubject, databaseSubjects]
   );
   const progressionFrameworks = useMemo(
     () => frameworkLibrary.filter((framework) => ["Literacy Framework", "Numeracy Framework", "Digital Competence Framework"].includes(framework.name)),

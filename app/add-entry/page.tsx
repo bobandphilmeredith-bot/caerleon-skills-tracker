@@ -6,21 +6,20 @@ import { CctElementSelector } from "@/components/CctElementSelector";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
+import { useLiveSubjects } from "@/lib/useLiveSubjects";
 import type { CrossCuttingTheme, ElementDefinition, FrameworkDefinition, MappingEntry, MappingFrameworkReference, ProgressionDescriptorDefinition, SelectedCctElement, StrandDefinition } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
 export default function AddEntryPage() {
   const { canEditMappings, currentUser } = useAuth();
   const { currentSchoolId, data, addMapping } = useCurrentSchool();
-  const { frameworkLibrary, subjectConfigs, terms, yearGroups, crossCuttingThemes } = data;
+  const { frameworkLibrary, terms, yearGroups, crossCuttingThemes } = data;
+  const { subjects: databaseSubjects } = useLiveSubjects(currentSchoolId);
   const progressionFrameworkLibrary = useMemo(
     () => frameworkLibrary.filter((item) => ["Literacy", "Numeracy", "DCF"].includes(item.shortName)),
     [frameworkLibrary]
   );
-  const activeSubjects = useMemo(
-    () => subjectConfigs.filter((subject) => subject.active && subject.appearsInMappingDropdowns).sort((a, b) => a.name.localeCompare(b.name)),
-    [subjectConfigs]
-  );
+  const activeSubjects = useMemo(() => databaseSubjects.filter((subject) => subject.active && subject.appearsInMappingDropdowns), [databaseSubjects]);
 
   const [subjectId, setSubjectId] = useState("");
   const [frameworkId, setFrameworkId] = useState("");

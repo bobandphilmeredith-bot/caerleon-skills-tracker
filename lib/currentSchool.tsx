@@ -203,7 +203,10 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
           if (!liveSchoolId) return { ok: false, message: "No live school is linked to this account." };
 
           const client = supabase;
-          const refs = liveReferenceMaps ?? (await loadLiveReferenceMaps(client, liveSchoolId, localCurrentSchool));
+          let refs = liveReferenceMaps ?? (await loadLiveReferenceMaps(client, liveSchoolId, localCurrentSchool));
+          if (entry.subjectId && !refs.subjectsById.has(entry.subjectId)) {
+            refs = await loadLiveReferenceMaps(client, liveSchoolId, localCurrentSchool);
+          }
           const schoolIdForWrite = refs.diagnostics.schoolId;
           const ids = resolveSubjectId(entry, refs);
           if (!ids.ok) return { ok: false, message: ids.message };
@@ -247,7 +250,10 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
 
           const merged = { ...existing, ...patch };
           const client = supabase;
-          const refs = liveReferenceMaps ?? (await loadLiveReferenceMaps(client, liveSchoolId, localCurrentSchool));
+          let refs = liveReferenceMaps ?? (await loadLiveReferenceMaps(client, liveSchoolId, localCurrentSchool));
+          if (merged.subjectId && !refs.subjectsById.has(merged.subjectId)) {
+            refs = await loadLiveReferenceMaps(client, liveSchoolId, localCurrentSchool);
+          }
           const schoolIdForWrite = refs.diagnostics.schoolId;
           const ids = resolveSubjectId(merged, refs);
           if (!ids.ok) return { ok: false, message: ids.message };

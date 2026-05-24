@@ -6,17 +6,16 @@ import { CctElementSelector } from "@/components/CctElementSelector";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
+import { useLiveSubjects } from "@/lib/useLiveSubjects";
 import { areaThemes } from "@/lib/theme";
 import type { CrossCuttingTheme, MappingEntry, SelectedCctElement } from "@/lib/types";
 
 export default function AddCctPage() {
   const { canEditMappings, currentUser } = useAuth();
   const { currentSchoolId, data, addMapping } = useCurrentSchool();
-  const { subjectConfigs, terms, yearGroups, crossCuttingThemes } = data;
-  const activeSubjects = useMemo(
-    () => subjectConfigs.filter((subject) => subject.active && subject.appearsInMappingDropdowns).sort((a, b) => a.name.localeCompare(b.name)),
-    [subjectConfigs]
-  );
+  const { terms, yearGroups, crossCuttingThemes } = data;
+  const { subjects: databaseSubjects } = useLiveSubjects(currentSchoolId);
+  const activeSubjects = useMemo(() => databaseSubjects.filter((subject) => subject.active && subject.appearsInMappingDropdowns), [databaseSubjects]);
 
   const [subjectId, setSubjectId] = useState("");
   const [yearGroup, setYearGroup] = useState("Year 7");

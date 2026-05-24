@@ -6,6 +6,7 @@ import { AccessDenied } from "@/components/AccessDenied";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
+import { useLiveSubjects } from "@/lib/useLiveSubjects";
 import { areaThemes } from "@/lib/theme";
 import type { MappingEntry, MappingFrameworkReference, SubjectConfig } from "@/lib/types";
 
@@ -14,8 +15,9 @@ const allTerms = "All terms";
 
 export default function EditCurriculumPage() {
   const { canEditMappings, canEditSubject } = useAuth();
-  const { data } = useCurrentSchool();
-  const { mappings, subjectConfigs, terms, yearGroups } = data;
+  const { currentSchoolId, data } = useCurrentSchool();
+  const { mappings, terms, yearGroups } = data;
+  const { subjects: databaseSubjects } = useLiveSubjects(currentSchoolId);
   const [subjectId, setSubjectId] = useState("");
   const [yearFilter, setYearFilter] = useState(allYears);
   const [termFilter, setTermFilter] = useState(allTerms);
@@ -23,10 +25,10 @@ export default function EditCurriculumPage() {
 
   const editableSubjects = useMemo(
     () =>
-      subjectConfigs
+      databaseSubjects
         .filter((subject) => subject.active && subject.appearsInMappingDropdowns && canEditSubject(subject.name))
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [canEditSubject, subjectConfigs]
+    [canEditSubject, databaseSubjects]
   );
 
   useEffect(() => {

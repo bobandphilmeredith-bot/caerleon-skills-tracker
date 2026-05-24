@@ -50,6 +50,7 @@ const navGroups = [
     icon: "SA",
     items: [
       { href: "/admin", label: "Admin Setup", icon: "Ad", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
+      { href: "/admin/import-curriculum", label: "Import Curriculum", icon: "IC", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
       { href: "/user-management", label: "User Management", icon: "UM", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
       { href: "/platform-admin", label: "Platform Admin", icon: "PA", theme: areaThemes.overview, roles: ["platform_admin"] as UserRole[] },
       { href: "/login", label: "Sign In", icon: "In", theme: areaThemes.overview }

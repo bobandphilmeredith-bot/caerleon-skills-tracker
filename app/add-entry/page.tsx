@@ -62,7 +62,7 @@ export default function AddEntryPage() {
         .sort((a, b) => a.progressionStepNumber - b.progressionStepNumber),
     [selectedElement, selectedFramework]
   );
-  const preferredDescriptor = useMemo(() => getPreferredDescriptor(availableDescriptors), [availableDescriptors]);
+  const preferredDescriptor = useMemo(() => getPreferredDescriptor(availableDescriptors, yearGroup), [availableDescriptors, yearGroup]);
   const selectedDescriptor = availableDescriptors.find((descriptor) => descriptor.id === progressionDescriptorId) ?? preferredDescriptor;
   const theme = themeForFramework(selectedFramework?.name ?? "Literacy Framework");
   const hasSubjectRestrictedRole = currentUser?.role === "teacher" || currentUser?.role === "subject_lead";
@@ -107,10 +107,10 @@ export default function AddEntryPage() {
   }, [elementId, selectedElement?.id]);
 
   useEffect(() => {
-    const nextDescriptor = getPreferredDescriptor(availableDescriptors);
+    const nextDescriptor = getPreferredDescriptor(availableDescriptors, yearGroup);
     setProgressionDescriptorId(nextDescriptor?.id ?? "");
     setShowDescriptor(false);
-  }, [availableDescriptors, selectedElement?.id]);
+  }, [availableDescriptors, selectedElement?.id, yearGroup]);
 
   useEffect(() => {
     const validSelections = new Set(themeOptions.flatMap((themeItem) => (themeItem.elements ?? []).map((element) => `${themeItem.id}:${element.id}`)));
@@ -643,8 +643,9 @@ function previewReference(framework: FrameworkDefinition, strand: StrandDefiniti
   };
 }
 
-function getPreferredDescriptor(descriptors: ProgressionDescriptorDefinition[]) {
-  return descriptors.find((descriptor) => descriptor.progressionStepNumber === 4) ?? descriptors[0];
+function getPreferredDescriptor(descriptors: ProgressionDescriptorDefinition[], yearGroup: string) {
+  const targetStep = yearGroup === "Year 10" || yearGroup === "Year 11" ? 5 : 4;
+  return descriptors.find((descriptor) => descriptor.progressionStepNumber === targetStep) ?? descriptors.find((descriptor) => descriptor.progressionStepNumber === 4) ?? descriptors[0];
 }
 
 function normaliseSubjectName(subject: string) {

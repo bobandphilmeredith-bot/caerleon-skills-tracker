@@ -68,7 +68,7 @@ export function FrameworkBrowser({ initialFramework, compact = false }: { initia
 
       <div className="space-y-3">
         {strands.map((strand) => (
-          <details key={strand.name} className="rounded-lg border bg-white p-4 shadow-sm" style={{ borderColor: theme.border }} open>
+          <details key={strand.name} className="rounded-lg border bg-white p-4 shadow-sm" style={{ borderColor: theme.border }}>
             <summary className="cursor-pointer text-base font-bold leading-snug" style={{ color: theme.text }}>
               {strandLabel(strand)}
             </summary>

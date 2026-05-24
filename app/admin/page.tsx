@@ -604,7 +604,7 @@ export default function AdminPage() {
 
         <div className="mt-5 space-y-5">
           {frameworks.map((framework, frameworkIndex) => (
-            <details key={`${framework.name}-${frameworkIndex}`} className="rounded-lg border border-gray-200 p-4" open={frameworkIndex === 0}>
+            <details key={`${framework.name}-${frameworkIndex}`} className="rounded-lg border border-gray-200 p-4">
               <summary className="cursor-pointer font-bold text-gray-900">
                 <span>{framework.name}</span>
                 <StatusBadge active={framework.active} />

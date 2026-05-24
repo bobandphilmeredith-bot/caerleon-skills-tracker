@@ -44,7 +44,7 @@ const allTerms = "All terms";
 
 export default function EditCurriculumPage() {
   const { canEditMappings, canEditSubject, currentUser } = useAuth();
-  const { data, updateMapping } = useCurrentSchool();
+  const { currentSchoolId, data, updateMapping } = useCurrentSchool();
   const { crossCuttingThemes, frameworkLibrary, mappings, subjectConfigs, terms, yearGroups } = data;
   const [subjectId, setSubjectId] = useState("");
   const [yearFilter, setYearFilter] = useState(allYears);
@@ -52,6 +52,7 @@ export default function EditCurriculumPage() {
   const [keyword, setKeyword] = useState("");
   const [editingEntry, setEditingEntry] = useState<MappingEntry | null>(null);
   const [draft, setDraft] = useState<EditDraft | null>(null);
+  const [themeRows, setThemeRows] = useState<CrossCuttingTheme[]>([]);
   const [saveMessage, setSaveMessage] = useState("");
   const [validationMessage, setValidationMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -68,11 +69,43 @@ export default function EditCurriculumPage() {
     () => frameworkLibrary.filter((framework) => ["Literacy Framework", "Numeracy Framework", "Digital Competence Framework"].includes(framework.name)),
     [frameworkLibrary]
   );
+  const themeOptions = useMemo(
+    () => (themeRows.length ? themeRows : crossCuttingThemes).filter((theme) => theme.active && looksLikeUuid(theme.id)),
+    [crossCuttingThemes, themeRows]
+  );
 
   useEffect(() => {
     if (!subjectId && editableSubjects.length) setSubjectId(editableSubjects[0].id);
     if (subjectId && !editableSubjects.some((subject) => subject.id === subjectId)) setSubjectId(editableSubjects[0]?.id ?? "");
   }, [editableSubjects, subjectId]);
+
+  useEffect(() => {
+    const schoolIdForThemes = looksLikeUuid(currentSchoolId) ? currentSchoolId : "";
+    let cancelled = false;
+    if (!schoolIdForThemes) {
+      setThemeRows([]);
+      return;
+    }
+    void fetch(`/api/themes?schoolId=${encodeURIComponent(schoolIdForThemes)}`)
+      .then((response) => (response.ok ? response.json() : { themes: [] }))
+      .then(({ themes }: { themes?: ThemeApiRow[] }) => {
+        if (cancelled) return;
+        setThemeRows((themes ?? []).map(apiThemeToTheme));
+      })
+      .catch(() => {
+        if (!cancelled) setThemeRows([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSchoolId]);
+
+  useEffect(() => {
+    if (!draft || !themeOptions.length) return;
+    const validSelections = new Set(themeOptions.flatMap((theme) => (theme.elements ?? []).map((element) => `${theme.id}:${element.id}`)));
+    const nextSelection = draft.selectedCctElements.filter((item) => validSelections.has(`${item.themeId}:${item.elementId}`));
+    if (nextSelection.length !== draft.selectedCctElements.length) updateDraft({ selectedCctElements: nextSelection });
+  }, [draft, themeOptions]);
 
   const selectedSubject = editableSubjects.find((subject) => subject.id === subjectId);
   const filteredMappings = useMemo(
@@ -193,7 +226,7 @@ export default function EditCurriculumPage() {
     }
 
     setIsSaving(true);
-    const selectedThemes = themesForSelectedElements(draft.selectedCctElements, crossCuttingThemes);
+    const selectedThemes = themesForSelectedElements(draft.selectedCctElements, themeOptions);
     const primaryReference = draft.frameworkReferences[0];
     const result = await updateMapping(editingEntry.id, {
       subjectId: subject?.id,
@@ -324,7 +357,7 @@ export default function EditCurriculumPage() {
               entry={editingEntry}
               subjects={editableSubjects}
               frameworks={progressionFrameworks}
-              cctThemes={crossCuttingThemes}
+              cctThemes={themeOptions}
               yearGroups={yearGroups}
               terms={terms.length ? terms : ["Autumn", "Spring", "Summer"]}
               validationMessage={validationMessage}
@@ -383,6 +416,43 @@ function MappingCard({ entry, active, onEdit }: { entry: MappingEntry; active: b
       </div>
     </article>
   );
+}
+
+type ThemeApiRow = {
+  id: string;
+  school_id: string;
+  name: string;
+  description: string | null;
+  active: boolean | null;
+  elements?: Array<{
+    id: string;
+    school_id: string;
+    theme_id: string;
+    name: string;
+    description: string | null;
+    display_order: number | null;
+    active: boolean | null;
+  }>;
+};
+
+function apiThemeToTheme(row: ThemeApiRow, index: number): CrossCuttingTheme {
+  return {
+    id: row.id,
+    schoolId: row.school_id,
+    name: row.name,
+    description: row.description,
+    active: row.active ?? true,
+    displayOrder: index + 1,
+    elements: (row.elements ?? []).map((element) => ({
+      id: element.id,
+      schoolId: element.school_id,
+      themeId: element.theme_id,
+      name: element.name,
+      description: element.description,
+      displayOrder: element.display_order ?? 0,
+      active: element.active ?? true
+    }))
+  };
 }
 
 function EditPanel({

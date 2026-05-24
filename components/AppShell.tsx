@@ -59,7 +59,7 @@ const navGroups = [
 
 const primaryActions = [
   { href: "/add-entry", label: "Add Curriculum", icon: "+", theme: areaThemes.overview, roles: ["platform_admin", "school_admin", "teacher", "subject_lead"] as UserRole[] },
-  { href: "/curriculum-journey", label: "Edit Curriculum", icon: "EC", theme: areaThemes.overview, roles: ["platform_admin", "school_admin", "teacher", "subject_lead"] as UserRole[] }
+  { href: "/edit-curriculum", label: "Edit Curriculum", icon: "EC", theme: areaThemes.overview, roles: ["platform_admin", "school_admin", "teacher", "subject_lead"] as UserRole[] }
 ];
 
 type NavItem = (typeof navGroups)[number]["items"][number] | (typeof primaryActions)[number];

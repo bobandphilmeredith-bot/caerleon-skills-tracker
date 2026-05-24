@@ -20,7 +20,7 @@ const adminTabs: AdminTab[] = ["School", "Branding", "Subjects", "AoLE", "Framew
 export default function AdminPage() {
   const { canManageSchool } = useAuth();
   const { settings, updateBranding, updateFrameworkTheme, resetBranding, resetAllSettings } = useSchoolSettings();
-  const { schools, currentSchool, currentSchoolId, data, switchSchool, addSchool, updateSchool, toggleSchoolActive, updateSubjectConfig } = useCurrentSchool();
+  const { schools, currentSchool, currentSchoolId, data, switchSchool, addSchool, updateSchool, toggleSchoolActive, addSubjectConfig, updateSubjectConfig } = useCurrentSchool();
   const [subjects, setSubjects] = useState<SubjectConfig[]>(data.subjectConfigs);
   const [aoles, setAoles] = useState<AoleConfig[]>(data.aoleConfigs);
   const [frameworks, setFrameworks] = useState<AdminFramework[]>(() => loadAdminFrameworks(data.frameworkLibrary, currentSchoolId));
@@ -55,18 +55,9 @@ export default function AdminPage() {
     [subjects]
   );
 
-  function addSubject() {
-    setSubjects((current) => [
-      ...current,
-      {
-        id: `subject-${Date.now()}`,
-        name: "New subject",
-        aole: undefined,
-        active: true,
-        displayOrder: current.length + 1,
-        appearsInMappingDropdowns: true
-      }
-    ]);
+  async function addSubject() {
+    const result = await addSubjectConfig("New subject");
+    setNotice(result.ok ? "Subject added." : result.message ?? "Could not add subject.");
   }
 
   function updateSubject(id: string, patch: Partial<SubjectConfig>) {

@@ -42,6 +42,7 @@ type CurrentSchoolContextValue = {
   addMapping: (entry: MappingEntry) => Promise<MappingMutationResult>;
   updateMapping: (entryId: string, patch: Partial<MappingEntry>) => Promise<MappingMutationResult>;
   deleteMapping: (entryId: string) => Promise<MappingMutationResult>;
+  addSubjectConfig: (name?: string) => Promise<MappingMutationResult>;
   updateSubjectConfig: (subjectId: string, patch: Partial<SubjectConfig>) => Promise<MappingMutationResult>;
 };
 
@@ -304,6 +305,41 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
         setMappingOverrides((current) => {
           const existing = current[currentSchool.id] ?? data.mappings;
           return { ...current, [currentSchool.id]: existing.filter((entry) => entry.id !== entryId) };
+        });
+        return { ok: true };
+      },
+      addSubjectConfig: async (name = "New subject") => {
+        if (!isDemoLoginEnabled) {
+          if (!supabase) return { ok: false, message: "Supabase environment variables are missing." };
+          const refs = liveReferenceMaps ?? (await loadLiveReferenceMaps(supabase, liveSchoolId, localCurrentSchool));
+          const subjectName = name.trim() || "New subject";
+          const { error } = await supabase.from("subjects").insert({
+            school_id: refs.diagnostics.schoolId,
+            name: subjectName
+          });
+          if (error) return { ok: false, message: error.message };
+          await loadLiveMappings();
+          return { ok: true };
+        }
+
+        setCustomData((current) => {
+          const existing = current[currentSchool.id] ?? data;
+          const subject: SubjectConfig = {
+            schoolId: currentSchool.id,
+            id: `subject-${Date.now()}`,
+            name: name.trim() || "New subject",
+            aole: undefined,
+            active: true,
+            displayOrder: existing.subjectConfigs.length + 1,
+            appearsInMappingDropdowns: true
+          };
+          return {
+            ...current,
+            [currentSchool.id]: {
+              ...existing,
+              subjectConfigs: [...existing.subjectConfigs, subject]
+            }
+          };
         });
         return { ok: true };
       },

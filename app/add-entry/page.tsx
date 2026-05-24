@@ -393,8 +393,8 @@ export default function AddEntryPage() {
 
                 <PickerGroup label="Strand">
                   {strands.map((item) => (
-                    <PickerButton key={item.id} selected={item.id === selectedStrand?.id} onClick={() => updateStrand(item.id ?? "")} themeName={selectedFramework?.name}>
-                      {strandButtonLabel(selectedFramework?.name ?? "", item)}
+                    <PickerButton key={item.id} selected={item.id === selectedStrand?.id} onClick={() => updateStrand(item.id ?? "")} themeName={selectedFramework?.name} title={item.name}>
+                      {strandButtonLabel(item)}
                     </PickerButton>
                   ))}
                 </PickerGroup>
@@ -571,15 +571,16 @@ function PickerGroup({ label, children }: { label: string; children: React.React
   );
 }
 
-function PickerButton({ selected, onClick, themeName, children }: { selected: boolean; onClick: () => void; themeName?: string; children: React.ReactNode }) {
+function PickerButton({ selected, onClick, themeName, title, children }: { selected: boolean; onClick: () => void; themeName?: string; title?: string; children: React.ReactNode }) {
   const theme = themeForFramework(themeName ?? "");
   return (
     <button
-      className="focus-ring rounded-md border px-3 py-2 text-sm font-bold transition hover:-translate-y-0.5 hover:shadow-sm"
+      className="focus-ring min-h-10 max-w-64 rounded-md border px-3 py-2 text-sm font-bold leading-snug transition hover:-translate-y-0.5 hover:shadow-sm"
       style={selected ? { borderColor: theme.accent, backgroundColor: theme.soft, color: theme.text } : { borderColor: "#d1d5db", backgroundColor: "#ffffff", color: "#374151" }}
       type="button"
       onClick={onClick}
       aria-pressed={selected}
+      title={title}
     >
       {children}
     </button>
@@ -671,13 +672,6 @@ function looksLikeUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
-function strandButtonLabel(framework: string, strand: StrandDefinition) {
-  if (framework !== "Numeracy Framework") return strand.shortName ?? strand.name;
-  const labels: Record<string, string> = {
-    "Developing mathematical proficiency": "Mathematical proficiency",
-    "Understanding the number system helps us to represent and compare relationships between numbers and quantities": "Number system",
-    "Learning about geometry helps us understand shape, space and position, and learning about measurement helps us quantify in the real world": "Geometry and measurement",
-    "Learning that statistics represent data and that probability models chance helps us make informed inferences and decisions": "Statistics and probability"
-  };
-  return strand.shortName ?? labels[strand.name] ?? strand.name;
+function strandButtonLabel(strand: StrandDefinition) {
+  return strand.shortName ?? strand.name;
 }

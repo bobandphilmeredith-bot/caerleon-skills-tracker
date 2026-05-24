@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { useCurrentSchoolData } from "@/lib/currentSchool";
-import { progressionReferenceForEntry, secondaryProgressionReferences, visibleProgressionSteps } from "@/lib/progression";
 import { areaThemes, themeForFramework } from "@/lib/theme";
+import type { FrameworkDefinition, MappingEntry, MappingFrameworkReference, ProgressionStep } from "@/lib/types";
 
 const allValue = "All";
 
@@ -14,48 +14,54 @@ export default function ProgressionOverviewPage() {
   const [framework, setFramework] = useState(allValue);
   const [subject, setSubject] = useState(allValue);
   const [yearGroup, setYearGroup] = useState(allValue);
-  const [progressionReference, setProgressionReference] = useState(allValue);
+  const [progressionStep, setProgressionStep] = useState(allValue);
 
-  const filteredMappings = useMemo(
+  const progressionDescriptors = useMemo(() => flattenProgressionDescriptors(frameworkLibrary), [frameworkLibrary]);
+  const progressionStepOptions = useMemo(
+    () => Array.from(new Set(progressionDescriptors.map((descriptor) => descriptor.progressionStep))).sort(compareProgressionSteps),
+    [progressionDescriptors]
+  );
+  const mappedProgression = useMemo(() => expandMappedProgression(mappings, progressionDescriptors), [mappings, progressionDescriptors]);
+
+  const filteredProgression = useMemo(
     () =>
-      mappings.filter((entry) => {
-        const reference = progressionReferenceForEntry(entry);
+      mappedProgression.filter(({ entry, descriptor }) => {
         return (
-          (framework === allValue || entry.framework === framework) &&
+          (framework === allValue || descriptor.framework === framework) &&
           (subject === allValue || entry.subject === subject) &&
           (yearGroup === allValue || entry.year === yearGroup) &&
-          (progressionReference === allValue || reference === progressionReference)
+          (progressionStep === allValue || descriptor.progressionStep === progressionStep)
         );
       }),
-    [framework, mappings, progressionReference, subject, yearGroup]
+    [framework, mappedProgression, progressionStep, subject, yearGroup]
   );
 
-  const byYear = crossTab(filteredMappings, yearGroups, secondaryProgressionReferences, (entry) => entry.year);
-  const bySubject = crossTab(filteredMappings, subjects, secondaryProgressionReferences, (entry) => entry.subject);
-  const recentMappings = [...filteredMappings].sort((a, b) => b.lastMappedDate.localeCompare(a.lastMappedDate)).slice(0, 8);
-  const elementsByStep = visibleProgressionSteps.map((step) => ({
+  const byYear = crossTab(filteredProgression, yearGroups, progressionStepOptions, (item) => item.entry.year);
+  const bySubject = crossTab(filteredProgression, subjects, progressionStepOptions, (item) => item.entry.subject);
+  const recentMappings = [...filteredProgression].sort((a, b) => b.entry.lastMappedDate.localeCompare(a.entry.lastMappedDate)).slice(0, 8);
+  const elementsByStep = progressionStepOptions.map((step) => ({
     step,
-    elements: Array.from(new Set(filteredMappings.filter((entry) => progressionReferenceForEntry(entry) === step).map((entry) => entry.element))).slice(0, 10)
+    elements: Array.from(new Set(filteredProgression.filter((item) => item.descriptor.progressionStep === step).map((item) => item.descriptor.element))).slice(0, 10)
   }));
 
   function resetFilters() {
     setFramework(allValue);
     setSubject(allValue);
     setYearGroup(allValue);
-    setProgressionReference(allValue);
+    setProgressionStep(allValue);
   }
 
   return (
     <section className="space-y-6">
       <PageHeader
         title="Progression Overview"
-        eyebrow="Progression reference visibility"
-        description="Show where mapped curriculum opportunities sit in relation to framework progression references."
+        eyebrow="Progression descriptor visibility"
+        description="Show where mapped curriculum opportunities link to official framework progression descriptors."
         accent={areaThemes.overview.accent}
       />
 
       <section className="rounded-lg border border-[#e8cfe0] bg-[#f7edf3] p-4 text-sm font-semibold text-[#571435]">
-        Use this view to compare mapped opportunities by year group, subject and progression reference.
+        Use this view to compare mapped opportunities by year group, subject and the progression steps that exist in the official descriptor table.
       </section>
 
       <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
@@ -69,15 +75,15 @@ export default function ProgressionOverviewPage() {
           <SelectField label="Framework" value={framework} onChange={setFramework} options={[allValue, ...frameworkLibrary.map((item) => item.name)]} />
           <SelectField label="Subject" value={subject} onChange={setSubject} options={[allValue, ...subjects]} />
           <SelectField label="Year group" value={yearGroup} onChange={setYearGroup} options={[allValue, ...yearGroups]} />
-          <SelectField label="Progression step" value={progressionReference} onChange={setProgressionReference} options={[allValue, ...secondaryProgressionReferences]} />
+          <SelectField label="Progression step" value={progressionStep} onChange={setProgressionStep} options={[allValue, ...progressionStepOptions]} />
         </div>
       </article>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Mapped opportunities" value={String(filteredMappings.length)} note="Entries represented in planning." />
-        <Metric label="Subjects represented" value={String(new Set(filteredMappings.map((entry) => entry.subject)).size)} note="Subjects with mapped opportunities." />
-        <Metric label="Year groups represented" value={String(new Set(filteredMappings.map((entry) => entry.year)).size)} note="Year groups visible in current filters." />
-        <Metric label="Elements represented" value={String(new Set(filteredMappings.map((entry) => entry.element)).size)} note="Framework elements visible in planning." />
+        <Metric label="Mapped opportunities" value={String(filteredProgression.length)} note="Framework links represented in planning." />
+        <Metric label="Subjects represented" value={String(new Set(filteredProgression.map((item) => item.entry.subject)).size)} note="Subjects with mapped opportunities." />
+        <Metric label="Year groups represented" value={String(new Set(filteredProgression.map((item) => item.entry.year)).size)} note="Year groups visible in current filters." />
+        <Metric label="Official descriptors represented" value={String(new Set(filteredProgression.map((item) => item.descriptor.id)).size)} note="Progression descriptor rows linked by mappings." />
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -90,31 +96,34 @@ export default function ProgressionOverviewPage() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <Matrix title="Mapped opportunities by year group and progression reference" rows={byYear} />
-        <Matrix title="Mapped opportunities by subject and progression reference" rows={bySubject.slice(0, 12)} />
+        <Matrix title="Mapped opportunities by year group and progression step" rows={byYear} columns={progressionStepOptions} />
+        <Matrix title="Mapped opportunities by subject and progression step" rows={bySubject.slice(0, 12)} columns={progressionStepOptions} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold text-gray-900">Recent mappings with progression reference</h2>
+          <h2 className="text-lg font-bold text-gray-900">Recent mappings with official progression descriptors</h2>
           <div className="mt-4 space-y-3">
             {!recentMappings.length ? <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-600">No curriculum mapping entries have been created yet.</p> : null}
-            {recentMappings.map((entry) => {
-              const theme = themeForFramework(entry.framework);
+            {recentMappings.map(({ entry, descriptor }) => {
+              const theme = themeForFramework(descriptor.framework);
               return (
-                <div key={entry.id} className="rounded-md border p-4" style={{ borderColor: theme.border }}>
+                <div key={`${entry.id}-${descriptor.id}`} className="rounded-md border p-4" style={{ borderColor: theme.border }}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <h3 className="font-bold text-gray-950">{entry.unit}</h3>
                       <p className="mt-1 text-sm text-gray-600">
-                        {entry.subject} · {entry.year} · {entry.framework}
+                        {entry.subject} · {entry.year} · {descriptor.framework}
                       </p>
                     </div>
                     <span className="rounded-full px-3 py-1 text-xs font-bold" style={{ backgroundColor: theme.soft, color: theme.text }}>
-                      Progression reference: {progressionReferenceForEntry(entry)}
+                      {descriptor.progressionStep}
                     </span>
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-gray-700">{entry.activityDescription}</p>
+                  <p className="mt-3 text-sm font-semibold text-gray-800">
+                    {descriptor.strand} · {descriptor.element}
+                  </p>
+                  <p className="mt-2 line-clamp-3 text-sm leading-6 text-gray-700">{descriptor.descriptorText}</p>
                 </div>
               );
             })}
@@ -122,7 +131,7 @@ export default function ProgressionOverviewPage() {
         </article>
 
         <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold text-gray-900">Elements represented at Step 3, Step 4 and Step 5</h2>
+          <h2 className="text-lg font-bold text-gray-900">Elements represented by official progression step</h2>
           <div className="mt-4 space-y-4">
             {elementsByStep.map((row) => (
               <div key={row.step} className="rounded-md bg-gray-50 p-4">
@@ -167,13 +176,13 @@ function Metric({ label, value, note }: { label: string; value: string; note: st
   );
 }
 
-function Matrix({ title, rows }: { title: string; rows: { label: string; values: Record<string, number> }[] }) {
+function Matrix({ title, rows, columns }: { title: string; rows: { label: string; values: Record<string, number> }[]; columns: string[] }) {
   return (
     <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
       <h2 className="text-lg font-bold text-gray-900">{title}</h2>
       <div className="mt-4 space-y-3">
         {rows.map((row) => {
-          const total = secondaryProgressionReferences.reduce((sum, reference) => sum + (row.values[reference] ?? 0), 0);
+          const total = columns.reduce((sum, reference) => sum + (row.values[reference] ?? 0), 0);
           return (
             <div key={row.label} className="rounded-md border border-gray-100 bg-gray-50 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -181,7 +190,7 @@ function Matrix({ title, rows }: { title: string; rows: { label: string; values:
                 <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-gray-600">{total} mapped opportunities</span>
               </div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {secondaryProgressionReferences.map((reference) => {
+                {columns.map((reference) => {
                   const value = row.values[reference] ?? 0;
                   const percentage = total ? Math.max((value / total) * 100, value ? 8 : 0) : 0;
                   return (
@@ -205,9 +214,107 @@ function Matrix({ title, rows }: { title: string; rows: { label: string; values:
   );
 }
 
-function crossTab(entries: ReturnType<typeof useCurrentSchoolData>["mappings"], rowLabels: string[], columnLabels: string[], rowForEntry: (entry: ReturnType<typeof useCurrentSchoolData>["mappings"][number]) => string) {
+function crossTab(entries: MappedProgressionOpportunity[], rowLabels: string[], columnLabels: string[], rowForEntry: (entry: MappedProgressionOpportunity) => string) {
   return rowLabels.map((label) => ({
     label,
-    values: Object.fromEntries(columnLabels.map((column) => [column, entries.filter((entry) => rowForEntry(entry) === label && progressionReferenceForEntry(entry) === column).length]))
+    values: Object.fromEntries(columnLabels.map((column) => [column, entries.filter((entry) => rowForEntry(entry) === label && entry.descriptor.progressionStep === column).length]))
   }));
+}
+
+type ProgressionDescriptorRow = {
+  id: string;
+  frameworkId?: string;
+  framework: string;
+  frameworkShortName: string;
+  strandId?: string;
+  strand: string;
+  strandShortName?: string | null;
+  elementId?: string;
+  element: string;
+  progressionStep: ProgressionStep;
+  progressionStepNumber: number;
+  descriptorText: string;
+};
+
+type MappedProgressionOpportunity = {
+  entry: MappingEntry;
+  descriptor: ProgressionDescriptorRow;
+  notes?: string;
+};
+
+function flattenProgressionDescriptors(frameworks: FrameworkDefinition[]): ProgressionDescriptorRow[] {
+  return frameworks.flatMap((framework) =>
+    framework.strands.flatMap((strand) =>
+      strand.elements.flatMap((element) =>
+        (element.progressionDescriptorRefs ?? [])
+          .filter((descriptor) => descriptor.descriptorText.trim())
+          .map((descriptor) => ({
+            id: descriptor.id,
+            frameworkId: framework.id,
+            framework: framework.name,
+            frameworkShortName: framework.shortName,
+            strandId: strand.id,
+            strand: strand.name,
+            strandShortName: strand.shortName,
+            elementId: element.id,
+            element: element.name,
+            progressionStep: descriptor.progressionStep,
+            progressionStepNumber: descriptor.progressionStepNumber,
+            descriptorText: descriptor.descriptorText
+          }))
+      )
+    )
+  );
+}
+
+function expandMappedProgression(entries: MappingEntry[], descriptors: ProgressionDescriptorRow[]): MappedProgressionOpportunity[] {
+  const descriptorsById = new Map(descriptors.map((descriptor) => [descriptor.id, descriptor]));
+  const descriptorsByElementAndStep = new Map(descriptors.map((descriptor) => [elementStepKey(descriptor.elementId, descriptor.progressionStepNumber), descriptor]));
+
+  return entries.flatMap((entry) => {
+    const opportunities: MappedProgressionOpportunity[] = [];
+
+    for (const reference of frameworkReferencesForEntry(entry)) {
+      const descriptor =
+        (reference.progressionDescriptorId ? descriptorsById.get(reference.progressionDescriptorId) : undefined) ??
+        descriptorsByElementAndStep.get(elementStepKey(reference.elementId, reference.progressionStep ?? stepNumberFromReference(reference.progressionReference)));
+
+      if (descriptor) opportunities.push({ entry, descriptor, notes: reference.notes });
+    }
+
+    return opportunities;
+  });
+}
+
+function frameworkReferencesForEntry(entry: MappingEntry): MappingFrameworkReference[] {
+  if (entry.frameworkReferences?.length) return entry.frameworkReferences;
+
+  if (!entry.frameworkId || !entry.strandId || !entry.elementId) return [];
+
+  return [
+    {
+      frameworkId: entry.frameworkId,
+      strandId: entry.strandId,
+      elementId: entry.elementId,
+      progressionDescriptorId: entry.progressionDescriptorId,
+      progressionStep: stepNumberFromReference(entry.progressionReference),
+      framework: entry.framework,
+      strand: entry.strand,
+      element: entry.element,
+      progressionReference: entry.progressionReference
+    }
+  ];
+}
+
+function elementStepKey(elementId: string | undefined, progressionStep: number | null | undefined) {
+  return `${elementId ?? ""}::${progressionStep ?? ""}`;
+}
+
+function stepNumberFromReference(reference: string | undefined) {
+  const value = Number(reference?.replace("Step ", ""));
+  return Number.isFinite(value) ? value : null;
+}
+
+function compareProgressionSteps(a: string, b: string) {
+  return (stepNumberFromReference(a) ?? 0) - (stepNumberFromReference(b) ?? 0);
 }

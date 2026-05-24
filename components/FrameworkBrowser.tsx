@@ -54,7 +54,9 @@ export function FrameworkBrowser({ initialFramework, compact = false }: { initia
           <select className="focus-ring w-full rounded-md border bg-white px-3 py-2" style={{ borderColor: theme.border }} value={strandFilter} onChange={(event) => setStrandFilter(event.target.value)}>
             <option>All strands</option>
             {framework.strands.map((strand) => (
-              <option key={strand.name}>{strand.name}</option>
+              <option key={strand.name} value={strand.name}>
+                {strandLabel(strand)}
+              </option>
             ))}
           </select>
         </label>
@@ -67,9 +69,10 @@ export function FrameworkBrowser({ initialFramework, compact = false }: { initia
       <div className="space-y-3">
         {strands.map((strand) => (
           <details key={strand.name} className="rounded-lg border bg-white p-4 shadow-sm" style={{ borderColor: theme.border }} open>
-            <summary className="cursor-pointer text-base font-bold" style={{ color: theme.text }}>
-              {strand.name}
+            <summary className="cursor-pointer text-base font-bold leading-snug" style={{ color: theme.text }}>
+              {strandLabel(strand)}
             </summary>
+            {strand.shortName && strand.shortName !== strand.name ? <p className="mt-2 text-sm leading-6 text-gray-600">{strand.name}</p> : null}
             <div className="mt-4 space-y-3">
               {strand.elements.map((element) => (
                 <article key={element.name} className="rounded-md border p-4" style={{ borderColor: theme.border, backgroundColor: theme.soft }}>
@@ -155,4 +158,8 @@ export function FrameworkBrowser({ initialFramework, compact = false }: { initia
       ) : null}
     </div>
   );
+}
+
+function strandLabel(strand: { name: string; shortName?: string | null }) {
+  return strand.shortName ?? strand.name;
 }

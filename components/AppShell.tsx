@@ -293,7 +293,7 @@ function NavLink({ item, pathname, brandPrimary, brandSecondary, primary = false
       <span
         className={`grid shrink-0 place-items-center rounded-md font-bold transition-colors duration-200 ${primary ? "h-8 w-8 text-sm" : "h-8 w-8 text-[0.68rem]"}`}
         style={{
-          backgroundColor: active || primary ? brandSecondary : "color-mix(in srgb, var(--school-secondary) 72%, transparent)",
+          backgroundColor: active && primary ? brandPrimary : active || primary ? brandSecondary : "color-mix(in srgb, var(--school-secondary) 72%, transparent)",
           border: active ? "1px solid color-mix(in srgb, var(--school-primary) 22%, transparent)" : "1px solid rgba(255,255,255,0.16)"
         }}
       >

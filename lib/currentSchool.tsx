@@ -565,7 +565,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
   const { data: linkRows } = mappingIds.length
     ? await client
     .from("curriculum_mapping_theme_links")
-    .select("mapping_id,theme_id,theme_element_id,notes,cross_cutting_themes(id,name),cross_cutting_theme_elements(id,name)")
+    .select("mapping_id,theme_id,theme_element_id,notes")
         .in("mapping_id", mappingIds)
     : { data: [] as ThemeLinkRow[] };
 
@@ -681,7 +681,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
     aoleConfigs,
     crossCuttingThemes,
     frameworkLinksByMappingId: buildFrameworkLinkMap((frameworkLinkRows ?? []) as FrameworkLinkRow[]),
-    themeNamesByMappingId: buildThemeNameMap(linkRows ?? []),
+    themeNamesByMappingId: buildThemeNameMap(linkRows ?? [], themeRows, themeElementRows),
     themeIdsByMappingId: buildThemeIdMap(linkRows ?? []),
     themeElementIdsByMappingId: buildThemeElementIdMap(linkRows ?? []),
     themeElementLinksByMappingId: buildThemeElementLinkMap(linkRows ?? []),
@@ -694,8 +694,6 @@ type ThemeLinkRow = {
   theme_id: string;
   theme_element_id?: string | null;
   notes: string | null;
-  cross_cutting_themes?: { id: string; name: string } | { id: string; name: string }[] | null;
-  cross_cutting_theme_elements?: { id: string; name: string } | { id: string; name: string }[] | null;
 };
 
 async function loadThemeRows(client: SupabaseClient, schoolId: string): Promise<{ themes: ThemeReferenceRow[]; elements: ThemeElementReferenceRow[] }> {
@@ -723,11 +721,13 @@ function buildFrameworkLinkMap(rows: FrameworkLinkRow[]) {
   return map;
 }
 
-function buildThemeNameMap(rows: ThemeLinkRow[]) {
+function buildThemeNameMap(rows: ThemeLinkRow[], themes: ThemeReferenceRow[], elements: ThemeElementReferenceRow[]) {
   const map = new Map<string, string[]>();
+  const themeById = new Map(themes.map((theme) => [theme.id, theme]));
+  const elementById = new Map(elements.map((element) => [element.id, element]));
   for (const row of rows) {
-    const theme = Array.isArray(row.cross_cutting_themes) ? row.cross_cutting_themes[0] : row.cross_cutting_themes;
-    const element = Array.isArray(row.cross_cutting_theme_elements) ? row.cross_cutting_theme_elements[0] : row.cross_cutting_theme_elements;
+    const theme = themeById.get(row.theme_id);
+    const element = row.theme_element_id ? elementById.get(row.theme_element_id) : undefined;
     if (!theme?.name) continue;
     map.set(row.mapping_id, [...(map.get(row.mapping_id) ?? []), element?.name ? `${theme.name}: ${element.name}` : theme.name]);
   }

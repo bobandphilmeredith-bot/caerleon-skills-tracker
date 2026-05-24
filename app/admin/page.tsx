@@ -33,6 +33,12 @@ export default function AdminPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
   const [activeTab, setActiveTab] = useState<AdminTab>("School");
+  const [addSubjectOpen, setAddSubjectOpen] = useState(false);
+  const [newSubjectName, setNewSubjectName] = useState("");
+  const [newSubjectAoleId, setNewSubjectAoleId] = useState("");
+  const [newSubjectActive, setNewSubjectActive] = useState(true);
+  const [newSubjectAppears, setNewSubjectAppears] = useState(true);
+  const [subjectFormError, setSubjectFormError] = useState("");
   const schoolOptions = schools.some((school) => school.id === currentSchoolId) ? schools : [currentSchool, ...schools];
 
   if (!canManageSchool) {
@@ -55,9 +61,35 @@ export default function AdminPage() {
     [subjects]
   );
 
-  async function addSubject() {
-    const result = await addSubjectConfig("New subject");
-    setNotice(result.ok ? "Subject added." : result.message ?? "Could not add subject.");
+  async function saveNewSubject() {
+    const name = newSubjectName.trim();
+    if (!name) {
+      setSubjectFormError("Subject name is required.");
+      return;
+    }
+    if (subjects.some((subject) => subject.name.trim().toLowerCase() === name.toLowerCase())) {
+      setSubjectFormError(`${name} already exists for this school.`);
+      return;
+    }
+
+    const selectedAole = activeAoles.find((aole) => aole.id === newSubjectAoleId);
+    const result = await addSubjectConfig({
+      name,
+      aoeId: selectedAole?.id ?? null,
+      active: newSubjectActive,
+      appearsInMappingDropdowns: newSubjectAppears
+    });
+    if (!result.ok) {
+      setSubjectFormError(result.message ?? "Could not add subject.");
+      return;
+    }
+    setAddSubjectOpen(false);
+    setNewSubjectName("");
+    setNewSubjectAoleId("");
+    setNewSubjectActive(true);
+    setNewSubjectAppears(true);
+    setSubjectFormError("");
+    setNotice("Subject added.");
   }
 
   function updateSubject(id: string, patch: Partial<SubjectConfig>) {
@@ -356,10 +388,66 @@ export default function AdminPage() {
               {subjectCounts.active} active subjects · {subjectCounts.mapping} shown in curriculum mapping dropdowns
             </p>
           </div>
-          <button className="focus-ring btn btn-primary" type="button" onClick={addSubject}>
+          <button
+            className="focus-ring btn btn-primary"
+            type="button"
+            onClick={() => {
+              setAddSubjectOpen(true);
+              setSubjectFormError("");
+            }}
+          >
             Add subject
           </button>
         </div>
+        {addSubjectOpen ? (
+          <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div className="grid gap-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,0.8fr)_auto_auto]">
+              <label>
+                <span className="mb-1 block text-sm font-semibold text-gray-700">Subject name</span>
+                <input className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" value={newSubjectName} onChange={(event) => setNewSubjectName(event.target.value)} />
+              </label>
+              <label>
+                <span className="mb-1 block text-sm font-semibold text-gray-700">Optional AoLE</span>
+                <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" value={newSubjectAoleId} onChange={(event) => setNewSubjectAoleId(event.target.value)}>
+                  <option value="">No AoLE selected</option>
+                  {activeAoles.map((aole) => (
+                    <option key={aole.id} value={aole.id}>
+                      {aole.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-end gap-2 pb-2 text-sm font-semibold text-gray-700">
+                <input type="checkbox" checked={newSubjectAppears} onChange={(event) => setNewSubjectAppears(event.target.checked)} />
+                Show in mapping
+              </label>
+              <label className="flex items-end gap-2 pb-2 text-sm font-semibold text-gray-700">
+                <input type="checkbox" checked={newSubjectActive} onChange={(event) => setNewSubjectActive(event.target.checked)} />
+                Active
+              </label>
+            </div>
+            {subjectFormError ? <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{subjectFormError}</p> : null}
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button className="focus-ring btn btn-primary" type="button" onClick={saveNewSubject}>
+                Save subject
+              </button>
+              <button
+                className="focus-ring btn btn-muted"
+                type="button"
+                onClick={() => {
+                  setAddSubjectOpen(false);
+                  setNewSubjectName("");
+                  setNewSubjectAoleId("");
+                  setNewSubjectActive(true);
+                  setNewSubjectAppears(true);
+                  setSubjectFormError("");
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[1040px] border-collapse text-left text-sm">
             <thead>

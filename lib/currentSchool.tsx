@@ -42,7 +42,7 @@ type CurrentSchoolContextValue = {
   addMapping: (entry: MappingEntry) => Promise<MappingMutationResult>;
   updateMapping: (entryId: string, patch: Partial<MappingEntry>) => Promise<MappingMutationResult>;
   deleteMapping: (entryId: string) => Promise<MappingMutationResult>;
-  addSubjectConfig: (name?: string) => Promise<MappingMutationResult>;
+  addSubjectConfig: (subject: Pick<SubjectConfig, "name"> & Partial<Pick<SubjectConfig, "aoeId" | "active" | "appearsInMappingDropdowns">>) => Promise<MappingMutationResult>;
   updateSubjectConfig: (subjectId: string, patch: Partial<SubjectConfig>) => Promise<MappingMutationResult>;
 };
 
@@ -314,14 +314,21 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
         });
         return { ok: true };
       },
-      addSubjectConfig: async (name = "New subject") => {
+      addSubjectConfig: async (subject) => {
+        const requestedName = subject.name.trim();
+        if (!requestedName) return { ok: false, message: "Subject name is required." };
         if (!isDemoLoginEnabled) {
           if (!supabase) return { ok: false, message: "Supabase environment variables are missing." };
           const refs = liveReferenceMaps ?? (await loadLiveReferenceMaps(supabase, liveSchoolId, localCurrentSchool));
-          const subjectName = name.trim() || "New subject";
+          if (hasSubjectName(requestedName, refs.subjectConfigs.map((item) => item.name))) {
+            return { ok: false, message: `${requestedName} already exists for this school.` };
+          }
           const { error } = await supabase.from("subjects").insert({
             school_id: refs.diagnostics.schoolId,
-            name: subjectName
+            name: requestedName,
+            aole_id: subject.aoeId ?? null,
+            active: subject.active ?? true,
+            appears_in_mapping_dropdowns: subject.appearsInMappingDropdowns ?? true
           });
           if (error) return { ok: false, message: error.message };
           await loadLiveMappings();
@@ -330,20 +337,22 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
 
         setCustomData((current) => {
           const existing = current[currentSchool.id] ?? data;
-          const subject: SubjectConfig = {
+          if (hasSubjectName(requestedName, existing.subjectConfigs.map((item) => item.name))) return current;
+          const newSubject: SubjectConfig = {
             schoolId: currentSchool.id,
             id: `subject-${Date.now()}`,
-            name: name.trim() || "New subject",
+            name: requestedName,
+            aoeId: subject.aoeId ?? null,
             aole: undefined,
-            active: true,
+            active: subject.active ?? true,
             displayOrder: existing.subjectConfigs.length + 1,
-            appearsInMappingDropdowns: true
+            appearsInMappingDropdowns: subject.appearsInMappingDropdowns ?? true
           };
           return {
             ...current,
             [currentSchool.id]: {
               ...existing,
-              subjectConfigs: [...existing.subjectConfigs, subject]
+              subjectConfigs: [...existing.subjectConfigs, newSubject]
             }
           };
         });
@@ -1035,6 +1044,11 @@ function themeLinksForEntry(entry: MappingEntry): SelectedCctElement[] {
 
 function looksLikeUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function hasSubjectName(subjectName: string, existingNames: string[]) {
+  const normalised = subjectName.trim().toLowerCase();
+  return existingNames.some((name) => name.trim().toLowerCase() === normalised);
 }
 
 function progressionStepNumber(reference: ProgressionReference | undefined) {

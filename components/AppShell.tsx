@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { areaThemes, themeForFramework } from "@/lib/theme";
@@ -9,9 +10,9 @@ import { roleBadgeClass, roleLabels, type UserRole, useAuth } from "@/lib/auth";
 const navGroups = [
   {
     title: "Dashboards",
-    layout: "dashboard",
+    icon: "DB",
     items: [
-      { href: "/", label: "Whole School", icon: "WS", theme: areaThemes.overview, wide: true },
+      { href: "/", label: "Whole School", icon: "WS", theme: areaThemes.overview },
       { href: "/literacy", label: "Literacy", icon: "Li", theme: themeForFramework("Literacy") },
       { href: "/numeracy", label: "Numeracy", icon: "Nu", theme: themeForFramework("Numeracy") },
       { href: "/dcf", label: "DCF", icon: "DC", theme: themeForFramework("Digital Competence Framework") },
@@ -20,6 +21,7 @@ const navGroups = [
   },
   {
     title: "Subjects",
+    icon: "SU",
     items: [
       { href: "/subjects", label: "Subject View", icon: "SV", theme: areaThemes.overview },
       { href: "/subject-overview", label: "Subject Comparison", icon: "SC", theme: areaThemes.overview },
@@ -28,6 +30,7 @@ const navGroups = [
   },
   {
     title: "Explore",
+    icon: "EX",
     items: [
       { href: "/curriculum-explorer", label: "Curriculum Explorer", icon: "CE", theme: areaThemes.overview },
       { href: "/progression-overview", label: "Progression Overview", icon: "PO", theme: areaThemes.overview },
@@ -37,13 +40,15 @@ const navGroups = [
   },
   {
     title: "Review",
+    icon: "RV",
     items: [
       { href: "/recent-mapping", label: "Recent Updates", icon: "RU", theme: areaThemes.overview },
       { href: "/review-summary", label: "Review Summary", icon: "RS", theme: areaThemes.overview }
     ]
   },
   {
-    title: "Setup",
+    title: "Setup / Admin",
+    icon: "SA",
     items: [
       { href: "/admin", label: "Admin Setup", icon: "Ad", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
       { href: "/user-management", label: "User Management", icon: "UM", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
@@ -61,39 +66,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { settings } = useSchoolSettings();
   const { currentUser, isDemoMode, users, loginAs } = useAuth();
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [flyoutTop, setFlyoutTop] = useState(0);
   const shortSchoolName = settings.branding.schoolName.replace(" Comprehensive School", "");
   const activeUsers = users.filter((user) => user.active);
 
   return (
-    <div className="min-h-screen bg-white lg:grid lg:grid-cols-[310px_1fr]">
-      <aside className="border-b border-gray-200 text-white lg:sticky lg:top-0 lg:max-h-screen lg:min-h-screen lg:overflow-hidden lg:border-b-0" style={{ backgroundColor: settings.branding.primaryColour }}>
-        <div className="px-5 py-5">
+    <div className="min-h-screen bg-white lg:grid lg:grid-cols-[280px_1fr]">
+      <aside className="border-b border-gray-200 text-white lg:sticky lg:top-0 lg:z-30 lg:max-h-screen lg:min-h-screen lg:overflow-y-auto lg:overflow-x-hidden lg:border-b-0" style={{ backgroundColor: settings.branding.primaryColour }}>
+        <div className="px-5 py-4">
           <div className="flex items-center gap-3">
-            <div className="grid h-16 w-16 shrink-0 place-items-center rounded-md bg-white p-1.5">
+            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-md bg-white p-1.5">
               <img src={settings.branding.logoDataUrl} alt={`${settings.branding.schoolName} logo`} className="h-full w-full object-contain" />
             </div>
             <div>
               <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#f1d8e6]">{shortSchoolName}</div>
-              <h1 className="mt-1 text-2xl font-bold">Skills Tracker</h1>
+              <h1 className="mt-1 text-xl font-bold">Skills Tracker</h1>
             </div>
           </div>
           <p className="mt-2 text-sm leading-6 text-[#f8e8f0]">{settings.branding.motto}</p>
         </div>
 
-        <nav className="flex gap-3 overflow-x-auto px-4 pb-5 lg:block lg:max-h-[calc(100vh-8.75rem)] lg:space-y-4 lg:overflow-y-auto lg:overflow-x-hidden lg:px-4 lg:pr-3">
+        <nav className="flex gap-3 overflow-x-auto px-4 pb-5 lg:block lg:space-y-2 lg:overflow-visible lg:px-4 lg:pr-3">
           {canShowItem(primaryAction, currentUser) ? <NavLink item={primaryAction} pathname={pathname} primary brandPrimary={settings.branding.primaryColour} brandSecondary={settings.branding.secondaryColour} /> : null}
-          {navGroups.map((group) => (
-            <div key={group.title} className="flex min-w-max gap-2 lg:block lg:min-w-0 lg:space-y-1.5">
-              <div className="hidden px-2 text-[0.68rem] font-bold uppercase tracking-[0.18em] text-[#f1d8e6] lg:block">{group.title}</div>
-              <div className={group.layout === "dashboard" ? "grid gap-1.5 lg:grid-cols-2" : "space-y-1.5"}>
-                {group.items
-                  .filter((item) => canShowItem(item, currentUser))
-                  .map((item) => (
-                    <NavLink key={item.href} item={item} pathname={pathname} brandPrimary={settings.branding.primaryColour} brandSecondary={settings.branding.secondaryColour} compact={group.layout === "dashboard" && !("wide" in item && item.wide)} wide={"wide" in item && item.wide} />
-                  ))}
-              </div>
-            </div>
-          ))}
+          {navGroups
+            .map((group) => ({ ...group, items: group.items.filter((item) => canShowItem(item, currentUser)) }))
+            .filter((group) => group.items.length > 0)
+            .map((group) => (
+              <FlyoutGroup key={group.title} group={group} pathname={pathname} openGroup={openGroup} setOpenGroup={setOpenGroup} flyoutTop={flyoutTop} setFlyoutTop={setFlyoutTop} brandPrimary={settings.branding.primaryColour} brandSecondary={settings.branding.secondaryColour} />
+            ))}
         </nav>
       </aside>
 
@@ -141,13 +142,106 @@ function canShowItem(item: NavItem, currentUser: ReturnType<typeof useAuth>["cur
   return !("roles" in item) || !item.roles || (currentUser && item.roles.includes(currentUser.role));
 }
 
-function NavLink({ item, pathname, brandPrimary, brandSecondary, primary = false, compact = false, wide = false }: { item: NavItem; pathname: string; brandPrimary: string; brandSecondary: string; primary?: boolean; compact?: boolean; wide?: boolean }) {
+type NavGroup = (typeof navGroups)[number] & { items: NavItem[] };
+
+function FlyoutGroup({ group, pathname, openGroup, setOpenGroup, flyoutTop, setFlyoutTop, brandPrimary, brandSecondary }: { group: NavGroup; pathname: string; openGroup: string | null; setOpenGroup: (title: string | null) => void; flyoutTop: number; setFlyoutTop: (top: number) => void; brandPrimary: string; brandSecondary: string }) {
+  const isOpen = openGroup === group.title;
+  const active = group.items.some((item) => isActivePath(item.href, pathname));
+  const openFromTrigger = (element: HTMLElement) => {
+    setFlyoutTop(element.getBoundingClientRect().top);
+    setOpenGroup(group.title);
+  };
+
+  return (
+    <div className="relative min-w-max lg:min-w-0" onMouseEnter={(event) => openFromTrigger(event.currentTarget)} onMouseLeave={() => setOpenGroup(null)} onFocus={(event) => openFromTrigger(event.currentTarget)}>
+      <button
+        type="button"
+        className={`focus-ring flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm font-bold transition-all ${active ? "shadow-sm" : "border-transparent"}`}
+        style={{
+          backgroundColor: active ? "color-mix(in srgb, white 94%, var(--school-primary))" : undefined,
+          borderColor: active ? "rgba(255, 255, 255, 0.86)" : "transparent",
+          color: active ? brandSecondary : undefined
+        }}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+        onClick={(event) => {
+          setFlyoutTop(event.currentTarget.getBoundingClientRect().top);
+          setOpenGroup(isOpen ? null : group.title);
+        }}
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-[0.62rem] font-bold"
+            style={{
+              backgroundColor: active ? brandSecondary : "color-mix(in srgb, var(--school-secondary) 72%, transparent)",
+              border: active ? "1px solid color-mix(in srgb, var(--school-primary) 22%, transparent)" : "1px solid rgba(255,255,255,0.16)"
+            }}
+          >
+            {group.icon}
+          </span>
+          <span className="truncate" style={{ color: active ? brandSecondary : undefined }}>
+            {group.title}
+          </span>
+        </span>
+        <span aria-hidden="true" className="text-xs">
+          {isOpen ? "-" : "+"}
+        </span>
+      </button>
+
+      <div
+        className={`z-40 mt-2 min-w-64 rounded-lg border bg-white p-2 text-gray-900 shadow-xl lg:fixed lg:left-[calc(280px+0.75rem)] lg:mt-0 ${isOpen ? "block" : "hidden"}`}
+        style={{ borderColor: "color-mix(in srgb, var(--school-primary) 18%, white)", top: flyoutTop }}
+        role="menu"
+        onMouseEnter={() => setOpenGroup(group.title)}
+      >
+        <div className="px-2 py-1 text-[0.68rem] font-bold uppercase tracking-[0.16em]" style={{ color: brandSecondary }}>
+          {group.title}
+        </div>
+        <div className="mt-1 space-y-1">
+          {group.items.map((item) => (
+            <FlyoutLink key={item.href} item={item} pathname={pathname} brandSecondary={brandSecondary} onNavigate={() => setOpenGroup(null)} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FlyoutLink({ item, pathname, brandSecondary, onNavigate }: { item: NavItem; pathname: string; brandSecondary: string; onNavigate: () => void }) {
+  const active = isActivePath(item.href, pathname);
+
+  return (
+    <Link
+      href={item.href}
+      role="menuitem"
+      onClick={onNavigate}
+      className="focus-ring flex items-center gap-2 rounded-md px-2 py-2 text-sm font-semibold hover:bg-gray-50"
+      style={{
+        backgroundColor: active ? "color-mix(in srgb, var(--school-primary) 10%, white)" : undefined,
+        color: active ? brandSecondary : undefined
+      }}
+      aria-current={active ? "page" : undefined}
+    >
+      <span
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-[0.62rem] font-bold text-white"
+        style={{
+          backgroundColor: active ? brandSecondary : "color-mix(in srgb, var(--school-secondary) 72%, transparent)"
+        }}
+      >
+        {item.icon}
+      </span>
+      <span className="min-w-0 truncate">{item.label}</span>
+    </Link>
+  );
+}
+
+function NavLink({ item, pathname, brandPrimary, brandSecondary, primary = false }: { item: NavItem; pathname: string; brandPrimary: string; brandSecondary: string; primary?: boolean }) {
   const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
 
   return (
     <Link
       href={item.href}
-      className={`focus-ring group relative flex min-w-max items-center rounded-lg border text-sm font-semibold shadow-sm transition-all duration-200 hover:shadow-sm lg:min-w-0 ${active ? "shadow-md" : "border-transparent bg-transparent text-white"} ${primary ? "mb-4 gap-3 px-3 py-2.5" : compact ? "gap-2 px-2.5 py-2 lg:[&_.nav-label]:text-xs" : "gap-3 px-3 py-2"} ${wide ? "lg:col-span-2" : ""}`}
+      className={`focus-ring group relative flex min-w-max items-center rounded-lg border text-sm font-semibold shadow-sm transition-all duration-200 hover:shadow-sm lg:min-w-0 ${active ? "shadow-md" : "border-transparent bg-transparent text-white"} ${primary ? "mb-3 gap-3 px-3 py-2.5" : "gap-3 px-3 py-2"}`}
       style={{
         backgroundColor: active ? "color-mix(in srgb, white 94%, var(--school-primary))" : undefined,
         borderColor: active || primary ? "rgba(255, 255, 255, 0.86)" : "transparent",
@@ -163,7 +257,7 @@ function NavLink({ item, pathname, brandPrimary, brandSecondary, primary = false
     >
       <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full transition-opacity duration-200" style={{ backgroundColor: brandSecondary, opacity: active ? 1 : 0 }} aria-hidden="true" />
       <span
-        className={`grid shrink-0 place-items-center rounded-md font-bold transition-colors duration-200 ${primary ? "h-8 w-8 text-sm" : compact ? "h-7 w-7 text-[0.62rem]" : "h-8 w-8 text-[0.68rem]"}`}
+        className={`grid shrink-0 place-items-center rounded-md font-bold transition-colors duration-200 ${primary ? "h-8 w-8 text-sm" : "h-8 w-8 text-[0.68rem]"}`}
         style={{
           backgroundColor: active || primary ? brandSecondary : "color-mix(in srgb, var(--school-secondary) 72%, transparent)",
           border: active ? "1px solid color-mix(in srgb, var(--school-primary) 22%, transparent)" : "1px solid rgba(255,255,255,0.16)"
@@ -176,4 +270,8 @@ function NavLink({ item, pathname, brandPrimary, brandSecondary, primary = false
       </span>
     </Link>
   );
+}
+
+function isActivePath(href: string, pathname: string) {
+  return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }

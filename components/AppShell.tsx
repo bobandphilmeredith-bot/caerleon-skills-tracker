@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { areaThemes, themeForFramework } from "@/lib/theme";
@@ -58,9 +58,12 @@ const navGroups = [
   }
 ];
 
-const primaryAction = { href: "/add-entry", label: "Add Mapping Entry", icon: "+", theme: areaThemes.overview, roles: ["platform_admin", "school_admin", "teacher", "subject_lead"] as UserRole[] };
+const primaryActions = [
+  { href: "/add-entry", label: "Map Skills", icon: "+", theme: areaThemes.overview, roles: ["platform_admin", "school_admin", "teacher", "subject_lead"] as UserRole[] },
+  { href: "/add-cct", label: "Map CCT", icon: "CT", theme: areaThemes.overview, roles: ["platform_admin", "school_admin", "teacher", "subject_lead"] as UserRole[] }
+];
 
-type NavItem = (typeof navGroups)[number]["items"][number] | typeof primaryAction;
+type NavItem = (typeof navGroups)[number]["items"][number] | (typeof primaryActions)[number];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -70,6 +73,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [flyoutTop, setFlyoutTop] = useState(0);
   const shortSchoolName = settings.branding.schoolName.replace(" Comprehensive School", "");
   const activeUsers = users.filter((user) => user.active);
+
+  useEffect(() => {
+    function closeOnOutsidePointer(event: MouseEvent | TouchEvent) {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-sidebar-menu-region]")) return;
+      setOpenGroup(null);
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpenGroup(null);
+    }
+
+    document.addEventListener("mousedown", closeOnOutsidePointer);
+    document.addEventListener("touchstart", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsidePointer);
+      document.removeEventListener("touchstart", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-white lg:grid lg:grid-cols-[280px_1fr]">
@@ -88,7 +112,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex gap-3 overflow-x-auto px-4 pb-5 lg:block lg:space-y-2 lg:overflow-visible lg:px-4 lg:pr-3">
-          {canShowItem(primaryAction, currentUser) ? <NavLink item={primaryAction} pathname={pathname} primary brandPrimary={settings.branding.primaryColour} brandSecondary={settings.branding.secondaryColour} /> : null}
+          <div className="flex gap-2 lg:block lg:space-y-2">
+            {primaryActions
+              .filter((item) => canShowItem(item, currentUser))
+              .map((item) => (
+                <NavLink key={item.href} item={item} pathname={pathname} primary brandPrimary={settings.branding.primaryColour} brandSecondary={settings.branding.secondaryColour} />
+              ))}
+          </div>
           {navGroups
             .map((group) => ({ ...group, items: group.items.filter((item) => canShowItem(item, currentUser)) }))
             .filter((group) => group.items.length > 0)
@@ -147,13 +177,14 @@ type NavGroup = (typeof navGroups)[number] & { items: NavItem[] };
 function FlyoutGroup({ group, pathname, openGroup, setOpenGroup, flyoutTop, setFlyoutTop, brandPrimary, brandSecondary }: { group: NavGroup; pathname: string; openGroup: string | null; setOpenGroup: (title: string | null) => void; flyoutTop: number; setFlyoutTop: (top: number) => void; brandPrimary: string; brandSecondary: string }) {
   const isOpen = openGroup === group.title;
   const active = group.items.some((item) => isActivePath(item.href, pathname));
+  const menuId = `sidebar-menu-${group.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   const openFromTrigger = (element: HTMLElement) => {
     setFlyoutTop(element.getBoundingClientRect().top);
     setOpenGroup(group.title);
   };
 
   return (
-    <div className="relative min-w-max lg:min-w-0" onMouseEnter={(event) => openFromTrigger(event.currentTarget)} onMouseLeave={() => setOpenGroup(null)} onFocus={(event) => openFromTrigger(event.currentTarget)}>
+    <div className="relative min-w-max lg:min-w-0" data-sidebar-menu-region onMouseEnter={(event) => openFromTrigger(event.currentTarget)} onFocus={(event) => openFromTrigger(event.currentTarget)}>
       <button
         type="button"
         className={`focus-ring flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm font-bold transition-all ${active ? "shadow-sm" : "border-transparent"}`}
@@ -164,6 +195,7 @@ function FlyoutGroup({ group, pathname, openGroup, setOpenGroup, flyoutTop, setF
         }}
         aria-expanded={isOpen}
         aria-haspopup="menu"
+        aria-controls={menuId}
         onClick={(event) => {
           setFlyoutTop(event.currentTarget.getBoundingClientRect().top);
           setOpenGroup(isOpen ? null : group.title);
@@ -189,9 +221,11 @@ function FlyoutGroup({ group, pathname, openGroup, setOpenGroup, flyoutTop, setF
       </button>
 
       <div
-        className={`z-40 mt-2 min-w-64 rounded-lg border bg-white p-2 text-gray-900 shadow-xl lg:fixed lg:left-[calc(280px+0.75rem)] lg:mt-0 ${isOpen ? "block" : "hidden"}`}
+        id={menuId}
+        className={`z-50 mt-2 min-w-64 rounded-lg border bg-white p-2 text-gray-900 shadow-xl lg:fixed lg:left-[calc(280px+0.75rem)] lg:mt-0 ${isOpen ? "block" : "hidden"}`}
         style={{ borderColor: "color-mix(in srgb, var(--school-primary) 18%, white)", top: flyoutTop }}
         role="menu"
+        data-sidebar-menu-region
         onMouseEnter={() => setOpenGroup(group.title)}
       >
         <div className="px-2 py-1 text-[0.68rem] font-bold uppercase tracking-[0.16em]" style={{ color: brandSecondary }}>

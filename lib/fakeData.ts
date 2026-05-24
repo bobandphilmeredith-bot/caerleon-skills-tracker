@@ -80,11 +80,7 @@ export const wholeSchoolDashboard: Dashboard = {
     [63, 72, 79, 71, 54],
     [58, 64, 69, 62, 49]
   ],
-  reviewItems: [
-    { title: "Year 11 visibility", status: "Mapping note", description: "Year 11 curriculum entries are represented across every framework." },
-    { title: "DCF progression", status: "Mapping note", description: "Producing has more mapped entries than data and computational thinking." },
-    { title: "Numeracy in Arts", status: "Mapping note", description: "There are opportunities to make measurement and data links more explicit." }
-  ],
+  reviewItems: [],
   entries: [...mappings].sort((a, b) => b.lastMappedDate.localeCompare(a.lastMappedDate)).slice(0, 8)
 };
 

@@ -138,6 +138,7 @@ export type ReviewItem = {
 
 export type ElementCoverageRow = {
   strand: string;
+  strandShortName?: string | null;
   element: string;
   count: number;
   subjects: string[];
@@ -147,6 +148,7 @@ export type ElementCoverageRow = {
 
 export type StrandCoverage = {
   strand: string;
+  strandShortName?: string | null;
   count: number;
   percentage: number;
   elements: ElementCoverageRow[];
@@ -167,6 +169,7 @@ export type Dashboard = {
   cards: Card[];
   heatmapTitle: string;
   heatmapRows: string[];
+  heatmapRowTitles?: string[];
   heatmapColumns: string[];
   heatmapValues: number[][];
   reviewItems: ReviewItem[];

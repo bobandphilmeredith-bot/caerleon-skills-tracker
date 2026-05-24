@@ -3,14 +3,14 @@
 import { CoverageHeatmap } from "@/components/Heatmap";
 import { FrameworkCoveragePanel } from "@/components/FrameworkCoveragePanel";
 import { PageHeader } from "@/components/PageHeader";
-import { PlanningVisibilityNotes } from "@/components/PlanningVisibilityNotes";
+import { CoverageAlerts } from "@/components/PlanningVisibilityNotes";
 import { RevisitFrequency } from "@/components/RevisitFrequency";
 import { useCurrentSchoolData } from "@/lib/currentSchool";
 import type { Dashboard } from "@/lib/types";
 import { themeForDashboard, themeForFramework } from "@/lib/theme";
 
 export function DashboardPage({ dashboard }: { dashboard: Dashboard }) {
-  const { subjectAoleMap } = useCurrentSchoolData();
+  const { subjectAoleMap, mappings, subjects, yearGroups, frameworkCoverage, crossCuttingThemes } = useCurrentSchoolData();
   const theme = themeForDashboard(dashboard.title, dashboard.coverage?.framework);
   const subjectSummary = topCounts(dashboard.entries.map((entry) => entry.subject)).slice(0, 6);
   const journeyHighlights = dashboard.entries.slice(0, 5);
@@ -32,9 +32,9 @@ export function DashboardPage({ dashboard }: { dashboard: Dashboard }) {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">
-        <CoverageHeatmap title={dashboard.heatmapTitle} rows={dashboard.heatmapRows} columns={dashboard.heatmapColumns} values={dashboard.heatmapValues} theme={theme} />
+        <CoverageHeatmap title={dashboard.heatmapTitle} rows={dashboard.heatmapRows} rowTitles={dashboard.heatmapRowTitles} columns={dashboard.heatmapColumns} values={dashboard.heatmapValues} theme={theme} />
 
-        <PlanningVisibilityNotes items={dashboard.reviewItems} coverage={dashboard.coverage} theme={theme} />
+        <CoverageAlerts dashboard={dashboard} mappings={mappings} subjects={subjects} yearGroups={yearGroups} frameworkCoverage={frameworkCoverage} crossCuttingThemes={crossCuttingThemes} theme={theme} />
       </div>
 
       {dashboard.coverage ? <FrameworkCoveragePanel coverage={dashboard.coverage} theme={theme} /> : null}

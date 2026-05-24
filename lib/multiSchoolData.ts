@@ -165,11 +165,7 @@ function makeWholeSchoolDashboard(schoolId: string, subjects: string[], mappings
     heatmapRows: ["Literacy", "Numeracy", "DCF", "Cross-cutting themes"],
     heatmapColumns: base.yearGroups,
     heatmapValues: wholeSchoolHeatValues(mappings, frameworkReferences),
-    reviewItems: [
-      { title: "Year 11 visibility", status: "Mapping note", description: "Year 11 curriculum entries are represented across configured frameworks." },
-      { title: "Framework balance", status: "Mapping note", description: "Mapped opportunities show curriculum connections across subjects." },
-      { title: "Curriculum review", status: "Mapping note", description: "Review suggested where fewer recorded opportunities appear in the current school view." }
-    ],
+    reviewItems: [],
     entries: [...mappings].sort((a, b) => b.lastMappedDate.localeCompare(a.lastMappedDate)).slice(0, 8)
   };
 }
@@ -187,7 +183,8 @@ function makeDashboard(framework: string, title: string, description: string, co
       { label: "Unmapped elements", value: String(frameworkCoverage.unmappedElements.length), note: "Elements with no current entries yet." }
     ],
     heatmapTitle: `${frameworkCoverage.framework} Coverage by Year Group`,
-    heatmapRows: frameworkCoverage.strands.map((item) => item.strand),
+    heatmapRows: frameworkCoverage.strands.map((item) => strandDisplayName(item)),
+    heatmapRowTitles: frameworkCoverage.strands.map((item) => item.strand),
     heatmapColumns: base.yearGroups,
     heatmapValues: frameworkHeatValues(framework, frameworkCoverage.strands, frameworkReferences),
     reviewItems: [
@@ -246,6 +243,7 @@ function buildCoverage(framework: FrameworkDefinition, mappings: MappingEntry[],
       const elementEntries = mappedEntries.filter((item) => item.element === elementItem.name);
       const row = {
         strand: strand.name,
+        strandShortName: strand.shortName,
         element: elementItem.name,
         count: elementEntries.length,
         subjects: elementEntries.length ? unique(elementEntries.map((item) => item.subject)) : [],
@@ -256,9 +254,13 @@ function buildCoverage(framework: FrameworkDefinition, mappings: MappingEntry[],
       return row;
     });
     const count = mappedEntries.length;
-    return { strand: strand.name, count, percentage: Math.round((count / total) * 100), elements };
+    return { strand: strand.name, strandShortName: strand.shortName, count, percentage: Math.round((count / total) * 100), elements };
   });
   return { framework: framework.name, total: frameworkEntries.length, strands, mostMappedElements: [...allRows].filter((item) => item.count > 0).sort((a, b) => b.count - a.count).slice(0, 5), unmappedElements: allRows.filter((item) => item.count === 0) };
+}
+
+function strandDisplayName(strand: { strand: string; strandShortName?: string | null }) {
+  return strand.strandShortName ?? strand.strand;
 }
 
 function makeSubjectOverviews(schoolId: string, subjects: string[], subjectConfigs: SubjectConfig[], mappings: MappingEntry[], frameworkReferences: ExpandedFrameworkReference[], frameworkNames: { literacy: string; numeracy: string; dcf: string; themes: string }): SubjectOverview[] {

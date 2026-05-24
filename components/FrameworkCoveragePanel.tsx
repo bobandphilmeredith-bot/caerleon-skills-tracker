@@ -33,8 +33,9 @@ export function FrameworkCoveragePanel({ coverage, theme = areaThemes.overview }
               style={item.strand === selectedStrand ? { borderColor: theme.accent, backgroundColor: theme.soft } : { borderColor: "#e5e7eb" }}
               type="button"
               onClick={() => setSelectedStrand(item.strand)}
+              title={item.strand}
             >
-              <div className="text-sm font-bold text-gray-900">{item.strand}</div>
+              <div className="text-sm font-bold leading-snug text-gray-900">{strandLabel(item)}</div>
               <div className="mt-3 text-3xl font-bold" style={{ color: theme.accent }}>
                 {item.count}
               </div>
@@ -63,8 +64,9 @@ function StrandDetail({ strand, theme }: { strand: StrandCoverage; theme: AreaTh
   return (
     <div className="mt-5 rounded-lg border p-4" style={{ borderColor: theme.border, backgroundColor: theme.soft }}>
       <h3 className="font-bold" style={{ color: theme.text }}>
-        {strand.strand} Elements
+        {strandLabel(strand)} Elements
       </h3>
+      {strand.strandShortName && strand.strandShortName !== strand.strand ? <p className="mt-1 text-sm leading-6 text-gray-700">{strand.strand}</p> : null}
       <div className="mt-3 grid gap-3 md:grid-cols-3">
         {strand.elements.map((item) => (
           <div key={item.element} className="rounded-md bg-white p-3">
@@ -80,7 +82,7 @@ function StrandDetail({ strand, theme }: { strand: StrandCoverage; theme: AreaTh
   );
 }
 
-function SummaryList({ title, rows, emptyText, theme }: { title: string; rows: { strand: string; element: string; count: number }[]; emptyText: string; theme: AreaTheme }) {
+function SummaryList({ title, rows, emptyText, theme }: { title: string; rows: { strand: string; strandShortName?: string | null; element: string; count: number }[]; emptyText: string; theme: AreaTheme }) {
   return (
     <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
       <h2 className="text-lg font-bold text-gray-900">{title}</h2>
@@ -90,7 +92,9 @@ function SummaryList({ title, rows, emptyText, theme }: { title: string; rows: {
             <div key={`${item.strand}-${item.element}`} className="flex items-start justify-between gap-4 rounded-md bg-gray-50 p-3">
               <div>
                 <div className="text-sm font-bold text-gray-900">{item.element}</div>
-                <div className="mt-1 text-xs font-semibold text-gray-500">{item.strand}</div>
+                <div className="mt-1 text-xs font-semibold text-gray-500" title={item.strand}>
+                  {strandLabel(item)}
+                </div>
               </div>
               <span className="rounded-full px-3 py-1 text-sm font-bold" style={{ backgroundColor: theme.accent, color: theme.contrast }}>
                 {item.count}
@@ -126,7 +130,9 @@ function ElementCoverageTable({ coverage, theme }: { coverage: FrameworkCoverage
           <tbody>
             {rows.map((row) => (
               <tr key={`${row.strand}-${row.element}`} className="border-b border-gray-100">
-                <td className="py-3 pr-4 font-semibold text-gray-900">{row.strand}</td>
+                <td className="py-3 pr-4 font-semibold text-gray-900" title={row.strand}>
+                  {strandLabel(row)}
+                </td>
                 <td className="py-3 pr-4 text-gray-700">{row.element}</td>
                 <td className="py-3 pr-4 text-gray-700">{row.count}</td>
                 <td className="py-3 pr-4 text-gray-700">{row.count ? row.subjects.join(", ") : "Not currently mapped"}</td>
@@ -139,4 +145,8 @@ function ElementCoverageTable({ coverage, theme }: { coverage: FrameworkCoverage
       </div>
     </article>
   );
+}
+
+function strandLabel(strand: { strand: string; strandShortName?: string | null }) {
+  return strand.strandShortName ?? strand.strand;
 }

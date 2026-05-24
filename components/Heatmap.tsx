@@ -3,12 +3,14 @@ import { areaThemes, type AreaTheme } from "@/lib/theme";
 export function CoverageHeatmap({
   title,
   rows,
+  rowTitles,
   columns,
   values,
   theme = areaThemes.overview
 }: {
   title: string;
   rows: string[];
+  rowTitles?: string[];
   columns: string[];
   values: number[][];
   theme?: AreaTheme;
@@ -35,7 +37,7 @@ export function CoverageHeatmap({
               </div>
             ))}
             {rows.map((row, rowIndex) => (
-              <Row key={row} row={row} values={values[rowIndex]} theme={theme} />
+              <Row key={row} row={row} title={rowTitles?.[rowIndex]} values={values[rowIndex]} theme={theme} />
             ))}
           </div>
         </div>
@@ -44,10 +46,10 @@ export function CoverageHeatmap({
   );
 }
 
-function Row({ row, values, theme }: { row: string; values: number[]; theme: AreaTheme }) {
+function Row({ row, title, values, theme }: { row: string; title?: string; values: number[]; theme: AreaTheme }) {
   return (
     <>
-      <div className="flex min-h-12 items-center rounded-md px-3 text-sm font-bold" style={{ backgroundColor: theme.soft, color: theme.text }}>
+      <div className="flex min-h-12 items-center rounded-md px-3 text-sm font-bold leading-snug" style={{ backgroundColor: theme.soft, color: theme.text }} title={title}>
         {row}
       </div>
       {values.map((value, index) => (

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AccessDenied } from "@/components/AccessDenied";
 import { PageHeader } from "@/components/PageHeader";
-import { roleBadgeClass, roleLabels, type AppUser, type UserRole, useAuth } from "@/lib/auth";
+import { roleLabels, type AppUser, type UserRole, useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
 import { supabase } from "@/lib/supabaseClient";
 import { areaThemes } from "@/lib/theme";
@@ -77,6 +77,9 @@ export default function UserManagementPage() {
   const [deletedUserIds, setDeletedUserIds] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<ManagedUser | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [subjectModalUser, setSubjectModalUser] = useState<ManagedUser | null>(null);
+  const [subjectModalSelection, setSubjectModalSelection] = useState<string[]>([]);
+  const [subjectModalSearch, setSubjectModalSearch] = useState("");
 
   const schoolOptions = isDemoMode ? schools.map((school) => ({ id: school.id, name: school.name, slug: school.slug, active: school.active })) : managedSchools;
   const targetSchoolId = currentUser?.role === "platform_admin" ? selectedSchoolId : (currentUser?.schoolId ?? "");
@@ -97,7 +100,7 @@ export default function UserManagementPage() {
       if (statusFilter === "Suspended" && (user.active || archived)) return false;
       if (statusFilter === "Archived" && !archived) return false;
       if (roleFilter !== "All" && user.role !== roleFilter) return false;
-      if (subjectFilter !== "All" && !user.assigned_subjects.some((subject) => subject.trim().toLowerCase() === subjectFilter.trim().toLowerCase())) return false;
+      if (subjectFilter !== "All" && !userHasSubjectAccess(user, subjectFilter)) return false;
       if (query && !`${user.display_name} ${user.email}`.toLowerCase().includes(query)) return false;
       return true;
     });
@@ -358,6 +361,21 @@ export default function UserManagementPage() {
     return user.active ? "Active" : "Suspended";
   }
 
+  function openSubjectModal(user: ManagedUser) {
+    setSubjectModalUser(user);
+    setSubjectModalSelection(user.assigned_subjects);
+    setSubjectModalSearch("");
+  }
+
+  async function saveSubjectModal() {
+    if (!subjectModalUser) return;
+    const latestUser = managedUsers.find((user) => user.id === subjectModalUser.id) ?? subjectModalUser;
+    await saveLiveUser({ ...latestUser, assigned_subjects: subjectModalSelection });
+    setSubjectModalUser(null);
+    setSubjectModalSelection([]);
+    setSubjectModalSearch("");
+  }
+
   return (
     <section className="space-y-6">
       <PageHeader
@@ -417,8 +435,40 @@ export default function UserManagementPage() {
                 {loadingUsers ? "Refreshing..." : "Refresh"}
               </button>
             </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-4">
+              <LabelledInput label="Search staff" value={search} onChange={setSearch} />
+              <label>
+                <span className="mb-1 block text-sm font-semibold text-gray-700">Role</span>
+                <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as UserRole | "All")}>
+                  <option value="All">All roles</option>
+                  {availableRoles.map((role) => (
+                    <option key={role} value={role}>
+                      {roleLabels[role]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-sm font-semibold text-gray-700">Subject</span>
+                <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" value={subjectFilter} onChange={(event) => setSubjectFilter(event.target.value)}>
+                  <option>All</option>
+                  {subjects.map((subject) => (
+                    <option key={subject}>{subject}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-sm font-semibold text-gray-700">Status</span>
+                <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
+                  <option>Active</option>
+                  <option>Suspended</option>
+                  <option>Archived</option>
+                  <option>All</option>
+                </select>
+              </label>
+            </div>
             <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[1180px] border-collapse text-left text-sm">
+              <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 text-gray-500">
                     <th className="py-3 pr-3 font-bold">Name</th>
@@ -432,11 +482,11 @@ export default function UserManagementPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {managedUsers.map((user) => {
+                  {filteredManagedUsers.map((user) => {
                     const lockedPlatformAdmin = currentUser?.role !== "platform_admin" && user.role === "platform_admin";
                     const roleChoices = currentUser?.role === "platform_admin" ? roles : roles.filter((role) => role !== "platform_admin");
                     return (
-                      <tr key={user.id} className="border-b border-gray-100 align-top">
+                      <tr key={user.id} className="border-b border-gray-100 align-middle">
                         <td className="py-3 pr-3">
                           <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2 font-semibold" value={user.display_name} disabled={lockedPlatformAdmin} onChange={(event) => updateLiveUser(user.id, { display_name: event.target.value })} />
                         </td>
@@ -445,10 +495,9 @@ export default function UserManagementPage() {
                         </td>
                         <td className="py-3 pr-3">
                           <RoleSelect value={user.role} roles={roleChoices} disabled={lockedPlatformAdmin} onChange={(role) => updateLiveUser(user.id, { role })} />
-                          <span className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-bold ${roleBadgeClass(user.role)}`}>{roleLabels[user.role]}</span>
                         </td>
                         <td className="py-3 pr-3">
-                          <SubjectChecks subjects={subjects} selected={user.assigned_subjects} compact disabled={lockedPlatformAdmin} onToggle={(subject) => updateLiveUser(user.id, { assigned_subjects: toggleSubject(user.assigned_subjects, subject) })} />
+                          <span className="text-sm font-semibold text-gray-700">{subjectSummary(user.assigned_subjects, user.role)}</span>
                         </td>
                         <td className="py-3 pr-3">
                           <button
@@ -463,11 +512,14 @@ export default function UserManagementPage() {
                         <td className="py-3 pr-3 text-gray-700">{formatUkDateTime(user.created_at)}</td>
                         <td className="py-3 pr-3 text-gray-700">{formatUkDateTime(user.last_sign_in_at, "Never")}</td>
                         <td className="py-3 pr-3">
-                          <div className="flex flex-col items-start gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button className="focus-ring btn btn-muted px-3 py-2 text-xs" type="button" disabled={lockedPlatformAdmin} onClick={() => openSubjectModal(user)}>
+                              Manage subjects
+                            </button>
                             <button className="focus-ring btn btn-secondary px-3 py-2 text-xs" type="button" disabled={lockedPlatformAdmin || savingUserId === user.id} onClick={() => saveLiveUser(user)}>
                               {savingUserId === user.id ? "Saving..." : "Save"}
                             </button>
-                            {rowMessage[user.id] ? <span className="text-xs font-semibold text-gray-600">{rowMessage[user.id]}</span> : null}
+                            {rowMessage[user.id] ? <span className="basis-full text-xs font-semibold text-gray-600">{rowMessage[user.id]}</span> : null}
                           </div>
                         </td>
                       </tr>
@@ -475,7 +527,7 @@ export default function UserManagementPage() {
                   })}
                 </tbody>
               </table>
-              {!managedUsers.length ? <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-600">{loadingUsers ? "Loading staff users..." : "No staff users found."}</p> : null}
+              {!filteredManagedUsers.length ? <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-600">{loadingUsers ? "Loading staff users..." : "No staff users match the current filters."}</p> : null}
             </div>
           </section>
 
@@ -545,7 +597,6 @@ export default function UserManagementPage() {
                     </td>
                     <td className="py-3 pr-3">
                       <RoleSelect value={user.role} roles={availableRoles} onChange={(role) => updateUser(user.id, { role })} />
-                      <span className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-bold ${roleBadgeClass(user.role)}`}>{roleLabels[user.role]}</span>
                     </td>
                     <td className="py-3 pr-3">
                       <SubjectChecks subjects={subjects} selected={user.assignedSubjects} compact onToggle={(subject) => updateUser(user.id, { assignedSubjects: toggleSubject(user.assignedSubjects, subject) })} />
@@ -564,6 +615,22 @@ export default function UserManagementPage() {
             </table>
           </div>
         </section>
+      ) : null}
+
+      {subjectModalUser ? (
+        <SubjectAssignmentModal
+          user={subjectModalUser}
+          subjects={subjects}
+          selected={subjectModalSelection}
+          search={subjectModalSearch}
+          saving={savingUserId === subjectModalUser.id}
+          onSearch={setSubjectModalSearch}
+          onToggle={(subject) => setSubjectModalSelection((current) => toggleSubject(current, subject))}
+          onSelectAll={() => setSubjectModalSelection(subjects)}
+          onClearAll={() => setSubjectModalSelection([])}
+          onCancel={() => setSubjectModalUser(null)}
+          onSave={saveSubjectModal}
+        />
       ) : null}
     </section>
   );
@@ -612,8 +679,101 @@ function SubjectChecks({ subjects, selected, onToggle, compact = false, disabled
   );
 }
 
+function SubjectAssignmentModal({
+  user,
+  subjects,
+  selected,
+  search,
+  saving,
+  onSearch,
+  onToggle,
+  onSelectAll,
+  onClearAll,
+  onCancel,
+  onSave
+}: {
+  user: ManagedUser;
+  subjects: string[];
+  selected: string[];
+  search: string;
+  saving: boolean;
+  onSearch: (value: string) => void;
+  onToggle: (subject: string) => void;
+  onSelectAll: () => void;
+  onClearAll: () => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const filteredSubjects = subjects.filter((subject) => subject.toLowerCase().includes(search.trim().toLowerCase()));
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 px-4 py-6" role="dialog" aria-modal="true" aria-label="Manage subject assignments">
+      <div className="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white p-5 shadow-xl">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 pb-4">
+          <div>
+            <h2 className="text-xl font-bold text-gray-950">Manage subjects</h2>
+            <p className="mt-1 text-sm font-semibold text-gray-700">{user.display_name}</p>
+            <p className="mt-1 text-sm text-gray-600">{user.email}</p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-gray-500">{roleLabels[user.role]}</p>
+          </div>
+          <button className="focus-ring btn btn-muted px-3 py-2 text-sm" type="button" onClick={onCancel}>
+            Close
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          <label className="min-w-64 flex-1">
+            <span className="mb-1 block text-sm font-semibold text-gray-700">Search subjects</span>
+            <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search by subject name" />
+          </label>
+          <button className="focus-ring btn btn-muted px-3 py-2 text-sm" type="button" onClick={onSelectAll}>
+            Select all
+          </button>
+          <button className="focus-ring btn btn-muted px-3 py-2 text-sm" type="button" onClick={onClearAll}>
+            Clear all
+          </button>
+        </div>
+
+        <div className="mt-4 grid max-h-80 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+          {filteredSubjects.map((subject) => (
+            <label key={subject} className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700">
+              <input type="checkbox" checked={selected.includes(subject)} onChange={() => onToggle(subject)} />
+              {subject}
+            </label>
+          ))}
+          {!filteredSubjects.length ? <p className="text-sm text-gray-600">No subjects match that search.</p> : null}
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4">
+          <span className="text-sm font-semibold text-gray-600">{selected.length ? `${selected.length} selected` : "No subjects assigned"}</span>
+          <div className="flex flex-wrap gap-2">
+            <button className="focus-ring btn btn-muted" type="button" onClick={onCancel}>
+              Cancel
+            </button>
+            <button className="focus-ring btn btn-primary" type="button" onClick={onSave} disabled={saving}>
+              {saving ? "Saving..." : "Save changes"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function toggleSubject(subjects: string[], subject: string) {
   return subjects.includes(subject) ? subjects.filter((item) => item !== subject) : [...subjects, subject];
+}
+
+function subjectSummary(subjects: string[], role: UserRole) {
+  if (role === "platform_admin" || role === "school_admin") return "All subjects";
+  if (!subjects.length) return "No subjects assigned";
+  if (subjects.length <= 2) return subjects.join(", ");
+  return `${subjects.slice(0, 2).join(", ")} +${subjects.length - 2}`;
+}
+
+function userHasSubjectAccess(user: ManagedUser, subjectFilter: string) {
+  if (user.role === "platform_admin" || user.role === "school_admin") return true;
+  return user.assigned_subjects.some((subject) => subject.trim().toLowerCase() === subjectFilter.trim().toLowerCase());
 }
 
 function AccessDebugPanel({ debug, title = "Access denied debug" }: { debug: AccessDebug; title?: string }) {

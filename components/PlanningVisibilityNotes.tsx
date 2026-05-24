@@ -1,181 +1,180 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import type { FrameworkCoverage, ReviewItem } from "@/lib/types";
+import { useMemo } from "react";
+import type { CrossCuttingTheme, Dashboard, FrameworkCoverage, MappingEntry } from "@/lib/types";
 import type { AreaTheme } from "@/lib/theme";
 
-type ModalType = "distribution" | "unmapped" | null;
-
-const wholeSchoolActions: Record<string, { href: string; label: string }> = {
-  "Year 11 visibility": { href: "/curriculum-explorer", label: "Open mappings" },
-  "Framework balance": { href: "/progression-overview", label: "Open overview" },
-  "Curriculum review": { href: "/review-summary", label: "Open summary" },
-  "DCF progression": { href: "/progression-overview", label: "Open overview" },
-  "Numeracy in Arts": { href: "/curriculum-explorer", label: "Open mappings" }
+type CoverageAlert = {
+  title: string;
+  description: string;
+  status: string;
+  href: string;
+  action: string;
 };
 
-export function PlanningVisibilityNotes({
-  items,
-  coverage,
+export function CoverageAlerts({
+  dashboard,
+  mappings,
+  subjects,
+  yearGroups,
+  frameworkCoverage,
+  crossCuttingThemes,
   theme
 }: {
-  items: ReviewItem[];
-  coverage?: FrameworkCoverage;
+  dashboard: Dashboard;
+  mappings: MappingEntry[];
+  subjects: string[];
+  yearGroups: string[];
+  frameworkCoverage: Record<string, FrameworkCoverage>;
+  crossCuttingThemes: CrossCuttingTheme[];
   theme: AreaTheme;
 }) {
-  const [modal, setModal] = useState<ModalType>(null);
-  const browserHref = coverage ? `/framework-browser?framework=${encodeURIComponent(coverage.framework)}` : "/framework-browser";
+  const alerts = useMemo(
+    () => buildCoverageAlerts({ dashboard, mappings, subjects, yearGroups, frameworkCoverage, crossCuttingThemes }),
+    [crossCuttingThemes, dashboard, frameworkCoverage, mappings, subjects, yearGroups]
+  );
 
   return (
     <article className="rounded-lg border bg-white p-5 shadow-sm" style={{ borderColor: theme.border }}>
-      <h2 className="text-lg font-bold text-gray-900">Planning Visibility Notes</h2>
+      <h2 className="text-lg font-bold text-gray-900">Coverage Alerts</h2>
+      <p className="mt-2 text-sm leading-6 text-gray-600">Use this section to identify year groups, subjects or frameworks with limited mapping evidence.</p>
+
       <div className="mt-4 space-y-3">
-        {items.map((item) => {
-          if (item.title === "Element library") {
-            return (
-              <Link key={item.title} href={browserHref} className="focus-ring block rounded-md border p-4 transition hover:shadow-sm" style={{ borderColor: theme.border }}>
-                <NoteContent item={item} theme={theme} action="Open browser" />
-              </Link>
-            );
-          }
-
-          if (!coverage) {
-            const action = wholeSchoolActions[item.title] ?? { href: "/curriculum-explorer", label: "Open mappings" };
-            return (
-              <Link key={item.title} href={action.href} className="focus-ring block rounded-md border p-4 transition hover:shadow-sm" style={{ borderColor: theme.border }}>
-                <NoteContent item={item} theme={theme} action={action.label} />
-              </Link>
-            );
-          }
-
-          const modalType = item.title === "Unmapped elements" ? "unmapped" : "distribution";
-
-          return (
-            <button
-              key={item.title}
-              className="focus-ring block w-full rounded-md border p-4 text-left transition hover:shadow-sm"
-              style={{ borderColor: theme.border }}
-              type="button"
-              onClick={() => setModal(modalType)}
-            >
-              <NoteContent item={item} theme={theme} action="View details" />
-            </button>
-          );
-        })}
+        {alerts.length ? (
+          alerts.map((alert) => (
+            <Link key={`${alert.title}-${alert.description}`} href={alert.href} className="focus-ring block rounded-md border p-4 transition hover:shadow-sm" style={{ borderColor: theme.border }}>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-bold text-gray-900">{alert.title}</h3>
+                <span className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ backgroundColor: theme.soft, color: theme.text }}>
+                  {alert.status}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-gray-600">{alert.description}</p>
+              <div className="mt-3 text-xs font-bold uppercase tracking-[0.12em]" style={{ color: theme.accent }}>
+                {alert.action}
+              </div>
+            </Link>
+          ))
+        ) : (
+          <p className="rounded-md bg-gray-50 p-4 text-sm leading-6 text-gray-600">No coverage alerts at the moment. Continue reviewing subject and framework coverage below.</p>
+        )}
       </div>
-
-      {modal && coverage ? <NotesModal modal={modal} coverage={coverage} theme={theme} onClose={() => setModal(null)} /> : null}
     </article>
   );
 }
 
-function NoteContent({ item, theme, action }: { item: ReviewItem; theme: AreaTheme; action: string }) {
-  return (
-    <>
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="font-bold text-gray-900">{item.title}</h3>
-        <span className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ backgroundColor: theme.soft, color: theme.text }}>
-          {item.status}
-        </span>
-      </div>
-      <p className="mt-2 text-sm leading-6 text-gray-600">{item.description}</p>
-      <div className="mt-3 text-xs font-bold uppercase tracking-[0.12em]" style={{ color: theme.accent }}>
-        {action}
-      </div>
-    </>
-  );
-}
-
-function NotesModal({
-  modal,
-  coverage,
-  theme,
-  onClose
+function buildCoverageAlerts({
+  dashboard,
+  mappings,
+  subjects,
+  yearGroups,
+  frameworkCoverage,
+  crossCuttingThemes
 }: {
-  modal: Exclude<ModalType, null>;
-  coverage: FrameworkCoverage;
-  theme: AreaTheme;
-  onClose: () => void;
+  dashboard: Dashboard;
+  mappings: MappingEntry[];
+  subjects: string[];
+  yearGroups: string[];
+  frameworkCoverage: Record<string, FrameworkCoverage>;
+  crossCuttingThemes: CrossCuttingTheme[];
 }) {
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 px-4 py-6" role="dialog" aria-modal="true">
-      <div className="max-h-[86vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white p-5 shadow-xl">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 pb-4">
-          <div>
-            <div className="text-sm font-bold uppercase tracking-[0.14em]" style={{ color: theme.accent }}>
-              {coverage.framework}
-            </div>
-            <h2 className="mt-1 text-2xl font-bold text-gray-950">{modal === "distribution" ? "Distribution by Strand" : "Unmapped Elements"}</h2>
-          </div>
-          <button className="focus-ring rounded-md px-3 py-2 text-sm font-bold" style={{ backgroundColor: theme.soft, color: theme.text }} type="button" onClick={onClose}>
-            Close
-          </button>
-        </div>
+  const alerts: CoverageAlert[] = [];
+  const dashboardCoverage = dashboard.coverage;
 
-        {modal === "distribution" ? <DistributionDetail coverage={coverage} theme={theme} /> : <UnmappedDetail coverage={coverage} theme={theme} />}
-      </div>
-    </div>
-  );
+  if (dashboardCoverage) {
+    if (!dashboardCoverage.total) {
+      alerts.push({
+        title: `${dashboardCoverage.framework} has no mappings yet`,
+        description: "No curriculum activities are currently linked to this framework.",
+        status: "Needs evidence",
+        href: "/add-entry",
+        action: "Map skills"
+      });
+    }
+
+    const unmappedStrands = dashboardCoverage.strands.filter((strand) => strand.count === 0).slice(0, 3);
+    for (const strand of unmappedStrands) {
+      alerts.push({
+        title: `${strandLabel(strand)} has no mappings`,
+        description: `${dashboardCoverage.framework} currently has no mapped opportunities for this strand.`,
+        status: "Gap",
+        href: "/curriculum-explorer",
+        action: "Open mappings"
+      });
+    }
+
+    if (dashboardCoverage.unmappedElements.length) {
+      alerts.push({
+        title: `${dashboardCoverage.unmappedElements.length} elements have no evidence`,
+        description: "Some framework elements are not currently linked to curriculum activities.",
+        status: "Review",
+        href: `/framework-browser?framework=${encodeURIComponent(dashboardCoverage.framework)}`,
+        action: "Open browser"
+      });
+    }
+
+    return alerts.slice(0, 5);
+  }
+
+  const unmappedYearGroups = yearGroups.filter((year) => !mappings.some((entry) => entry.year === year));
+  if (unmappedYearGroups.length) {
+    alerts.push({
+      title: `${unmappedYearGroups.length} year groups have no mappings`,
+      description: `No mapped opportunities found for ${unmappedYearGroups.slice(0, 3).join(", ")}${unmappedYearGroups.length > 3 ? " and others" : ""}.`,
+      status: "Gap",
+      href: "/curriculum-explorer",
+      action: "Open mappings"
+    });
+  }
+
+  const unmappedSubjects = subjects.filter((subject) => !mappings.some((entry) => entry.subject === subject));
+  if (unmappedSubjects.length) {
+    alerts.push({
+      title: `${unmappedSubjects.length} subjects have no mappings`,
+      description: `No mapped opportunities found for ${unmappedSubjects.slice(0, 3).join(", ")}${unmappedSubjects.length > 3 ? " and others" : ""}.`,
+      status: "Gap",
+      href: "/subject-overview",
+      action: "Open subjects"
+    });
+  }
+
+  for (const coverage of Object.values(frameworkCoverage)) {
+    if (!coverage.total) {
+      alerts.push({
+        title: `${coverage.framework} has no mappings`,
+        description: "No curriculum activities are currently linked to this framework.",
+        status: "Needs evidence",
+        href: "/add-entry",
+        action: "Map skills"
+      });
+    } else if (coverage.unmappedElements.length >= Math.ceil(coverage.strands.reduce((sum, strand) => sum + strand.elements.length, 0) / 2)) {
+      alerts.push({
+        title: `${coverage.framework} has limited element coverage`,
+        description: `${coverage.unmappedElements.length} elements are not currently linked to curriculum activities.`,
+        status: "Review",
+        href: "/progression-overview",
+        action: "Open overview"
+      });
+    }
+  }
+
+  const themesWithoutEvidence = crossCuttingThemes
+    .filter((theme) => theme.active)
+    .filter((theme) => !mappings.some((entry) => entry.crossCuttingThemeIds?.includes(theme.id) || entry.crossCuttingThemes?.includes(theme.name)));
+  if (themesWithoutEvidence.length) {
+    alerts.push({
+      title: `${themesWithoutEvidence.length} CCT themes have no evidence`,
+      description: `No theme links found for ${themesWithoutEvidence.slice(0, 2).map((theme) => theme.name).join(", ")}${themesWithoutEvidence.length > 2 ? " and others" : ""}.`,
+      status: "Review",
+      href: "/themes",
+      action: "Open themes"
+    });
+  }
+
+  return alerts.slice(0, 5);
 }
 
-function DistributionDetail({ coverage, theme }: { coverage: FrameworkCoverage; theme: AreaTheme }) {
-  const rows = useMemo(
-    () =>
-      coverage.strands.map((strand) => ({
-        strand: strand.strand,
-        count: strand.count,
-        subjects: unique(strand.elements.flatMap((item) => (item.count ? item.subjects : []))),
-        yearGroups: unique(strand.elements.flatMap((item) => (item.count ? item.yearGroups : [])))
-      })),
-    [coverage]
-  );
-
-  return (
-    <div className="mt-5 overflow-x-auto">
-      <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-        <thead>
-          <tr className="border-b border-gray-200 text-gray-500">
-            <th className="py-3 pr-4 font-bold">Strand name</th>
-            <th className="py-3 pr-4 font-bold">Number of mapped opportunities</th>
-            <th className="py-3 pr-4 font-bold">Subjects mapped</th>
-            <th className="py-3 pr-4 font-bold">Year groups mapped</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.strand} className="border-b border-gray-100">
-              <td className="py-3 pr-4 font-bold" style={{ color: theme.text }}>
-                {row.strand}
-              </td>
-              <td className="py-3 pr-4 text-gray-700">{row.count}</td>
-              <td className="py-3 pr-4 text-gray-700">{row.subjects.join(", ") || "Not currently mapped"}</td>
-              <td className="py-3 pr-4 text-gray-700">{row.yearGroups.join(", ") || "Not currently mapped"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function UnmappedDetail({ coverage, theme }: { coverage: FrameworkCoverage; theme: AreaTheme }) {
-  return (
-    <div className="mt-5 grid gap-3 md:grid-cols-2">
-      {coverage.unmappedElements.map((element) => (
-        <div key={`${element.strand}-${element.element}`} className="rounded-md border p-4" style={{ borderColor: theme.border, backgroundColor: theme.soft }}>
-          <div className="text-xs font-bold uppercase tracking-[0.12em]" style={{ color: theme.accent }}>
-            {element.strand}
-          </div>
-          <h3 className="mt-1 font-bold text-gray-950">{element.element}</h3>
-          <p className="mt-2 text-sm text-gray-700">No current mappings.</p>
-        </div>
-      ))}
-      {!coverage.unmappedElements.length ? <p className="text-sm text-gray-600">All elements in this framework currently have mappings.</p> : null}
-    </div>
-  );
-}
-
-function unique(items: string[]) {
-  return Array.from(new Set(items)).filter(Boolean);
+function strandLabel(strand: { strand: string; strandShortName?: string | null }) {
+  return strand.strandShortName ?? strand.strand;
 }

@@ -24,8 +24,7 @@ const navGroups = [
     icon: "SU",
     items: [
       { href: "/subjects", label: "Subject View", icon: "SV", theme: areaThemes.overview },
-      { href: "/subject-overview", label: "Subject Comparison", icon: "SC", theme: areaThemes.overview },
-      { href: "/admin", label: "Subject Setup", icon: "SS", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] }
+      { href: "/subject-overview", label: "Subject Comparison", icon: "SC", theme: areaThemes.overview }
     ]
   },
   {
@@ -291,7 +290,7 @@ function NavLink({ item, pathname, brandPrimary, brandSecondary, primary = false
     >
       <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full transition-opacity duration-200" style={{ backgroundColor: brandSecondary, opacity: active ? 1 : 0 }} aria-hidden="true" />
       <span
-        className={`grid shrink-0 place-items-center rounded-md font-bold transition-colors duration-200 ${primary ? "h-8 w-8 text-sm" : "h-8 w-8 text-[0.68rem]"}`}
+        className={`grid shrink-0 place-items-center rounded-md font-bold transition-colors duration-200 ${primary ? "h-8 w-8 text-sm" : "h-8 w-8 text-[0.68rem]"} ${active && primary ? "text-white" : ""}`}
         style={{
           backgroundColor: active && primary ? brandPrimary : active || primary ? brandSecondary : "color-mix(in srgb, var(--school-secondary) 72%, transparent)",
           border: active ? "1px solid color-mix(in srgb, var(--school-primary) 22%, transparent)" : "1px solid rgba(255,255,255,0.16)"

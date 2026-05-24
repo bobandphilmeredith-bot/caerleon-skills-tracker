@@ -307,9 +307,9 @@ export default function AddEntryPage() {
   return (
     <section className="space-y-6">
       <PageHeader
-        title="Add Curriculum Mapping Entry"
-        eyebrow="Planning visibility"
-        description="Describe what pupils are doing, then attach the framework references and wider theme tags it evidences."
+        title="Map Curriculum Skills"
+        eyebrow="Skills Mapping"
+        description="Record where pupils develop Literacy, Numeracy and Digital Competence across the curriculum."
         accent={areaThemes.overview.accent}
       />
 

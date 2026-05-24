@@ -13,7 +13,7 @@ const caerleonSchoolId = "657f5a77-ae52-48ea-b459-290f86bbd2f0";
 export default function AddCctPage() {
   const { canEditMappings, currentUser } = useAuth();
   const { currentSchoolId, data, addMapping } = useCurrentSchool();
-  const { subjectConfigs, terms, yearGroups } = data;
+  const { subjectConfigs, terms, yearGroups, crossCuttingThemes } = data;
   const activeSubjects = useMemo(
     () => subjectConfigs.filter((subject) => subject.active && subject.appearsInMappingDropdowns).sort((a, b) => a.name.localeCompare(b.name)),
     [subjectConfigs]
@@ -32,7 +32,10 @@ export default function AddCctPage() {
   const [saveMessage, setSaveMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  const themeOptions = useMemo(() => themeRows.filter((themeItem) => themeItem.active && looksLikeUuid(themeItem.id)), [themeRows]);
+  const themeOptions = useMemo(
+    () => (themeRows.length ? themeRows : crossCuttingThemes).filter((themeItem) => themeItem.active && looksLikeUuid(themeItem.id)),
+    [crossCuttingThemes, themeRows]
+  );
   const selectedThemes = useMemo(() => themeOptions.filter((themeItem) => selectedThemeIds.includes(themeItem.id)), [themeOptions, selectedThemeIds]);
   const selectedSubject = activeSubjects.find((subject) => subject.id === subjectId);
   const hasSubjectRestrictedRole = currentUser?.role === "teacher" || currentUser?.role === "subject_lead";
@@ -181,9 +184,9 @@ export default function AddCctPage() {
   return (
     <section className="space-y-6">
       <PageHeader
-        title="Add Cross-Cutting Theme Mapping"
-        eyebrow="Planning visibility"
-        description="Record an activity, project or curriculum opportunity that evidences one or more cross-cutting themes."
+        title="Map Cross-Cutting Themes"
+        eyebrow="Theme Mapping"
+        description="Record curriculum opportunities that evidence wider Welsh curriculum themes."
         accent={areaThemes.overview.accent}
       />
 

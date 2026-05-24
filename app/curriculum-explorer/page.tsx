@@ -5,7 +5,6 @@ import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
-import { filterNaturalLanguage, getRelatedSuggestions } from "@/lib/curriculumOutputs";
 import type { ElementDefinition, FrameworkDefinition, MappingEntry } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
@@ -14,7 +13,7 @@ const allValue = "All";
 export default function CurriculumExplorerPage() {
   const { data, updateMapping, deleteMapping } = useCurrentSchool();
   const { canEditMappings, canEditSubject } = useAuth();
-  const { frameworkLibrary, frameworkMap, mappings, subjectAoleMap, subjects, terms, yearGroups } = data;
+  const { frameworkLibrary, frameworkMap, mappings, subjectAoleMap, subjects } = data;
   const [framework, setFramework] = useState(allValue);
   const [strand, setStrand] = useState(allValue);
   const [element, setElement] = useState(allValue);
@@ -29,10 +28,11 @@ export default function CurriculumExplorerPage() {
   const strandOptions = framework === allValue ? unique(mappings.map((entry) => entry.strand)) : Object.keys(frameworkMap[framework]);
   const elementOptions = framework === allValue ? unique(mappings.map((entry) => entry.element)) : strand === allValue ? Object.values(frameworkMap[framework]).flat() : frameworkMap[framework][strand];
   const progressionStepOptions = useMemo(() => progressionStepsFromFrameworks(frameworkLibrary), [frameworkLibrary]);
+  const yearGroupOptions = useMemo(() => unique(mappings.map((entry) => entry.year)).sort(compareYearGroups), [mappings]);
+  const termOptions = useMemo(() => unique(mappings.map((entry) => entry.term)).sort(compareTerms), [mappings]);
 
   const filteredEntries = useMemo(() => {
     const query = keyword.trim().toLowerCase();
-    const naturalMatches = query ? new Set(filterNaturalLanguage(query, mappings).map((entry) => entry.id)) : null;
     const filtered = mappings.filter((entry) => {
       const entryProgressionSteps = progressionStepsForEntry(entry);
       const searchable = [entry.subject, entry.year, entry.term, entry.unit, entry.framework, entry.strand, entry.element, ...entryProgressionSteps, entry.activityDescription, entry.schemeReference, entry.note ?? ""]
@@ -47,7 +47,7 @@ export default function CurriculumExplorerPage() {
         (yearGroup === allValue || entry.year === yearGroup) &&
         (term === allValue || entry.term === term) &&
         (progressionReference === allValue || entryProgressionSteps.includes(progressionReference)) &&
-        (!query || searchable.includes(query) || naturalMatches?.has(entry.id))
+        (!query || searchable.includes(query))
       );
     });
     return filtered.sort((a, b) => {
@@ -130,8 +130,8 @@ export default function CurriculumExplorerPage() {
           <SelectField label="Strand" value={strand} onChange={updateStrand} options={[allValue, ...strandOptions]} />
           <SelectField label="Element" value={element} onChange={setElement} options={[allValue, ...elementOptions]} />
           <SelectField label="Subject" value={subject} onChange={setSubject} options={[allValue, ...subjects]} />
-          <SelectField label="Year group" value={yearGroup} onChange={setYearGroup} options={[allValue, ...yearGroups]} />
-          <SelectField label="Term" value={term} onChange={setTerm} options={[allValue, ...terms]} />
+          <SelectField label="Year group" value={yearGroup} onChange={setYearGroup} options={[allValue, ...yearGroupOptions]} />
+          <SelectField label="Term" value={term} onChange={setTerm} options={[allValue, ...termOptions]} />
           <SelectField label="Progression step" value={progressionReference} onChange={setProgressionReference} options={[allValue, ...progressionStepOptions]} />
           <SelectField label="Sort by" value={sortBy} onChange={setSortBy} options={["Most recent", "Subject", "Year group", "Framework"]} />
           <label className="md:col-span-2">
@@ -193,8 +193,8 @@ export default function CurriculumExplorerPage() {
           subjectAoleMap={subjectAoleMap}
           subjects={subjects}
           canEditSubject={canEditSubject}
-          terms={terms}
-          yearGroups={yearGroups}
+          terms={termOptions}
+          yearGroups={yearGroupOptions}
           progressionStepOptions={progressionStepOptions}
         />
       ) : null}
@@ -444,16 +444,18 @@ function EntryDetailModal({
                   </span>
                 ))}
               </div>
-              <div className="mt-4">
-                <h4 className="text-sm font-bold text-gray-900">Also commonly mapped with...</h4>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {getRelatedSuggestions(entry).map((suggestion) => (
-                    <span key={suggestion} className="rounded-full bg-white px-3 py-1 text-xs font-semibold" style={{ color: theme.text }}>
-                      {suggestion}
-                    </span>
-                  ))}
+              {element?.relatedConnections?.length ? (
+                <div className="mt-4">
+                  <h4 className="text-sm font-bold text-gray-900">Also commonly mapped with...</h4>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {element.relatedConnections.map((suggestion) => (
+                      <span key={suggestion} className="rounded-full bg-white px-3 py-1 text-xs font-semibold" style={{ color: theme.text }}>
+                        {suggestion}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </section>
           </div>
 
@@ -479,14 +481,14 @@ function EntryDetailModal({
             <section className="rounded-md border border-gray-200 p-4">
               <h3 className="font-bold text-gray-900">Also mapped in...</h3>
               <div className="mt-3 space-y-2">
-                {(related.length ? related : relatedFallback(displayEntry)).map((item) => (
+                {related.length ? related.map((item) => (
                   <div key={`${item.subject}-${item.year}-${item.unit}`} className="rounded-md bg-gray-50 p-3 text-sm leading-6 text-gray-700">
                     <span className="font-bold text-gray-900">
                       {item.subject} {item.year}:
                     </span>{" "}
                     {item.activityDescription}
                   </div>
-                ))}
+                )) : <p className="rounded-md bg-gray-50 p-3 text-sm text-gray-600">No related live mappings found yet.</p>}
               </div>
             </section>
           </div>
@@ -512,29 +514,6 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <dd className="text-right text-gray-900">{value}</dd>
     </div>
   );
-}
-
-function relatedFallback(entry: Pick<MappingEntry, "subject">) {
-  return [
-    {
-      subject: "English",
-      year: "Year 8",
-      unit: "Interpreting viewpoint",
-      activityDescription: "Pupils interpret viewpoint in persuasive writing and compare how evidence is selected."
-    },
-    {
-      subject: "History",
-      year: "Year 9",
-      unit: "Evaluating historical sources",
-      activityDescription: "Pupils evaluate bias in historical sources and explain how it affects interpretation."
-    },
-    {
-      subject: "Biology",
-      year: "Year 10",
-      unit: "Practical data review",
-      activityDescription: "Pupils interpret data from practical work and use trends to support conclusions."
-    }
-  ].filter((item) => item.subject !== entry.subject);
 }
 
 function progressionStepsFromFrameworks(frameworks: FrameworkDefinition[]) {
@@ -578,6 +557,22 @@ function validProgressionStep(step: string | undefined) {
 
 function compareProgressionSteps(a: string, b: string) {
   return Number(a.replace("Step ", "")) - Number(b.replace("Step ", ""));
+}
+
+function compareYearGroups(a: string, b: string) {
+  return yearGroupNumber(a) - yearGroupNumber(b) || a.localeCompare(b);
+}
+
+function yearGroupNumber(value: string) {
+  const match = value.match(/\d+/);
+  return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
+}
+
+function compareTerms(a: string, b: string) {
+  const order = ["Autumn", "Spring", "Summer"];
+  const aIndex = order.indexOf(a);
+  const bIndex = order.indexOf(b);
+  return (aIndex === -1 ? order.length : aIndex) - (bIndex === -1 ? order.length : bIndex) || a.localeCompare(b);
 }
 
 function unique(items: string[]) {

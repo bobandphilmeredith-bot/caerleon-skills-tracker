@@ -162,7 +162,6 @@ export default function AddEntryPage() {
   const trimmedActivityTitle = activityTitle.trim();
   const trimmedActivityDescription = activityDescription.trim();
   const trimmedSchemeReference = schemeReference.trim();
-  const hasAnyLink = frameworkReferences.length > 0 || selectedCctElements.length > 0;
   const formError =
     hasSubjectRestrictedRole && !hasEditableSubjects
       ? "No editable subjects are assigned to your account. Contact a school administrator."
@@ -178,9 +177,7 @@ export default function AddEntryPage() {
                 ? "Scheme of learning reference cannot be blank."
                 : !trimmedActivityDescription
                   ? "Description of the activity cannot be blank."
-                  : !hasAnyLink
-                    ? "Add at least one framework reference or cross-cutting theme."
-                    : "";
+                  : "";
 
   function updateFramework(nextFrameworkId: string) {
     setFrameworkId(nextFrameworkId);

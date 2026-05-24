@@ -593,7 +593,6 @@ function validateDraft(draft: EditDraft, subject: SubjectConfig | undefined, the
   if (!draft.year) return "Select a year group.";
   if (!draft.term) return "Select a term.";
   if (!draft.activityTitle.trim()) return "Activity title cannot be blank.";
-  if (!draft.frameworkReferences.length && !draft.selectedCctElements.length) return "Add at least one framework reference or cross-cutting theme element.";
   if (!validateFrameworkReferences(draft.frameworkReferences)) return "Framework reference data is not using database IDs. Reload framework data from Supabase.";
   if (!validateCctElements(draft.selectedCctElements, themes)) return "Cross-cutting theme data is not using database IDs. Reload cross-cutting themes from Supabase.";
   return "";

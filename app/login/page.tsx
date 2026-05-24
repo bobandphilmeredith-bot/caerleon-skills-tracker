@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { roleBadgeClass, roleDescriptions, roleLabels, useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabaseClient";
 import { areaThemes } from "@/lib/theme";
 
 export default function LoginPage() {
@@ -10,11 +11,15 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [nextPath, setNextPath] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [sending, setSending] = useState(false);
   const activeUsers = users.filter((user) => user.active);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    setNextPath(safeNextPath(params.get("next")));
+    setSessionExpired(params.get("session") === "expired");
     if (params.get("password_reset") === "success") {
       setMessage("Password updated. You can now sign in.");
       window.history.replaceState(null, "", window.location.pathname);
@@ -43,6 +48,38 @@ export default function LoginPage() {
     window.location.href = next ?? "/";
   }
 
+  async function continueCurrentSession() {
+    setMessage("");
+    setSending(true);
+
+    const { data } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+
+    if (!data.session) {
+      logout();
+      setSending(false);
+      setMessage("Your previous session has ended. Please sign in again.");
+      return;
+    }
+
+    const response = await fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_in: data.session.expires_in
+      })
+    });
+
+    setSending(false);
+    if (!response.ok) {
+      setMessage("Could not refresh your app session. Please sign in again.");
+      return;
+    }
+
+    window.location.href = nextPath ?? "/";
+  }
+
   async function submitPasswordReset() {
     setMessage("");
     if (!email.trim()) {
@@ -68,6 +105,12 @@ export default function LoginPage() {
 
         {accessDeniedMessage ? <article className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm font-semibold leading-6 text-amber-900 shadow-sm">{accessDeniedMessage}</article> : null}
 
+        {sessionExpired ? (
+          <article className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm font-semibold leading-6 text-amber-900 shadow-sm">
+            Your session has expired. Sign in again to continue{nextPath ? " where you left off" : ""}.
+          </article>
+        ) : null}
+
         {currentUser ? (
           <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <p className="text-sm font-bold uppercase tracking-[0.14em] text-gray-500">Signed in as</p>
@@ -78,9 +121,14 @@ export default function LoginPage() {
               </div>
               <span className={`rounded-full px-3 py-1 text-xs font-bold ${roleBadgeClass(currentUser.role)}`}>{roleLabels[currentUser.role]}</span>
             </div>
-            <button className="focus-ring btn btn-muted mt-4" type="button" onClick={logout}>
-              Sign out
-            </button>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button className="focus-ring btn btn-primary" type="button" onClick={continueCurrentSession} disabled={sending}>
+                {sending ? "Opening..." : nextPath ? "Continue to requested page" : "Continue to app"}
+              </button>
+              <button className="focus-ring btn btn-muted" type="button" onClick={logout}>
+                Sign out
+              </button>
+            </div>
           </article>
         ) : (
           <article className="max-w-xl rounded-lg border border-gray-200 bg-white p-5 shadow-sm">

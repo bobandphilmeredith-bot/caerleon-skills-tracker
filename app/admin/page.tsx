@@ -20,7 +20,7 @@ const adminTabs: AdminTab[] = ["School", "Branding", "Subjects", "AoLE", "Framew
 export default function AdminPage() {
   const { canManageSchool } = useAuth();
   const { settings, updateBranding, updateFrameworkTheme, resetBranding, resetAllSettings } = useSchoolSettings();
-  const { schools, currentSchool, currentSchoolId, data, liveDiagnostics, switchSchool, addSchool, updateSchool, toggleSchoolActive } = useCurrentSchool();
+  const { schools, currentSchool, currentSchoolId, data, switchSchool, addSchool, updateSchool, toggleSchoolActive, updateSubjectConfig } = useCurrentSchool();
   const [subjects, setSubjects] = useState<SubjectConfig[]>(data.subjectConfigs);
   const [aoles, setAoles] = useState<AoleConfig[]>(data.aoleConfigs);
   const [frameworks, setFrameworks] = useState<AdminFramework[]>(() => loadAdminFrameworks(data.frameworkLibrary, currentSchoolId));
@@ -71,6 +71,9 @@ export default function AdminPage() {
 
   function updateSubject(id: string, patch: Partial<SubjectConfig>) {
     setSubjects((current) => current.map((subject) => (subject.id === id ? { ...subject, ...patch } : subject)));
+    void updateSubjectConfig(id, patch).then((result) => {
+      if (!result.ok) setNotice(result.message ?? "Could not save subject setting.");
+    });
   }
 
   function addAole() {
@@ -366,19 +369,6 @@ export default function AdminPage() {
             Add subject
           </button>
         </div>
-        <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-700">
-          <p>Resolved school id: {liveDiagnostics?.schoolId ?? currentSchool.id}</p>
-          <p>Current school slug: {currentSchool.slug}</p>
-          <p>Subject query select: {liveDiagnostics?.subjectQuerySelect ?? "id, school_id, name"}</p>
-          <p>Subjects count: {liveDiagnostics?.subjectQueryCount ?? subjects.length}</p>
-          <p>Subjects error: {liveDiagnostics?.subjectQueryError ?? "None"}</p>
-          <p>Frameworks count: {liveDiagnostics?.frameworkQueryCount ?? data.frameworkLibrary.length}</p>
-          <p>Frameworks error: {liveDiagnostics?.frameworkQueryError ?? "None"}</p>
-          <p>Strands count: {liveDiagnostics?.strandQueryCount ?? data.frameworkLibrary.reduce((count, framework) => count + framework.strands.length, 0)}</p>
-          <p>Elements count: {liveDiagnostics?.elementQueryCount ?? data.frameworkLibrary.reduce((count, framework) => count + framework.strands.reduce((strandCount, strand) => strandCount + strand.elements.length, 0), 0)}</p>
-          <p>Descriptors count: {liveDiagnostics?.descriptorQueryCount ?? 0}</p>
-        </div>
-
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[1040px] border-collapse text-left text-sm">
             <thead>
@@ -401,10 +391,19 @@ export default function AdminPage() {
                     <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={subject.name} onChange={(event) => updateSubject(subject.id, { name: event.target.value })} />
                   </td>
                   <td className="py-3 pr-3">
-                    <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" value={subject.aole ?? ""} onChange={(event) => updateSubject(subject.id, { aole: event.target.value || undefined })}>
+                    <select
+                      className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2"
+                      value={subject.aoeId ?? ""}
+                      onChange={(event) => {
+                        const selectedAole = activeAoles.find((aole) => aole.id === event.target.value);
+                        updateSubject(subject.id, { aoeId: selectedAole?.id ?? null, aole: selectedAole?.name });
+                      }}
+                    >
                       <option value="">No AoLE selected</option>
                       {activeAoles.map((aole) => (
-                        <option key={aole.id}>{aole.name}</option>
+                        <option key={aole.id} value={aole.id}>
+                          {aole.name}
+                        </option>
                       ))}
                     </select>
                   </td>

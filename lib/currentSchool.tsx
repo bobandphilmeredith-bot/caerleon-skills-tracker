@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { useSchoolSettings } from "@/lib/schoolSettings";
 import { buildBundle, createEmptySchoolData, defaultSchoolId, sampleSchools, schoolDataById, type SchoolDataBundle } from "@/lib/multiSchoolData";
 import { isDemoLoginEnabled, supabase } from "@/lib/supabaseClient";
-import type { CrossCuttingTheme, MappingEntry, ProgressionReference, ProgressionStep, School, SubjectConfig } from "@/lib/types";
+import type { AoleConfig, CrossCuttingTheme, MappingEntry, ProgressionReference, ProgressionStep, School, SubjectConfig } from "@/lib/types";
 
 type MappingMutationResult = {
   ok: boolean;
@@ -42,6 +42,7 @@ type CurrentSchoolContextValue = {
   addMapping: (entry: MappingEntry) => Promise<MappingMutationResult>;
   updateMapping: (entryId: string, patch: Partial<MappingEntry>) => Promise<MappingMutationResult>;
   deleteMapping: (entryId: string) => Promise<MappingMutationResult>;
+  updateSubjectConfig: (subjectId: string, patch: Partial<SubjectConfig>) => Promise<MappingMutationResult>;
 };
 
 const CurrentSchoolContext = createContext<CurrentSchoolContextValue | null>(null);
@@ -79,18 +80,19 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   const currentMappings = useLiveData ? liveMappings : (mappingOverrides[currentSchool.id] ?? baseData.mappings);
   const currentFrameworkLibrary = useLiveData ? (liveReferenceMaps?.frameworkLibrary ?? []) : baseData.frameworkLibrary;
   const currentSubjectConfigs = useLiveData ? (liveReferenceMaps?.subjectConfigs ?? []) : baseData.subjectConfigs;
+  const currentAoleConfigs = useLiveData ? (liveReferenceMaps?.aoleConfigs ?? []) : baseData.aoleConfigs;
   const currentCrossCuttingThemes = isDemoLoginEnabled ? baseData.crossCuttingThemes : (liveReferenceMaps?.crossCuttingThemes ?? []);
   const data = useMemo(
     () =>
       buildBundle({
         schoolId: currentSchool.id,
         subjectConfigs: currentSubjectConfigs,
-        aoleConfigs: baseData.aoleConfigs,
+        aoleConfigs: currentAoleConfigs,
         frameworkLibrary: currentFrameworkLibrary,
         crossCuttingThemes: currentCrossCuttingThemes,
         mappings: currentMappings
       }),
-    [baseData.aoleConfigs, currentCrossCuttingThemes, currentFrameworkLibrary, currentMappings, currentSchool.id, currentSubjectConfigs]
+    [currentAoleConfigs, currentCrossCuttingThemes, currentFrameworkLibrary, currentMappings, currentSchool.id, currentSubjectConfigs]
   );
 
   useEffect(() => {
@@ -297,6 +299,44 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
           return { ...current, [currentSchool.id]: existing.filter((entry) => entry.id !== entryId) };
         });
         return { ok: true };
+      },
+      updateSubjectConfig: async (subjectId, patch) => {
+        if (!isDemoLoginEnabled) {
+          if (!supabase) return { ok: false, message: "Supabase environment variables are missing." };
+          const refs = liveReferenceMaps ?? (await loadLiveReferenceMaps(supabase, liveSchoolId, localCurrentSchool));
+          const subject = refs.subjectsById.get(subjectId);
+          if (!subject) return { ok: false, message: "Subject not found in Supabase." };
+
+          const updatePayload: {
+            name?: string;
+            aole_id?: string | null;
+            display_order?: number;
+            active?: boolean;
+            appears_in_mapping_dropdowns?: boolean;
+          } = {};
+          if ("name" in patch) updatePayload.name = patch.name;
+          if ("aoeId" in patch) updatePayload.aole_id = patch.aoeId ?? null;
+          if ("displayOrder" in patch) updatePayload.display_order = patch.displayOrder;
+          if ("active" in patch) updatePayload.active = patch.active;
+          if ("appearsInMappingDropdowns" in patch) updatePayload.appears_in_mapping_dropdowns = patch.appearsInMappingDropdowns;
+
+          const { error } = await supabase.from("subjects").update(updatePayload).eq("id", subject.id).eq("school_id", refs.diagnostics.schoolId);
+          if (error) return { ok: false, message: "Could not save subject setting." };
+          await loadLiveMappings();
+          return { ok: true };
+        }
+
+        setCustomData((current) => {
+          const existing = current[currentSchool.id] ?? data;
+          return {
+            ...current,
+            [currentSchool.id]: {
+              ...existing,
+              subjectConfigs: existing.subjectConfigs.map((subject) => (subject.id === subjectId ? { ...subject, ...patch } : subject))
+            }
+          };
+        });
+        return { ok: true };
       }
     }),
     [currentSchool, currentUser?.id, data, liveDiagnostics, liveMappings, liveReferenceMaps, liveSchool?.id, liveSchoolId, loadLiveMappings, localCurrentSchool, schools]
@@ -319,6 +359,16 @@ type ReferenceRow = {
 
 type SubjectReferenceRow = ReferenceRow & {
   school_id: string;
+  aole_id: string | null;
+  display_order: number | null;
+  active?: boolean;
+  appears_in_mapping_dropdowns?: boolean | null;
+};
+
+type AoleReferenceRow = ReferenceRow & {
+  school_id: string;
+  display_order: number | null;
+  active?: boolean;
 };
 
 type FrameworkReferenceRow = ReferenceRow & {
@@ -381,6 +431,7 @@ type LiveReferenceMaps = {
   progressionDescriptorByElementAndStep: Map<string, ProgressionDescriptorRow>;
   frameworkLibrary: SchoolDataBundle["frameworkLibrary"];
   subjectConfigs: SubjectConfig[];
+  aoleConfigs: AoleConfig[];
   crossCuttingThemes: CrossCuttingTheme[];
   frameworkLinksByMappingId: Map<string, FrameworkLinkRow[]>;
   themeNamesByMappingId: Map<string, string[]>;
@@ -416,16 +467,25 @@ type FrameworkLinkRow = {
 async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, fallbackSchool?: School): Promise<LiveReferenceMaps> {
   const resolvedSchool = await resolveLiveSchool(client, schoolId, fallbackSchool);
   const querySchoolId = resolvedSchool?.id ?? schoolId;
-  const subjectQuerySelect = "id, school_id, name";
+  const subjectQuerySelect = "id, school_id, name, aole_id, display_order, active, appears_in_mapping_dropdowns";
+  const aoleQuerySelect = "id, school_id, name, display_order, active";
   const frameworkQuerySelect = "id, school_id, name, short_name, description, display_order, active";
   const strandQuerySelect = "id, school_id, framework_id, name, short_name, description, display_order, active";
   const elementQuerySelect = "id, school_id, strand_id, name, description, official_wording, teacher_friendly_explanation, display_order, active";
   const descriptorQuerySelect = "id, school_id, element_id, progression_step, descriptor_text, display_order, active";
-  const [subjectsResult, frameworksResult, strandsResult, elementsResult, descriptorsResult] = await Promise.all([
+  const [subjectsResult, aolesResult, frameworksResult, strandsResult, elementsResult, descriptorsResult] = await Promise.all([
     client
       .from("subjects")
       .select(subjectQuerySelect)
       .eq("school_id", querySchoolId)
+      .order("display_order", { ascending: true })
+      .order("name", { ascending: true }),
+    client
+      .from("aoles")
+      .select(aoleQuerySelect)
+      .eq("school_id", querySchoolId)
+      .eq("active", true)
+      .order("display_order", { ascending: true })
       .order("name", { ascending: true }),
     client
       .from("frameworks")
@@ -455,6 +515,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
   const themeRows = await loadThemeRows(client, querySchoolId);
 
   const subjects = ((subjectsResult.data ?? []) as SubjectReferenceRow[]).map(normaliseReferenceName);
+  const aoles = ((aolesResult.data ?? []) as AoleReferenceRow[]).map(normaliseReferenceName);
   const frameworks = ((frameworksResult.data ?? []) as FrameworkReferenceRow[]).map(normaliseReferenceName);
   const strands = ((strandsResult.data ?? []) as StrandReferenceRow[]).map(normaliseReferenceName);
   const elements = ((elementsResult.data ?? []) as ElementReferenceRow[]).map(normaliseReferenceName);
@@ -467,6 +528,14 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
     active: theme.active ?? true,
     displayOrder: theme.display_order ?? 0
   }));
+  const aoleConfigs: AoleConfig[] = aoles.map((aole, index) => ({
+    schoolId: aole.school_id,
+    id: aole.id,
+    name: aole.name,
+    active: aole.active ?? true,
+    displayOrder: aole.display_order ?? index + 1
+  }));
+  const aolesById = new Map(aoles.map((aole) => [aole.id, aole]));
   const { data: mappingRows } = await client.from("curriculum_mappings").select("id").eq("school_id", querySchoolId);
   const mappingIds = ((mappingRows ?? []) as { id: string }[]).map((row) => row.id);
   const { data: frameworkLinkRows } = mappingIds.length
@@ -553,10 +622,11 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
     id: subject.id,
     name: subject.name,
     shortName: subject.name,
-    aoeId: null,
-    active: true,
-    displayOrder: index + 1,
-    appearsInMappingDropdowns: true
+    aoeId: subject.aole_id,
+    aole: subject.aole_id ? aolesById.get(subject.aole_id)?.name : undefined,
+    active: subject.active ?? true,
+    displayOrder: subject.display_order ?? index + 1,
+    appearsInMappingDropdowns: subject.appears_in_mapping_dropdowns ?? true
   }));
 
   return {
@@ -587,6 +657,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
     progressionDescriptorByElementAndStep,
     frameworkLibrary,
     subjectConfigs,
+    aoleConfigs,
     crossCuttingThemes,
     frameworkLinksByMappingId: buildFrameworkLinkMap((frameworkLinkRows ?? []) as FrameworkLinkRow[]),
     themeNamesByMappingId: buildThemeNameMap(linkRows ?? []),

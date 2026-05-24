@@ -118,6 +118,7 @@ export type AoleConfig = {
   id: string;
   name: string;
   active: boolean;
+  displayOrder?: number;
 };
 
 export type CrossCuttingTheme = {

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AccessDenied } from "@/components/AccessDenied";
 import { PageHeader } from "@/components/PageHeader";
 import { progressionSteps } from "@/lib/progression";
-import type { AoleConfig, ElementDefinition, SubjectConfig } from "@/lib/types";
+import type { AoleConfig, ElementDefinition, School, SubjectConfig } from "@/lib/types";
 import { areaThemes } from "@/lib/theme";
 import { useSchoolSettings } from "@/lib/schoolSettings";
 import { useCurrentSchool } from "@/lib/currentSchool";
@@ -99,6 +99,20 @@ export default function AdminPage() {
     });
   }
 
+  function updateLiveBranding(patch: { schoolName?: string; motto?: string; primaryColour?: string; secondaryColour?: string; logoDataUrl?: string }) {
+    updateBranding(patch);
+    const schoolPatch = Object.fromEntries(
+      Object.entries({
+        name: patch.schoolName,
+        motto: patch.motto,
+        primaryColour: patch.primaryColour,
+        secondaryColour: patch.secondaryColour,
+        logoUrl: patch.logoDataUrl
+      }).filter(([, value]) => value !== undefined)
+    ) as Partial<School>;
+    updateSchool(currentSchool.id, schoolPatch);
+  }
+
   function addAole() {
     setAoles((current) => [...current, { id: `aole-${Date.now()}`, name: "New AoLE", active: true }]);
   }
@@ -188,7 +202,7 @@ export default function AdminPage() {
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => updateBranding({ logoDataUrl: String(reader.result) });
+    reader.onload = () => updateLiveBranding({ logoDataUrl: String(reader.result) });
     reader.readAsDataURL(file);
   }
 
@@ -328,10 +342,10 @@ export default function AdminPage() {
         </div>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <LabelledInput label="School name" value={settings.branding.schoolName} onChange={(value) => updateBranding({ schoolName: value })} />
-          <LabelledInput label="Motto / tagline" value={settings.branding.motto} onChange={(value) => updateBranding({ motto: value })} />
-          <ColourInput label="Primary colour" value={settings.branding.primaryColour} onChange={(value) => updateBranding({ primaryColour: value })} />
-          <ColourInput label="Secondary colour" value={settings.branding.secondaryColour} onChange={(value) => updateBranding({ secondaryColour: value })} />
+          <LabelledInput label="School name" value={settings.branding.schoolName} onChange={(value) => updateLiveBranding({ schoolName: value })} />
+          <LabelledInput label="Motto / tagline" value={settings.branding.motto} onChange={(value) => updateLiveBranding({ motto: value })} />
+          <ColourInput label="Primary colour" value={settings.branding.primaryColour} onChange={(value) => updateLiveBranding({ primaryColour: value })} />
+          <ColourInput label="Secondary colour" value={settings.branding.secondaryColour} onChange={(value) => updateLiveBranding({ secondaryColour: value })} />
           <label className="lg:col-span-2">
             <span className="mb-1 block text-sm font-semibold text-gray-700">Logo upload</span>
             <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" type="file" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml" onChange={(event) => handleLogoUpload(event.target.files?.[0])} />

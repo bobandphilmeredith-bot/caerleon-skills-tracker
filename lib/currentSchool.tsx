@@ -200,6 +200,12 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
               if (error) console.error("Could not update school details", error.message);
             });
           }
+          const brandingPatch = schoolPatchToBrandingPatch(patch, liveSchool);
+          if (supabase && brandingPatch) {
+            void supabase.from("branding_settings").upsert(brandingPatch, { onConflict: "school_id" }).then(({ error }) => {
+              if (error) console.error("Could not update school branding", error.message);
+            });
+          }
         }
       },
       toggleSchoolActive: (schoolId) => {
@@ -500,6 +506,14 @@ type ThemeElementReferenceRow = {
   description: string | null;
   active: boolean | null;
   display_order: number | null;
+};
+
+type BrandingSettingsRow = {
+  school_name: string | null;
+  motto: string | null;
+  logo_url: string | null;
+  primary_colour: string | null;
+  secondary_colour: string | null;
 };
 
 type LiveReferenceMaps = {
@@ -857,14 +871,20 @@ async function resolveLiveSchool(client: SupabaseClient, schoolId: string, fallb
   const { data: row } = await client.from("schools").select("id, slug, name, motto, active").eq("slug", "caerleon").single();
 
   if (!row) return undefined;
+  const { data: branding } = await client
+    .from("branding_settings")
+    .select("school_name,motto,logo_url,primary_colour,secondary_colour")
+    .eq("school_id", row.id)
+    .maybeSingle<BrandingSettingsRow>();
+
   return {
     id: row.id,
     slug: row.slug,
-    name: row.name,
-    motto: row.motto ?? fallbackSchool?.motto ?? "Curriculum visibility",
-    logoUrl: fallbackSchool?.logoUrl ?? "/schlogo.png",
-    primaryColour: fallbackSchool?.primaryColour ?? "#741B47",
-    secondaryColour: fallbackSchool?.secondaryColour ?? "#571435",
+    name: branding?.school_name?.trim() || row.name,
+    motto: branding?.motto?.trim() || row.motto || fallbackSchool?.motto || "Curriculum visibility",
+    logoUrl: branding?.logo_url || fallbackSchool?.logoUrl || "/schlogo.png",
+    primaryColour: branding?.primary_colour || fallbackSchool?.primaryColour || "#741B47",
+    secondaryColour: branding?.secondary_colour || fallbackSchool?.secondaryColour || "#571435",
     active: row.active ?? true,
     createdAt: fallbackSchool?.createdAt ?? new Date().toISOString().slice(0, 10)
   };
@@ -1092,6 +1112,19 @@ function schoolPatchToLiveSchoolPatch(patch: Partial<School>) {
   if (typeof patch.motto === "string") livePatch.motto = patch.motto;
   if (typeof patch.active === "boolean") livePatch.active = patch.active;
   return livePatch;
+}
+
+function schoolPatchToBrandingPatch(patch: Partial<School>, currentSchool: School) {
+  const hasBrandingChange = ["name", "motto", "logoUrl", "primaryColour", "secondaryColour"].some((key) => key in patch);
+  if (!hasBrandingChange) return null;
+  return {
+    school_id: currentSchool.id,
+    school_name: patch.name ?? currentSchool.name,
+    motto: patch.motto ?? currentSchool.motto,
+    logo_url: patch.logoUrl ?? currentSchool.logoUrl,
+    primary_colour: patch.primaryColour ?? currentSchool.primaryColour,
+    secondary_colour: patch.secondaryColour ?? currentSchool.secondaryColour
+  };
 }
 
 export function useCurrentSchool() {

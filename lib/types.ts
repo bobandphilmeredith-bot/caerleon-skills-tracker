@@ -78,6 +78,8 @@ export type MappingEntry = {
   progressionDescriptorId?: string;
   frameworkReferences?: MappingFrameworkReference[];
   crossCuttingThemeIds?: string[];
+  crossCuttingThemeElementLinks?: SelectedCctElement[];
+  crossCuttingThemeElementIds?: string[];
   crossCuttingThemes?: string[];
   crossCuttingThemeNotes?: string;
   id: string;
@@ -128,6 +130,22 @@ export type CrossCuttingTheme = {
   description?: string | null;
   active: boolean;
   displayOrder: number;
+  elements?: CrossCuttingThemeElement[];
+};
+
+export type CrossCuttingThemeElement = {
+  id: string;
+  schoolId?: string | null;
+  themeId: string;
+  name: string;
+  description?: string | null;
+  displayOrder: number;
+  active: boolean;
+};
+
+export type SelectedCctElement = {
+  themeId: string;
+  elementId: string;
 };
 
 export type ReviewItem = {

@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { useSchoolSettings } from "@/lib/schoolSettings";
 import { buildBundle, createEmptySchoolData, defaultSchoolId, sampleSchools, schoolDataById, type SchoolDataBundle } from "@/lib/multiSchoolData";
 import { isDemoLoginEnabled, supabase } from "@/lib/supabaseClient";
-import type { AoleConfig, CrossCuttingTheme, MappingEntry, ProgressionReference, ProgressionStep, School, SubjectConfig } from "@/lib/types";
+import type { AoleConfig, CrossCuttingTheme, CrossCuttingThemeElement, MappingEntry, ProgressionReference, ProgressionStep, School, SelectedCctElement, SubjectConfig } from "@/lib/types";
 
 type MappingMutationResult = {
   ok: boolean;
@@ -224,7 +224,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
           if (error) return { ok: false, message: error.message };
           const frameworkLinkResult = await replaceFrameworkLinks(client, insertedRows.id, frameworkRefs.references);
           if (!frameworkLinkResult.ok) return frameworkLinkResult;
-          const linkResult = await replaceThemeLinks(client, insertedRows.id, entry.crossCuttingThemeIds ?? [], entry.crossCuttingThemeNotes ?? "", currentUser?.id);
+          const linkResult = await replaceThemeLinks(client, insertedRows.id, themeLinksForEntry(entry), entry.crossCuttingThemeNotes ?? "", currentUser?.id);
           if (!linkResult.ok) return linkResult;
           await loadLiveMappings();
           return { ok: true };
@@ -271,8 +271,15 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
           if (error) return { ok: false, message: error.message };
           const frameworkLinkResult = await replaceFrameworkLinks(client, entryId, frameworkRefs.references);
           if (!frameworkLinkResult.ok) return frameworkLinkResult;
-          const linkResult = await replaceThemeLinks(client, entryId, merged.crossCuttingThemeIds ?? [], merged.crossCuttingThemeNotes ?? "", currentUser?.id);
-          if (!linkResult.ok) return linkResult;
+          const shouldReplaceThemeLinks =
+            "crossCuttingThemeElementLinks" in patch ||
+            "crossCuttingThemeElementIds" in patch ||
+            "crossCuttingThemeIds" in patch ||
+            "crossCuttingThemeNotes" in patch;
+          if (shouldReplaceThemeLinks) {
+            const linkResult = await replaceThemeLinks(client, entryId, themeLinksForEntry(merged), merged.crossCuttingThemeNotes ?? "", currentUser?.id);
+            if (!linkResult.ok) return linkResult;
+          }
           await loadLiveMappings();
           return { ok: true };
         }
@@ -417,6 +424,16 @@ type ThemeReferenceRow = {
   display_order: number | null;
 };
 
+type ThemeElementReferenceRow = {
+  id: string;
+  school_id: string | null;
+  theme_id: string;
+  name: string;
+  description: string | null;
+  active: boolean | null;
+  display_order: number | null;
+};
+
 type LiveReferenceMaps = {
   school?: School;
   diagnostics: LiveDataDiagnostics;
@@ -436,6 +453,8 @@ type LiveReferenceMaps = {
   frameworkLinksByMappingId: Map<string, FrameworkLinkRow[]>;
   themeNamesByMappingId: Map<string, string[]>;
   themeIdsByMappingId: Map<string, string[]>;
+  themeElementIdsByMappingId: Map<string, string[]>;
+  themeElementLinksByMappingId: Map<string, SelectedCctElement[]>;
   themeNotesByMappingId: Map<string, string>;
 };
 
@@ -512,7 +531,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
       .eq("active", true)
       .order("progression_step", { ascending: true })
   ]);
-  const themeRows = await loadThemeRows(client, querySchoolId);
+  const { themes: themeRows, elements: themeElementRows } = await loadThemeRows(client, querySchoolId);
 
   const subjects = ((subjectsResult.data ?? []) as SubjectReferenceRow[]).map(normaliseReferenceName);
   const aoles = ((aolesResult.data ?? []) as AoleReferenceRow[]).map(normaliseReferenceName);
@@ -520,13 +539,15 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
   const strands = ((strandsResult.data ?? []) as StrandReferenceRow[]).map(normaliseReferenceName);
   const elements = ((elementsResult.data ?? []) as ElementReferenceRow[]).map(normaliseReferenceName);
   const descriptorRows = ((descriptorsResult.data ?? []) as ProgressionDescriptorRow[]).filter((descriptor) => descriptorText(descriptor));
-  const crossCuttingThemes: CrossCuttingTheme[] = themeRows.map((theme) => ({
+  const themeElementsByThemeId = buildThemeElementsByThemeId(themeElementRows);
+  const crossCuttingThemes: CrossCuttingTheme[] = themeRows.map((theme, index) => ({
     id: theme.id,
     schoolId: theme.school_id ?? null,
     name: theme.name.trim(),
     description: theme.description,
     active: theme.active ?? true,
-    displayOrder: theme.display_order ?? 0
+    displayOrder: theme.display_order ?? index + 1,
+    elements: themeElementsByThemeId.get(theme.id) ?? []
   }));
   const aoleConfigs: AoleConfig[] = aoles.map((aole, index) => ({
     schoolId: aole.school_id,
@@ -544,7 +565,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
   const { data: linkRows } = mappingIds.length
     ? await client
     .from("curriculum_mapping_theme_links")
-    .select("mapping_id,theme_id,notes,cross_cutting_themes(id,name)")
+    .select("mapping_id,theme_id,theme_element_id,notes,cross_cutting_themes(id,name),cross_cutting_theme_elements(id,name)")
         .in("mapping_id", mappingIds)
     : { data: [] as ThemeLinkRow[] };
 
@@ -662,6 +683,8 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
     frameworkLinksByMappingId: buildFrameworkLinkMap((frameworkLinkRows ?? []) as FrameworkLinkRow[]),
     themeNamesByMappingId: buildThemeNameMap(linkRows ?? []),
     themeIdsByMappingId: buildThemeIdMap(linkRows ?? []),
+    themeElementIdsByMappingId: buildThemeElementIdMap(linkRows ?? []),
+    themeElementLinksByMappingId: buildThemeElementLinkMap(linkRows ?? []),
     themeNotesByMappingId: buildThemeNotesMap(linkRows ?? [])
   };
 }
@@ -669,27 +692,29 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
 type ThemeLinkRow = {
   mapping_id: string;
   theme_id: string;
+  theme_element_id?: string | null;
   notes: string | null;
   cross_cutting_themes?: { id: string; name: string } | { id: string; name: string }[] | null;
+  cross_cutting_theme_elements?: { id: string; name: string } | { id: string; name: string }[] | null;
 };
 
-async function loadThemeRows(client: SupabaseClient, schoolId: string): Promise<ThemeReferenceRow[]> {
-  const themesRows = await client
-    .from("themes")
+async function loadThemeRows(client: SupabaseClient, schoolId: string): Promise<{ themes: ThemeReferenceRow[]; elements: ThemeElementReferenceRow[] }> {
+  const [crossCuttingRows, elementRows] = await Promise.all([
+    client
+    .from("cross_cutting_themes")
     .select("id,school_id,name,description,active")
     .eq("school_id", schoolId)
     .eq("active", true)
-    .order("name", { ascending: true });
-  if (!themesRows.error && themesRows.data?.length) return themesRows.data.map((theme, index) => ({ ...theme, display_order: index + 1 })) as ThemeReferenceRow[];
-
-  const crossCuttingRows = await client
-    .from("cross_cutting_themes")
-    .select("id,school_id,name,description,active,display_order")
-    .eq("school_id", schoolId)
-    .eq("active", true)
-    .order("display_order", { ascending: true })
-    .order("name", { ascending: true });
-  return (crossCuttingRows.data ?? []) as ThemeReferenceRow[];
+    .order("name", { ascending: true }),
+    client
+      .from("cross_cutting_theme_elements")
+      .select("id,school_id,theme_id,name,description,display_order,active")
+      .eq("school_id", schoolId)
+      .eq("active", true)
+      .order("display_order", { ascending: true })
+      .order("name", { ascending: true })
+  ]);
+  return { themes: (crossCuttingRows.data ?? []) as ThemeReferenceRow[], elements: (elementRows.data ?? []) as ThemeElementReferenceRow[] };
 }
 
 function buildFrameworkLinkMap(rows: FrameworkLinkRow[]) {
@@ -702,8 +727,9 @@ function buildThemeNameMap(rows: ThemeLinkRow[]) {
   const map = new Map<string, string[]>();
   for (const row of rows) {
     const theme = Array.isArray(row.cross_cutting_themes) ? row.cross_cutting_themes[0] : row.cross_cutting_themes;
+    const element = Array.isArray(row.cross_cutting_theme_elements) ? row.cross_cutting_theme_elements[0] : row.cross_cutting_theme_elements;
     if (!theme?.name) continue;
-    map.set(row.mapping_id, [...(map.get(row.mapping_id) ?? []), theme.name]);
+    map.set(row.mapping_id, [...(map.get(row.mapping_id) ?? []), element?.name ? `${theme.name}: ${element.name}` : theme.name]);
   }
   return map;
 }
@@ -714,10 +740,43 @@ function buildThemeIdMap(rows: ThemeLinkRow[]) {
   return map;
 }
 
+function buildThemeElementIdMap(rows: ThemeLinkRow[]) {
+  const map = new Map<string, string[]>();
+  for (const row of rows) {
+    if (row.theme_element_id) map.set(row.mapping_id, [...(map.get(row.mapping_id) ?? []), row.theme_element_id]);
+  }
+  return map;
+}
+
+function buildThemeElementLinkMap(rows: ThemeLinkRow[]) {
+  const map = new Map<string, SelectedCctElement[]>();
+  for (const row of rows) {
+    if (row.theme_element_id) map.set(row.mapping_id, [...(map.get(row.mapping_id) ?? []), { themeId: row.theme_id, elementId: row.theme_element_id }]);
+  }
+  return map;
+}
+
 function buildThemeNotesMap(rows: ThemeLinkRow[]) {
   const map = new Map<string, string>();
   for (const row of rows) {
     if (row.notes && !map.has(row.mapping_id)) map.set(row.mapping_id, row.notes);
+  }
+  return map;
+}
+
+function buildThemeElementsByThemeId(rows: ThemeElementReferenceRow[]) {
+  const map = new Map<string, CrossCuttingThemeElement[]>();
+  for (const row of rows) {
+    const element = {
+      id: row.id,
+      schoolId: row.school_id,
+      themeId: row.theme_id,
+      name: row.name.trim(),
+      description: row.description,
+      displayOrder: row.display_order ?? 0,
+      active: row.active ?? true
+    };
+    map.set(row.theme_id, [...(map.get(row.theme_id) ?? []), element]);
   }
   return map;
 }
@@ -855,6 +914,8 @@ function curriculumRowToMapping(row: CurriculumMappingRow, refs: LiveReferenceMa
     progressionReference: primaryReference?.progressionReference ?? "Not specified",
     note: "",
     crossCuttingThemeIds: refs.themeIdsByMappingId.get(row.id) ?? [],
+    crossCuttingThemeElementIds: refs.themeElementIdsByMappingId.get(row.id) ?? [],
+    crossCuttingThemeElementLinks: refs.themeElementLinksByMappingId.get(row.id) ?? [],
     crossCuttingThemes: refs.themeNamesByMappingId.get(row.id) ?? [],
     crossCuttingThemeNotes: refs.themeNotesByMappingId.get(row.id) ?? "",
     lastMappedDate: row.updated_at?.slice(0, 10) || row.created_at.slice(0, 10)
@@ -905,23 +966,29 @@ async function replaceFrameworkLinks(client: SupabaseClient, mappingId: string, 
   return error ? { ok: false, message: error.message } : { ok: true };
 }
 
-async function replaceThemeLinks(client: SupabaseClient, mappingId: string, themeIds: string[], notes: string, userId?: string): Promise<MappingMutationResult> {
+async function replaceThemeLinks(client: SupabaseClient, mappingId: string, themeLinks: SelectedCctElement[], notes: string, userId?: string): Promise<MappingMutationResult> {
   const { error: deleteError } = await client.from("curriculum_mapping_theme_links").delete().eq("mapping_id", mappingId);
   if (deleteError) return { ok: false, message: deleteError.message };
-  const uniqueThemeIds = Array.from(new Set(themeIds.filter(Boolean)));
-  if (!uniqueThemeIds.length) return { ok: true };
-  if (uniqueThemeIds.some((themeId) => !looksLikeUuid(themeId))) {
-    return { ok: false, message: "Theme data is still using prototype IDs. Reload cross-cutting themes from Supabase." };
+  const uniqueLinks = Array.from(new Map(themeLinks.filter((link) => link.themeId && link.elementId).map((link) => [`${link.themeId}:${link.elementId}`, link])).values());
+  if (!uniqueLinks.length) return { ok: true };
+  if (!looksLikeUuid(mappingId) || uniqueLinks.some((link) => !looksLikeUuid(link.themeId) || !looksLikeUuid(link.elementId))) {
+    return { ok: false, message: "Cross-cutting theme data is not using database IDs. Reload cross-cutting themes from Supabase." };
   }
   const { error } = await client.from("curriculum_mapping_theme_links").insert(
-    uniqueThemeIds.map((themeId) => ({
+    uniqueLinks.map((link) => ({
       mapping_id: mappingId,
-      theme_id: themeId,
+      theme_id: link.themeId,
+      theme_element_id: link.elementId,
       notes: notes.trim() || null,
       created_by: userId ?? null
     }))
   );
   return error ? { ok: false, message: error.message } : { ok: true };
+}
+
+function themeLinksForEntry(entry: MappingEntry): SelectedCctElement[] {
+  if (entry.crossCuttingThemeElementLinks?.length) return entry.crossCuttingThemeElementLinks;
+  return [];
 }
 
 function looksLikeUuid(value: string) {

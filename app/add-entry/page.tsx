@@ -2,13 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AccessDenied } from "@/components/AccessDenied";
+import { CctElementSelector } from "@/components/CctElementSelector";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
-import type { CrossCuttingTheme, ElementDefinition, FrameworkDefinition, MappingEntry, MappingFrameworkReference, ProgressionDescriptorDefinition, StrandDefinition } from "@/lib/types";
+import type { CrossCuttingTheme, ElementDefinition, FrameworkDefinition, MappingEntry, MappingFrameworkReference, ProgressionDescriptorDefinition, SelectedCctElement, StrandDefinition } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
-
-const caerleonSchoolId = "657f5a77-ae52-48ea-b459-290f86bbd2f0";
 
 export default function AddEntryPage() {
   const { canEditMappings, currentUser } = useAuth();
@@ -35,7 +34,7 @@ export default function AddEntryPage() {
   const [activityDescription, setActivityDescription] = useState("");
   const [frameworkNotes, setFrameworkNotes] = useState("");
   const [frameworkReferences, setFrameworkReferences] = useState<MappingFrameworkReference[]>([]);
-  const [selectedThemeIds, setSelectedThemeIds] = useState<string[]>([]);
+  const [selectedCctElements, setSelectedCctElements] = useState<SelectedCctElement[]>([]);
   const [themeNotes, setThemeNotes] = useState("");
   const [themeRows, setThemeRows] = useState<CrossCuttingTheme[]>([]);
   const [showDescriptor, setShowDescriptor] = useState(false);
@@ -47,6 +46,7 @@ export default function AddEntryPage() {
     () => (themeRows.length ? themeRows : crossCuttingThemes).filter((themeItem) => themeItem.active && looksLikeUuid(themeItem.id)),
     [crossCuttingThemes, themeRows]
   );
+  const selectedThemeIds = useMemo(() => Array.from(new Set(selectedCctElements.map((item) => item.themeId))), [selectedCctElements]);
   const selectedThemes = useMemo(() => themeOptions.filter((themeItem) => selectedThemeIds.includes(themeItem.id)), [themeOptions, selectedThemeIds]);
   const selectedSubject = activeSubjects.find((subject) => subject.id === subjectId);
   const selectedFramework = progressionFrameworkLibrary.find((item) => item.id === frameworkId) ?? progressionFrameworkLibrary[0];
@@ -113,16 +113,20 @@ export default function AddEntryPage() {
   }, [availableDescriptors, selectedElement?.id]);
 
   useEffect(() => {
-    const optionIds = new Set(themeOptions.map((themeItem) => themeItem.id));
-    setSelectedThemeIds((current) => current.filter((id) => optionIds.has(id)));
+    const validSelections = new Set(themeOptions.flatMap((themeItem) => (themeItem.elements ?? []).map((element) => `${themeItem.id}:${element.id}`)));
+    setSelectedCctElements((current) => current.filter((item) => validSelections.has(`${item.themeId}:${item.elementId}`)));
   }, [themeOptions]);
 
   useEffect(() => {
-    const schoolIdForThemes = looksLikeUuid(currentSchoolId) ? currentSchoolId : caerleonSchoolId;
+    const schoolIdForThemes = looksLikeUuid(currentSchoolId) ? currentSchoolId : "";
     let cancelled = false;
+    if (!schoolIdForThemes) {
+      setThemeRows([]);
+      return;
+    }
     void fetch(`/api/themes?schoolId=${encodeURIComponent(schoolIdForThemes)}`)
       .then((response) => (response.ok ? response.json() : { themes: [] }))
-      .then(({ themes }: { themes?: Array<{ id: string; school_id: string; name: string; description: string | null; active: boolean | null }> }) => {
+      .then(({ themes }: { themes?: Array<{ id: string; school_id: string; name: string; description: string | null; active: boolean | null; elements?: Array<{ id: string; school_id: string; theme_id: string; name: string; description: string | null; display_order: number | null; active: boolean | null }> }> }) => {
         if (cancelled) return;
         setThemeRows(
           (themes ?? []).map((row, index) => ({
@@ -131,7 +135,16 @@ export default function AddEntryPage() {
             name: row.name,
             description: row.description,
             active: row.active ?? true,
-            displayOrder: index + 1
+            displayOrder: index + 1,
+            elements: (row.elements ?? []).map((element) => ({
+              id: element.id,
+              schoolId: element.school_id,
+              themeId: element.theme_id,
+              name: element.name,
+              description: element.description,
+              displayOrder: element.display_order ?? 0,
+              active: element.active ?? true
+            }))
           }))
         );
       })
@@ -150,7 +163,7 @@ export default function AddEntryPage() {
   const trimmedActivityTitle = activityTitle.trim();
   const trimmedActivityDescription = activityDescription.trim();
   const trimmedSchemeReference = schemeReference.trim();
-  const hasAnyLink = frameworkReferences.length > 0 || selectedThemes.length > 0;
+  const hasAnyLink = frameworkReferences.length > 0 || selectedCctElements.length > 0;
   const formError =
     hasSubjectRestrictedRole && !hasEditableSubjects
       ? "No editable subjects are assigned to your account. Contact a school administrator."
@@ -214,6 +227,8 @@ export default function AddEntryPage() {
       schemeReference: trimmedSchemeReference,
       progressionReference: frameworkReferences[0]?.progressionReference ?? "Not specified",
       crossCuttingThemeIds: selectedThemes.map((themeItem) => themeItem.id),
+      crossCuttingThemeElementIds: selectedCctElements.map((item) => item.elementId),
+      crossCuttingThemeElementLinks: selectedCctElements,
       crossCuttingThemes: selectedThemes.map((themeItem) => themeItem.name),
       crossCuttingThemeNotes: themeNotes.trim(),
       note: "",
@@ -271,7 +286,7 @@ export default function AddEntryPage() {
     setActivityDescription("");
     setFrameworkNotes("");
     setFrameworkReferences([]);
-    setSelectedThemeIds([]);
+    setSelectedCctElements([]);
     setThemeNotes("");
     setShowDescriptor(false);
     setShowValidation(false);
@@ -297,8 +312,8 @@ export default function AddEntryPage() {
   const canAddReference = Boolean(selectedFramework?.id && selectedStrand?.id && selectedElement?.id && selectedDescriptor?.id);
 
   function validateThemeIdsBeforeSave() {
-    if (selectedThemes.some((themeItem) => !looksLikeUuid(themeItem.id))) {
-      setSaveMessage("Theme data is still using prototype IDs. Reload cross-cutting themes from Supabase.");
+    if (!validateCctElements(selectedCctElements, themeOptions)) {
+      setSaveMessage("Cross-cutting theme data is not using database IDs. Reload cross-cutting themes from Supabase.");
       return false;
     }
     return true;
@@ -485,35 +500,8 @@ export default function AddEntryPage() {
             )}
           </FormSection>
 
-          <FormSection number="4" title="Cross-cutting themes" description="Tag any wider curriculum themes represented in this activity.">
-            {themeOptions.length ? (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {themeOptions.map((themeItem) => {
-                  const selected = selectedThemeIds.includes(themeItem.id);
-                  return (
-                    <label
-                      key={themeItem.id}
-                      className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm font-semibold transition ${
-                        selected ? "border-[#741B47] bg-[#f7edf3] text-[#571435]" : "border-gray-200 bg-white text-gray-800 hover:border-[#d7b7ca]"
-                      }`}
-                    >
-                      <input
-                        className="mt-1 h-4 w-4"
-                        type="checkbox"
-                        checked={selected}
-                        onChange={(event) => setSelectedThemeIds((current) => (event.target.checked ? Array.from(new Set([...current, themeItem.id])) : current.filter((id) => id !== themeItem.id)))}
-                      />
-                      <span>
-                        {themeItem.name}
-                        {themeItem.description ? <span className="mt-1 block text-xs font-normal leading-5 text-gray-500">{themeItem.description}</span> : null}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">No active cross-cutting themes found for this school.</p>
-            )}
+          <FormSection number="4" title="Cross-cutting themes" description="Optionally select specific wider curriculum theme elements represented in this activity.">
+            <CctElementSelector themes={themeOptions} selected={selectedCctElements} onChange={setSelectedCctElements} />
             <Field label="How does this piece of work link to the selected theme(s)?" wide>
               <textarea className="focus-ring min-h-16 w-full rounded-md border border-gray-300 px-3 py-2" value={themeNotes} onChange={(event) => setThemeNotes(event.target.value)} />
             </Field>
@@ -670,6 +658,15 @@ function hasAssignedSubject(assignedSubjects: string[], subject: string) {
 
 function looksLikeUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function validateCctElements(selected: SelectedCctElement[], themes: CrossCuttingTheme[]) {
+  const themeById = new Map(themes.map((theme) => [theme.id, theme]));
+  return selected.every((item) => {
+    const theme = themeById.get(item.themeId);
+    const element = theme?.elements?.find((candidate) => candidate.id === item.elementId);
+    return Boolean(theme && element && element.themeId === item.themeId && looksLikeUuid(item.themeId) && looksLikeUuid(item.elementId));
+  });
 }
 
 function strandButtonLabel(strand: StrandDefinition) {

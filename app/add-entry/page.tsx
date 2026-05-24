@@ -322,9 +322,9 @@ export default function AddEntryPage() {
   return (
     <section className="space-y-6">
       <PageHeader
-        title="Map Curriculum Skills"
-        eyebrow="Skills Mapping"
-        description="Record where pupils develop Literacy, Numeracy and Digital Competence across the curriculum."
+        title="Map Curriculum Skills and Themes"
+        eyebrow="Curriculum Mapping"
+        description="Record where pupils develop skills and engage with wider curriculum themes across the curriculum."
         accent={areaThemes.overview.accent}
       />
 

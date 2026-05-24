@@ -18,9 +18,9 @@ export default function SubjectOverviewPage() {
   return (
     <section className="space-y-6">
       <PageHeader
-        title="Subject Detail"
-        eyebrow="Subject visibility"
-        description="Compare curriculum mappings across subjects, with AoLE shown only as optional metadata."
+        title="Subject Curriculum Overview"
+        eyebrow="Subject Curriculum"
+        description="Review curriculum mappings, skills coverage and theme evidence by subject."
         accent={areaThemes.overview.accent}
       />
 

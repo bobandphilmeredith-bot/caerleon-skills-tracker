@@ -494,7 +494,7 @@ export default function UserManagementPage() {
                           <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={user.email} disabled={lockedPlatformAdmin} onChange={(event) => updateLiveUser(user.id, { email: event.target.value })} />
                         </td>
                         <td className="py-3 pr-3">
-                          <RoleSelect value={user.role} roles={roleChoices} disabled={lockedPlatformAdmin} onChange={(role) => updateLiveUser(user.id, { role })} />
+                          <RoleSelect value={user.role} roles={roleChoices} disabled={lockedPlatformAdmin} hideLabel onChange={(role) => updateLiveUser(user.id, { role })} />
                         </td>
                         <td className="py-3 pr-3">
                           <span className="text-sm font-semibold text-gray-700">{subjectSummary(user.assigned_subjects, user.role)}</span>
@@ -596,7 +596,7 @@ export default function UserManagementPage() {
                       <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={user.email} onChange={(event) => updateUser(user.id, { email: event.target.value })} />
                     </td>
                     <td className="py-3 pr-3">
-                      <RoleSelect value={user.role} roles={availableRoles} onChange={(role) => updateUser(user.id, { role })} />
+                      <RoleSelect value={user.role} roles={availableRoles} hideLabel onChange={(role) => updateUser(user.id, { role })} />
                     </td>
                     <td className="py-3 pr-3">
                       <SubjectChecks subjects={subjects} selected={user.assignedSubjects} compact onToggle={(subject) => updateUser(user.id, { assignedSubjects: toggleSubject(user.assignedSubjects, subject) })} />
@@ -651,10 +651,10 @@ function LabelledInput({ label, value, onChange, type = "text" }: { label: strin
   );
 }
 
-function RoleSelect({ value, roles, onChange, disabled = false }: { value: UserRole; roles: UserRole[]; onChange: (role: UserRole) => void; disabled?: boolean }) {
+function RoleSelect({ value, roles, onChange, disabled = false, hideLabel = false }: { value: UserRole; roles: UserRole[]; onChange: (role: UserRole) => void; disabled?: boolean; hideLabel?: boolean }) {
   return (
     <label>
-      <span className="mb-1 block text-sm font-semibold text-gray-700">Role</span>
+      {hideLabel ? null : <span className="mb-1 block text-sm font-semibold text-gray-700">Role</span>}
       <select className="focus-ring w-full rounded-md border border-gray-300 bg-white px-3 py-2" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value as UserRole)}>
         {roles.map((role) => (
           <option key={role} value={role}>

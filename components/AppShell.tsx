@@ -24,14 +24,14 @@ const navGroups = [
     icon: "SU",
     items: [
       { href: "/subjects", label: "Subject View", icon: "SV", theme: areaThemes.overview },
-      { href: "/subject-overview", label: "Subject Comparison", icon: "SC", theme: areaThemes.overview }
+      { href: "/subject-overview", label: "Subject Detail", icon: "SD", theme: areaThemes.overview }
     ]
   },
   {
     title: "Explore",
     icon: "EX",
     items: [
-      { href: "/curriculum-explorer", label: "Curriculum Explorer", icon: "CE", theme: areaThemes.overview },
+      { href: "/curriculum-explorer", label: "Skills Explorer", icon: "SE", theme: areaThemes.overview },
       { href: "/progression-overview", label: "Progression Overview", icon: "PO", theme: areaThemes.overview },
       { href: "/curriculum-journey", label: "Year Group Journey", icon: "YJ", theme: areaThemes.overview },
       { href: "/framework-browser", label: "Framework Browser", icon: "FB", theme: areaThemes.overview }

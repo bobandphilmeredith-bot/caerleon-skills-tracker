@@ -6,8 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
 import { filterNaturalLanguage, getRelatedSuggestions } from "@/lib/curriculumOutputs";
-import { descriptorForReference, progressionReferenceForEntry, secondaryProgressionReferences } from "@/lib/progression";
-import type { FrameworkDefinition, MappingEntry, ProgressionReference } from "@/lib/types";
+import type { ElementDefinition, FrameworkDefinition, MappingEntry } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
 const allValue = "All";
@@ -29,13 +28,14 @@ export default function CurriculumExplorerPage() {
 
   const strandOptions = framework === allValue ? unique(mappings.map((entry) => entry.strand)) : Object.keys(frameworkMap[framework]);
   const elementOptions = framework === allValue ? unique(mappings.map((entry) => entry.element)) : strand === allValue ? Object.values(frameworkMap[framework]).flat() : frameworkMap[framework][strand];
+  const progressionStepOptions = useMemo(() => progressionStepsFromFrameworks(frameworkLibrary), [frameworkLibrary]);
 
   const filteredEntries = useMemo(() => {
     const query = keyword.trim().toLowerCase();
     const naturalMatches = query ? new Set(filterNaturalLanguage(query, mappings).map((entry) => entry.id)) : null;
     const filtered = mappings.filter((entry) => {
-      const entryProgression = progressionReferenceForEntry(entry);
-      const searchable = [entry.subject, entry.year, entry.term, entry.unit, entry.framework, entry.strand, entry.element, entryProgression, entry.activityDescription, entry.schemeReference, entry.note ?? ""]
+      const entryProgressionSteps = progressionStepsForEntry(entry);
+      const searchable = [entry.subject, entry.year, entry.term, entry.unit, entry.framework, entry.strand, entry.element, ...entryProgressionSteps, entry.activityDescription, entry.schemeReference, entry.note ?? ""]
         .join(" ")
         .toLowerCase();
 
@@ -46,7 +46,7 @@ export default function CurriculumExplorerPage() {
         (subject === allValue || entry.subject === subject) &&
         (yearGroup === allValue || entry.year === yearGroup) &&
         (term === allValue || entry.term === term) &&
-        (progressionReference === allValue || entryProgression === progressionReference) &&
+        (progressionReference === allValue || entryProgressionSteps.includes(progressionReference)) &&
         (!query || searchable.includes(query) || naturalMatches?.has(entry.id))
       );
     });
@@ -113,7 +113,7 @@ export default function CurriculumExplorerPage() {
   return (
     <section className="space-y-6">
       <PageHeader
-        title="Curriculum Explorer"
+        title="Skills Explorer"
         eyebrow="Whole-school visibility"
         description="Browse mapped activities to see what is represented in planning across subjects and frameworks."
         accent={areaThemes.overview.accent}
@@ -132,7 +132,7 @@ export default function CurriculumExplorerPage() {
           <SelectField label="Subject" value={subject} onChange={setSubject} options={[allValue, ...subjects]} />
           <SelectField label="Year group" value={yearGroup} onChange={setYearGroup} options={[allValue, ...yearGroups]} />
           <SelectField label="Term" value={term} onChange={setTerm} options={[allValue, ...terms]} />
-          <SelectField label="Progression reference" value={progressionReference} onChange={setProgressionReference} options={[allValue, ...secondaryProgressionReferences]} />
+          <SelectField label="Progression step" value={progressionReference} onChange={setProgressionReference} options={[allValue, ...progressionStepOptions]} />
           <SelectField label="Sort by" value={sortBy} onChange={setSortBy} options={["Most recent", "Subject", "Year group", "Framework"]} />
           <label className="md:col-span-2">
             <span className="mb-1 block text-sm font-semibold text-gray-700">Keyword search</span>
@@ -195,6 +195,7 @@ export default function CurriculumExplorerPage() {
           canEditSubject={canEditSubject}
           terms={terms}
           yearGroups={yearGroups}
+          progressionStepOptions={progressionStepOptions}
         />
       ) : null}
     </section>
@@ -261,7 +262,7 @@ function EntryCard({
       <div className="mt-4 grid gap-2 text-sm text-gray-700 sm:grid-cols-2">
         <Meta label="Strand" value={entry.strand} />
         <Meta label="Element" value={entry.element} />
-        <Meta label="Progression reference" value={progressionReferenceForEntry(entry)} />
+        <Meta label="Progression step" value={progressionStepsForEntry(entry).join(", ") || "No descriptor linked"} />
         <Meta label="Scheme" value={entry.schemeReference} />
       </div>
       <p className="mt-4 text-sm leading-6 text-gray-700">{entry.activityDescription}</p>
@@ -293,7 +294,8 @@ function EntryDetailModal({
   subjects,
   canEditSubject,
   terms,
-  yearGroups
+  yearGroups,
+  progressionStepOptions
 }: {
   entry: MappingEntry;
   onClose: () => void;
@@ -308,6 +310,7 @@ function EntryDetailModal({
   canEditSubject: (subject: string) => boolean;
   terms: string[];
   yearGroups: string[];
+  progressionStepOptions: string[];
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState({
@@ -319,13 +322,13 @@ function EntryDetailModal({
     element: entry.element,
     unit: entry.unit,
     schemeReference: entry.schemeReference,
-    progressionReference: progressionReferenceForEntry(entry),
+    progressionReference: primaryProgressionStep(entry) ?? "",
     activityDescription: entry.activityDescription
   });
   const theme = themeForFramework(entry.framework);
-  const displayEntry = { ...entry, ...draft, progressionReference: draft.progressionReference as ProgressionReference };
+  const displayEntry = { ...entry, ...draft };
   const element = frameworkLibrary.flatMap((framework) => framework.strands.flatMap((strand) => strand.elements)).find((item) => item.name === displayEntry.element);
-  const entryProgression = progressionReferenceForEntry(displayEntry);
+  const entryProgression = draft.progressionReference || primaryProgressionStep(entry) || "No descriptor linked";
   const related = mappings
     .filter((item) => item.id !== entry.id && (item.element === displayEntry.element || item.strand === displayEntry.strand) && item.subject !== displayEntry.subject)
     .slice(0, 5);
@@ -352,7 +355,7 @@ function EntryDetailModal({
       unit: draft.unit.trim(),
       schemeReference: draft.schemeReference.trim(),
       activityDescription: draft.activityDescription.trim(),
-      progressionReference: draft.progressionReference as ProgressionReference
+      progressionReference: draft.progressionReference as MappingEntry["progressionReference"]
     });
     setIsEditing(false);
   }
@@ -398,7 +401,7 @@ function EntryDetailModal({
               <SelectField label="Framework" value={draft.framework} onChange={updateDraftFramework} options={frameworkLibrary.map((item) => item.name)} />
               <SelectField label="Strand" value={draft.strand} onChange={updateDraftStrand} options={strandOptions} />
               <SelectField label="Element" value={draft.element} onChange={(value) => setDraft((current) => ({ ...current, element: value }))} options={elementOptions} />
-              <SelectField label="Progression reference" value={draft.progressionReference} onChange={(value) => setDraft((current) => ({ ...current, progressionReference: value as ProgressionReference }))} options={secondaryProgressionReferences} />
+              <SelectField label="Progression step" value={draft.progressionReference} onChange={(value) => setDraft((current) => ({ ...current, progressionReference: value }))} options={progressionStepOptions} />
               <label>
                 <span className="mb-1 block text-sm font-semibold text-gray-700">Scheme reference</span>
                 <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={draft.schemeReference} onChange={(event) => setDraft((current) => ({ ...current, schemeReference: event.target.value }))} />
@@ -461,17 +464,17 @@ function EntryDetailModal({
                 <DetailRow label="Framework" value={displayEntry.framework} />
                 <DetailRow label="Strand" value={displayEntry.strand} />
                 <DetailRow label="Element" value={displayEntry.element} />
-                <DetailRow label="Progression reference" value={entryProgression} />
+                <DetailRow label="Progression step" value={entryProgression} />
                 <DetailRow label="Scheme reference" value={displayEntry.schemeReference} />
                 <DetailRow label="Optional note" value={entry.note ?? "None added"} />
               </dl>
             </section>
             <section className="rounded-md border p-4" style={{ borderColor: theme.border, backgroundColor: theme.soft }}>
               <h3 className="font-bold" style={{ color: theme.text }}>
-                Progression reference
+                Progression descriptor
               </h3>
               <p className="mt-2 text-sm font-bold text-gray-900">{entryProgression}</p>
-              <p className="mt-2 text-sm leading-6 text-gray-700">{descriptorForReference(element, entryProgression)}</p>
+              <p className="mt-2 text-sm leading-6 text-gray-700">{descriptorTextForStep(element, entryProgression)}</p>
             </section>
             <section className="rounded-md border border-gray-200 p-4">
               <h3 className="font-bold text-gray-900">Also mapped in...</h3>
@@ -511,7 +514,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function relatedFallback(entry: MappingEntry) {
+function relatedFallback(entry: Pick<MappingEntry, "subject">) {
   return [
     {
       subject: "English",
@@ -532,6 +535,49 @@ function relatedFallback(entry: MappingEntry) {
       activityDescription: "Pupils interpret data from practical work and use trends to support conclusions."
     }
   ].filter((item) => item.subject !== entry.subject);
+}
+
+function progressionStepsFromFrameworks(frameworks: FrameworkDefinition[]) {
+  const steps = frameworks.flatMap((framework) =>
+    framework.strands.flatMap((strand) =>
+      strand.elements.flatMap((element) =>
+        (element.progressionDescriptorRefs ?? [])
+          .filter((descriptor) => descriptor.descriptorText.trim())
+          .map((descriptor) => descriptor.progressionStep)
+      )
+    )
+  );
+  return unique(steps).sort(compareProgressionSteps);
+}
+
+function progressionStepsForEntry(entry: MappingEntry) {
+  const steps = (entry.frameworkReferences ?? [])
+    .map((reference) => progressionStepLabel(reference.progressionStep) ?? validProgressionStep(reference.progressionReference))
+    .filter((step): step is string => Boolean(step));
+
+  const legacyStep = validProgressionStep(entry.progressionReference);
+  return unique(legacyStep ? [...steps, legacyStep] : steps).sort(compareProgressionSteps);
+}
+
+function primaryProgressionStep(entry: MappingEntry) {
+  return progressionStepsForEntry(entry)[0] ?? null;
+}
+
+function descriptorTextForStep(element: ElementDefinition | undefined, step: string) {
+  const descriptor = element?.progressionDescriptorRefs?.find((item) => item.progressionStep === step);
+  return descriptor?.descriptorText || "No official progression descriptor found for this selection.";
+}
+
+function progressionStepLabel(step: number | null | undefined) {
+  return step ? `Step ${step}` : null;
+}
+
+function validProgressionStep(step: string | undefined) {
+  return /^Step [1-5]$/.test(step ?? "") ? step : null;
+}
+
+function compareProgressionSteps(a: string, b: string) {
+  return Number(a.replace("Step ", "")) - Number(b.replace("Step ", ""));
 }
 
 function unique(items: string[]) {

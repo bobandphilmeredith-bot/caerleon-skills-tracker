@@ -34,7 +34,13 @@ export default function LoginPage() {
     setSending(true);
     const error = await signInWithPassword(email.trim(), password);
     setSending(false);
-    setMessage(error || "Signed in successfully.");
+    if (error) {
+      setMessage(error);
+      return;
+    }
+
+    const next = safeNextPath(new URLSearchParams(window.location.search).get("next"));
+    window.location.href = next ?? "/";
   }
 
   async function submitPasswordReset() {
@@ -164,4 +170,10 @@ export default function LoginPage() {
       </div>
     </section>
   );
+}
+
+function safeNextPath(next: string | null) {
+  if (!next) return null;
+  if (!next.startsWith("/") || next.startsWith("//")) return null;
+  return next;
 }

@@ -1,6 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+const accessTokenCookie = "caerleon-supabase-access-token";
+const refreshTokenCookie = "caerleon-supabase-refresh-token";
+
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
@@ -34,7 +37,23 @@ export async function GET(request: NextRequest) {
     }).toString();
   }
 
-  return NextResponse.redirect(redirectUrl);
+  const response = NextResponse.redirect(redirectUrl);
+  response.cookies.set(accessTokenCookie, data.session.access_token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: Math.max(60, data.session.expires_in ?? 3600)
+  });
+  response.cookies.set(refreshTokenCookie, data.session.refresh_token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30
+  });
+
+  return response;
 }
 
 function safeNextPath(next: string | null) {

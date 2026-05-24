@@ -261,8 +261,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!supabase) return "Supabase environment variables are missing.";
 
         const client = supabase;
-        const { error } = await client.auth.signInWithPassword({ email, password });
-        return error?.message ?? "";
+        const { data, error } = await client.auth.signInWithPassword({ email, password });
+        if (error) return error.message;
+
+        if (data.session) {
+          const response = await fetch("/api/auth/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              access_token: data.session.access_token,
+              refresh_token: data.session.refresh_token,
+              expires_in: data.session.expires_in
+            })
+          });
+
+          if (!response.ok) return "Could not create a secure app session.";
+        }
+
+        return "";
       },
       resetPassword: async (email) => {
         if (!supabase) return "Supabase environment variables are missing.";
@@ -299,6 +315,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         supabase?.auth.signOut();
+        void fetch("/api/auth/session", { method: "DELETE" });
         setLiveUser(null);
       },
       createUser: (user) => {

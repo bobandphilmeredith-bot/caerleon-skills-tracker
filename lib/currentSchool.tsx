@@ -192,9 +192,26 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
       },
       updateSchool: (schoolId, patch) => {
         setSchools((current) => current.map((school) => (school.id === schoolId ? { ...school, ...patch } : school)));
+        if (!isDemoLoginEnabled && liveSchool && (schoolId === liveSchool.id || schoolId === localCurrentSchool.id)) {
+          setLiveSchool((current) => (current ? { ...current, ...patch } : current));
+          const livePatch = schoolPatchToLiveSchoolPatch(patch);
+          if (supabase && Object.keys(livePatch).length) {
+            void supabase.from("schools").update(livePatch).eq("id", liveSchool.id).then(({ error }) => {
+              if (error) console.error("Could not update school details", error.message);
+            });
+          }
+        }
       },
       toggleSchoolActive: (schoolId) => {
-        setSchools((current) => current.map((school) => (school.id === schoolId ? { ...school, active: !school.active } : school)));
+        const targetSchool = schools.find((school) => school.id === schoolId);
+        const nextActive = !(targetSchool?.active ?? true);
+        setSchools((current) => current.map((school) => (school.id === schoolId ? { ...school, active: nextActive } : school)));
+        if (!isDemoLoginEnabled && liveSchool && (schoolId === liveSchool.id || schoolId === localCurrentSchool.id) && supabase) {
+          setLiveSchool((current) => (current ? { ...current, active: nextActive } : current));
+          void supabase.from("schools").update({ active: nextActive }).eq("id", liveSchool.id).then(({ error }) => {
+            if (error) console.error("Could not update school active status", error.message);
+          });
+        }
       },
       resolveSchoolBySlug: (slug) => schools.find((school) => school.slug === slug),
       addMapping: async (entry) => {
@@ -1066,6 +1083,15 @@ function progressionStepNumberFromDescriptor(descriptor: ProgressionDescriptorRo
 function descriptorText(descriptor: ProgressionDescriptorRow | undefined) {
   const text = descriptor?.descriptor_text ?? undefined;
   return text?.trim() ? text : undefined;
+}
+
+function schoolPatchToLiveSchoolPatch(patch: Partial<School>) {
+  const livePatch: { name?: string; slug?: string; motto?: string; active?: boolean } = {};
+  if (typeof patch.name === "string") livePatch.name = patch.name;
+  if (typeof patch.slug === "string") livePatch.slug = patch.slug;
+  if (typeof patch.motto === "string") livePatch.motto = patch.motto;
+  if (typeof patch.active === "boolean") livePatch.active = patch.active;
+  return livePatch;
 }
 
 export function useCurrentSchool() {

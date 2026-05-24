@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { CoverageAlerts } from "@/components/PlanningVisibilityNotes";
 import { RevisitFrequency } from "@/components/RevisitFrequency";
 import { useCurrentSchoolData } from "@/lib/currentSchool";
+import { frameworkReferenceText, frameworkShortLabel, matchingFrameworkReferences, primaryReferenceForFramework } from "@/lib/mappingFrameworks";
 import type { Dashboard } from "@/lib/types";
 import { themeForDashboard, themeForFramework } from "@/lib/theme";
 
@@ -101,18 +102,22 @@ export function DashboardPage({ dashboard }: { dashboard: Dashboard }) {
                   </td>
                 </tr>
               ) : null}
-              {dashboard.entries.map((entry) => (
-                <tr key={`${entry.subject}-${entry.framework}-${entry.context}`} className="border-b border-gray-100">
-                  <td className="py-3 pr-4 font-semibold text-gray-900">{entry.subject}</td>
-                  <td className="py-3 pr-4 text-gray-700">{subjectAoleMap[entry.subject] ?? "Not set"}</td>
-                  <td className="py-3 pr-4">
-                    <FrameworkBadge framework={entry.framework} />
-                  </td>
-                  <td className="py-3 pr-4 text-gray-700">{entry.strand}</td>
-                  <td className="py-3 pr-4 text-gray-700">{entry.context}</td>
-                  <td className="py-3 pr-4 text-gray-700">{entry.year}</td>
-                </tr>
-              ))}
+              {dashboard.entries.map((entry) => {
+                const references = dashboard.coverage?.framework ? matchingFrameworkReferences(entry, dashboard.coverage.framework) : matchingFrameworkReferences(entry);
+                const primaryReference = primaryReferenceForFramework(entry, dashboard.coverage?.framework);
+                return (
+                  <tr key={`${entry.id}-${dashboard.coverage?.framework ?? "all"}`} className="border-b border-gray-100">
+                    <td className="py-3 pr-4 font-semibold text-gray-900">{entry.subject}</td>
+                    <td className="py-3 pr-4 text-gray-700">{subjectAoleMap[entry.subject] ?? "Not set"}</td>
+                    <td className="py-3 pr-4">
+                      <FrameworkBadge framework={primaryReference?.framework ?? entry.framework} />
+                    </td>
+                    <td className="py-3 pr-4 text-gray-700">{references.map((reference) => reference.strandShortName ?? reference.strand).join(", ") || "No strand reference"}</td>
+                    <td className="py-3 pr-4 text-gray-700">{references.map(frameworkReferenceText).join(", ") || entry.context}</td>
+                    <td className="py-3 pr-4 text-gray-700">{entry.year}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -135,7 +140,7 @@ function FrameworkBadge({ framework }: { framework: string }) {
   const theme = themeForFramework(framework);
   return (
     <span className="rounded-full px-3 py-1 text-xs font-bold" style={{ backgroundColor: theme.soft, color: theme.text, border: `1px solid ${theme.border}` }}>
-      {framework === "Digital Competence Framework" ? "DCF" : framework}
+      {frameworkShortLabel(framework)}
     </span>
   );
 }

@@ -1,26 +1,26 @@
 "use client";
 
-import { reviewSummaryNotes } from "@/lib/curriculumOutputs";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 import { useSchoolSettings } from "@/lib/schoolSettings";
 import { useCurrentSchoolData } from "@/lib/currentSchool";
+import { entryHasFramework, frameworkReferenceText, frameworkShortLabel, matchingFrameworkReferences } from "@/lib/mappingFrameworks";
 import type { MappingEntry } from "@/lib/types";
 
-const frameworkOrder = ["Literacy", "Numeracy", "Digital Competence Framework", "Cross-cutting Themes"];
+const frameworkOrder = ["Literacy Framework", "Numeracy Framework", "Digital Competence Framework", "Cross-cutting Themes"];
 
 export default function ReviewSummaryPage() {
   const { settings } = useSchoolSettings();
   const { mappings, subjectAoleMap, subjectOverviews, wholeSchoolDashboard, yearGroups } = useCurrentSchoolData();
-  const frameworks = frameworkOrder.filter((framework) => mappings.some((entry) => entry.framework === framework));
+  const frameworks = frameworkOrder.filter((framework) => framework === "Cross-cutting Themes" ? mappings.some((entry) => (entry.crossCuttingThemeElementIds?.length ?? entry.crossCuttingThemeIds?.length ?? 0) > 0) : mappings.some((entry) => entryHasFramework(entry, framework)));
   const frameworkRows = frameworks.map((framework) => ({
     framework,
-    total: mappings.filter((entry) => entry.framework === framework).length,
-    byYear: Object.fromEntries(yearGroups.map((year) => [year, mappings.filter((entry) => entry.framework === framework && entry.year === year).length]))
+    total: framework === "Cross-cutting Themes" ? mappings.filter((entry) => (entry.crossCuttingThemeElementIds?.length ?? entry.crossCuttingThemeIds?.length ?? 0) > 0).length : mappings.filter((entry) => entryHasFramework(entry, framework)).length,
+    byYear: Object.fromEntries(yearGroups.map((year) => [year, mappings.filter((entry) => entry.year === year && (framework === "Cross-cutting Themes" ? (entry.crossCuttingThemeElementIds?.length ?? entry.crossCuttingThemeIds?.length ?? 0) > 0 : entryHasFramework(entry, framework))).length]))
   }));
   const yearRows = yearGroups.map((year) => ({
     year,
     total: mappings.filter((entry) => entry.year === year).length,
-    frameworks: Object.fromEntries(frameworks.map((framework) => [framework, mappings.filter((entry) => entry.year === year && entry.framework === framework).length]))
+    frameworks: Object.fromEntries(frameworks.map((framework) => [framework, mappings.filter((entry) => entry.year === year && (framework === "Cross-cutting Themes" ? (entry.crossCuttingThemeElementIds?.length ?? entry.crossCuttingThemeIds?.length ?? 0) > 0 : entryHasFramework(entry, framework))).length]))
   }));
   const subjectReviewList = [...subjectOverviews].sort((a, b) => a.total - b.total || a.subject.localeCompare(b.subject)).slice(0, 6);
   const recentMappings = [...mappings].sort((a, b) => b.lastMappedDate.localeCompare(a.lastMappedDate)).slice(0, 6);
@@ -176,7 +176,8 @@ export default function ReviewSummaryPage() {
             <div className="mt-4 space-y-3">
               {!recentMappings.length ? <p className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">No curriculum mapping entries have been created yet.</p> : null}
               {recentMappings.map((entry) => {
-                const theme = themeForFramework(entry.framework);
+                const primaryReference = matchingFrameworkReferences(entry)[0];
+                const theme = themeForFramework(primaryReference?.framework ?? entry.framework);
                 return (
                   <div key={entry.id} className="rounded-lg border p-4" style={{ borderColor: theme.border }}>
                     <p className="text-sm font-bold text-gray-950">
@@ -184,7 +185,7 @@ export default function ReviewSummaryPage() {
                     </p>
                     <p className="mt-1 text-xs font-semibold text-gray-500">AoLE: {subjectAoleMap[entry.subject] ?? "Not set"}</p>
                     <p className="mt-1 text-sm font-semibold" style={{ color: theme.text }}>
-                      {entry.framework}: {entry.element}
+                      {matchingFrameworkReferences(entry).map(frameworkReferenceText).join(", ") || "No skills references"}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-gray-700">{entry.activityDescription}</p>
                     <p className="mt-2 text-xs font-semibold text-gray-500">{entry.schemeReference}</p>
@@ -224,7 +225,7 @@ export default function ReviewSummaryPage() {
         <section className="mt-8">
           <h2 className="text-xl font-bold text-gray-950">Review notes</h2>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {reviewSummaryNotes.map((note) => (
+            {buildReviewNotes(mappings).map((note) => (
               <div key={note} className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-700">
                 {note}
               </div>
@@ -263,5 +264,19 @@ function MiniCount({ label, value, framework }: { label: string; value: number; 
 }
 
 function frameworkLabel(framework: MappingEntry["framework"]) {
-  return framework === "Digital Competence Framework" ? "DCF" : framework;
+  return frameworkShortLabel(framework);
+}
+
+function buildReviewNotes(mappings: MappingEntry[]) {
+  if (!mappings.length) return ["No curriculum mapping entries have been created yet."];
+  const dcfCount = mappings.filter((entry) => entryHasFramework(entry, "Digital Competence Framework")).length;
+  const numeracyCount = mappings.filter((entry) => entryHasFramework(entry, "Numeracy Framework")).length;
+  const literacyCount = mappings.filter((entry) => entryHasFramework(entry, "Literacy Framework")).length;
+  const themeCount = mappings.filter((entry) => (entry.crossCuttingThemeElementIds?.length ?? entry.crossCuttingThemeIds?.length ?? 0) > 0).length;
+  return [
+    `Skills links visible: Literacy ${literacyCount}, Numeracy ${numeracyCount}, DCF ${dcfCount}.`,
+    `Theme evidence visible in ${themeCount} mapped ${themeCount === 1 ? "activity" : "activities"}.`,
+    "Review subjects with fewer mapped links to check whether planned curriculum evidence has been captured.",
+    "Use Edit Curriculum to inspect individual mappings and confirm the framework references attached to each activity."
+  ];
 }

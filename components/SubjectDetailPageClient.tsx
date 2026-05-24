@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { useCurrentSchoolData } from "@/lib/currentSchool";
-import { getRelatedSuggestions } from "@/lib/curriculumOutputs";
+import { frameworkReferenceText, frameworkShortLabel, matchingFrameworkReferences, primaryReferenceForFramework } from "@/lib/mappingFrameworks";
 import { progressionReferenceForEntry, progressionSummary } from "@/lib/progression";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 import type { MappingEntry } from "@/lib/types";
@@ -19,10 +19,22 @@ export function SubjectDetailPageClient({ subjectName }: { subjectName: string }
   const filteredMappings = useMemo(() => {
     const term = query.trim().toLowerCase();
     if (!term) return subjectMappings;
-    return subjectMappings.filter((entry) => [entry.year, entry.term, entry.framework, entry.strand, entry.element, entry.unit, entry.activityDescription, entry.schemeReference].join(" ").toLowerCase().includes(term));
+    return subjectMappings.filter((entry) =>
+      [
+        entry.year,
+        entry.term,
+        entry.unit,
+        entry.activityDescription,
+        entry.schemeReference,
+        ...matchingFrameworkReferences(entry).flatMap((reference) => [reference.framework, reference.frameworkShortName ?? "", reference.strand, reference.strandShortName ?? "", reference.element])
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(term)
+    );
   }, [query, subjectMappings]);
-  const strandTotals = countBy(subjectMappings.map((entry) => entry.strand));
-  const elementTotals = countBy(subjectMappings.map((entry) => entry.element));
+  const strandTotals = countBy(subjectMappings.flatMap((entry) => matchingFrameworkReferences(entry).map((reference) => reference.strandShortName ?? reference.strand)));
+  const elementTotals = countBy(subjectMappings.flatMap((entry) => matchingFrameworkReferences(entry).map((reference) => reference.element)));
   const progressionTotals = progressionSummary(subjectMappings);
   const recent = [...subjectMappings].sort((a, b) => b.lastMappedDate.localeCompare(a.lastMappedDate)).slice(0, 5);
 
@@ -97,7 +109,7 @@ export function SubjectDetailPageClient({ subjectName }: { subjectName: string }
         </Panel>
         <Panel title="Also Linked To">
           <div className="flex flex-wrap gap-2">
-            {Array.from(new Set(subjectMappings.flatMap((entry) => getRelatedSuggestions(entry)))).slice(0, 10).map((item) => (
+            {Array.from(new Set(subjectMappings.flatMap((entry) => matchingFrameworkReferences(entry).map(frameworkReferenceText)))).slice(0, 10).map((item) => (
               <span key={item} className="rounded-full bg-[#f7edf3] px-3 py-1 text-xs font-semibold text-[#571435]">
                 {item}
               </span>
@@ -108,23 +120,7 @@ export function SubjectDetailPageClient({ subjectName }: { subjectName: string }
 
       <Panel title="Recent Curriculum Activity">
         <div className="space-y-3">
-          {recent.map((entry) => (
-            <div key={entry.id} className="rounded-md border border-gray-200 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-bold text-gray-950">{entry.unit}</h3>
-                  <p className="mt-1 text-sm text-gray-600">
-                    {entry.year} · {entry.term} · {entry.schemeReference}
-                  </p>
-                  <p className="mt-1 text-xs font-semibold text-gray-500">Progression reference: {progressionReferenceForEntry(entry)}</p>
-                </div>
-                <span className="rounded-full px-3 py-1 text-xs font-bold" style={{ backgroundColor: themeForFramework(entry.framework).soft, color: themeForFramework(entry.framework).text }}>
-                  {entry.framework === "Digital Competence Framework" ? "DCF" : entry.framework}
-                </span>
-              </div>
-              <p className="mt-3 text-sm leading-6 text-gray-700">{entry.activityDescription}</p>
-            </div>
-          ))}
+          {recent.map((entry) => <RecentEntry key={entry.id} entry={entry} />)}
           {!recent.length ? <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-600">No curriculum mapping entries have been created yet.</p> : null}
         </div>
       </Panel>
@@ -136,9 +132,7 @@ export function SubjectDetailPageClient({ subjectName }: { subjectName: string }
             <thead>
               <tr className="border-b border-gray-200 text-gray-500">
                 <th className="py-3 pr-4 font-bold">Year</th>
-                <th className="py-3 pr-4 font-bold">Framework</th>
-                <th className="py-3 pr-4 font-bold">Strand</th>
-                <th className="py-3 pr-4 font-bold">Element</th>
+                <th className="py-3 pr-4 font-bold">Framework references</th>
                 <th className="py-3 pr-4 font-bold">Progression reference</th>
                 <th className="py-3 pr-4 font-bold">Scheme</th>
                 <th className="py-3 pr-4 font-bold">Last mapped</th>
@@ -147,7 +141,7 @@ export function SubjectDetailPageClient({ subjectName }: { subjectName: string }
             <tbody>
               {!filteredMappings.length ? (
                 <tr>
-                  <td className="py-4 pr-4 text-gray-600" colSpan={7}>
+                  <td className="py-4 pr-4 text-gray-600" colSpan={5}>
                     No curriculum mapping entries have been created yet.
                   </td>
                 </tr>
@@ -155,9 +149,7 @@ export function SubjectDetailPageClient({ subjectName }: { subjectName: string }
               {filteredMappings.map((entry) => (
                 <tr key={entry.id} className="border-b border-gray-100">
                   <td className="py-3 pr-4 font-semibold text-gray-900">{entry.year}</td>
-                  <td className="py-3 pr-4 text-gray-700">{entry.framework}</td>
-                  <td className="py-3 pr-4 text-gray-700">{entry.strand}</td>
-                  <td className="py-3 pr-4 text-gray-700">{entry.element}</td>
+                  <td className="py-3 pr-4 text-gray-700">{matchingFrameworkReferences(entry).map(frameworkReferenceText).join(", ") || "No skills references"}</td>
                   <td className="py-3 pr-4 text-gray-700">{progressionReferenceForEntry(entry)}</td>
                   <td className="py-3 pr-4 text-gray-700">{entry.schemeReference}</td>
                   <td className="py-3 pr-4 text-gray-700">{entry.lastMappedDate}</td>
@@ -174,7 +166,8 @@ export function SubjectDetailPageClient({ subjectName }: { subjectName: string }
 }
 
 function MappingTimelineCard({ entry, onOpen }: { entry: MappingEntry; onOpen: () => void }) {
-  const theme = themeForFramework(entry.framework);
+  const primaryReference = primaryReferenceForFramework(entry);
+  const theme = themeForFramework(primaryReference?.framework ?? entry.framework);
   return (
     <button
       className="focus-ring w-full rounded-md px-3 py-3 text-left transition hover:shadow-sm"
@@ -189,19 +182,46 @@ function MappingTimelineCard({ entry, onOpen }: { entry: MappingEntry; onOpen: (
       </p>
       <p className="mt-2 text-xs font-bold leading-4 text-gray-700">Progression reference:</p>
       <p className="mt-1 text-xs font-bold leading-4 text-gray-700">{progressionReferenceForEntry(entry)}</p>
+      <p className="mt-2 text-xs font-semibold leading-4 text-gray-600">{matchingFrameworkReferences(entry).map((reference) => frameworkShortLabel(reference.frameworkShortName ?? reference.framework)).join(", ") || "No skills"}</p>
     </button>
   );
 }
 
+function RecentEntry({ entry }: { entry: MappingEntry }) {
+  const primaryReference = primaryReferenceForFramework(entry);
+  const theme = themeForFramework(primaryReference?.framework ?? entry.framework);
+  return (
+    <div className="rounded-md border border-gray-200 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-bold text-gray-950">{entry.unit}</h3>
+          <p className="mt-1 text-sm text-gray-600">
+            {entry.year} · {entry.term} · {entry.schemeReference}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-gray-500">Progression reference: {progressionReferenceForEntry(entry)}</p>
+        </div>
+        <span className="rounded-full px-3 py-1 text-xs font-bold" style={{ backgroundColor: theme.soft, color: theme.text }}>
+          {matchingFrameworkReferences(entry).map((reference) => frameworkShortLabel(reference.frameworkShortName ?? reference.framework)).join(", ") || "No skills"}
+        </span>
+      </div>
+      <p className="mt-2 text-sm font-semibold" style={{ color: theme.text }}>
+        {matchingFrameworkReferences(entry).map(frameworkReferenceText).join(", ") || "No skills references"}
+      </p>
+      <p className="mt-3 text-sm leading-6 text-gray-700">{entry.activityDescription}</p>
+    </div>
+  );
+}
+
 function MappingDetailModal({ entry, onClose }: { entry: MappingEntry; onClose: () => void }) {
-  const theme = themeForFramework(entry.framework);
+  const primaryReference = primaryReferenceForFramework(entry);
+  const theme = themeForFramework(primaryReference?.framework ?? entry.framework);
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 px-4 py-6" role="dialog" aria-modal="true">
       <div className="max-h-[86vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-5 shadow-xl">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 pb-4">
           <div>
             <span className="rounded-full px-3 py-1 text-xs font-bold" style={{ backgroundColor: theme.soft, color: theme.text, border: `1px solid ${theme.border}` }}>
-              {frameworkLabel(entry.framework)}
+              {matchingFrameworkReferences(entry).map((reference) => frameworkShortLabel(reference.frameworkShortName ?? reference.framework)).join(", ") || frameworkLabel(entry.framework)}
             </span>
             <h2 className="mt-3 text-2xl font-bold text-gray-950">{entry.unit}</h2>
             <p className="mt-1 text-sm font-semibold text-gray-600">
@@ -214,9 +234,7 @@ function MappingDetailModal({ entry, onClose }: { entry: MappingEntry; onClose: 
         </div>
 
         <dl className="mt-5 grid gap-4 text-sm sm:grid-cols-2">
-          <DetailRow label="Framework" value={frameworkLabel(entry.framework)} />
-          <DetailRow label="Strand" value={entry.strand} />
-          <DetailRow label="Element" value={entry.element} />
+          <DetailRow label="Framework references" value={matchingFrameworkReferences(entry).map(frameworkReferenceText).join(", ") || "No skills references"} />
           <DetailRow label="Progression reference" value={progressionReferenceForEntry(entry)} />
           <DetailRow label="Scheme of work reference" value={entry.schemeReference} />
         </dl>
@@ -240,7 +258,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 }
 
 function frameworkLabel(framework: string) {
-  return framework === "Digital Competence Framework" ? "DCF" : framework;
+  return frameworkShortLabel(framework);
 }
 
 function Metric({ label, value, note }: { label: string; value: string; note: string }) {

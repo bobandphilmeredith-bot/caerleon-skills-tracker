@@ -3,22 +3,25 @@
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { useCurrentSchoolData } from "@/lib/currentSchool";
+import { entryHasFramework, frameworkReferenceText, matchingFrameworkReferences } from "@/lib/mappingFrameworks";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
 const allValue = "";
 
 export default function CurriculumJourneyPage() {
   const { frameworkLibrary, frameworkMap, mappings, subjectAoleMap, subjects, yearGroups } = useCurrentSchoolData();
-  const [framework, setFramework] = useState("Numeracy");
+  const defaultFramework = frameworkLibrary.find((item) => item.shortName === "Numeracy")?.name ?? frameworkLibrary[0]?.name ?? "";
+  const [framework, setFramework] = useState(defaultFramework);
   const [strand, setStrand] = useState(allValue);
   const [element, setElement] = useState(allValue);
   const [subject, setSubject] = useState(allValue);
   const [year, setYear] = useState(allValue);
-  const selectedFramework = frameworkMap[framework] ? framework : frameworkLibrary[0].name;
+  const selectedFramework = frameworkMap[framework] ? framework : defaultFramework;
   const theme = themeForFramework(selectedFramework);
+  const selectedFrameworkMap = frameworkMap[selectedFramework] ?? {};
 
-  const strandOptions = Object.keys(frameworkMap[selectedFramework]);
-  const elementOptions = strand && frameworkMap[selectedFramework][strand] ? frameworkMap[selectedFramework][strand] : Object.values(frameworkMap[selectedFramework]).flat();
+  const strandOptions = Object.keys(selectedFrameworkMap);
+  const elementOptions = strand && selectedFrameworkMap[strand] ? selectedFrameworkMap[strand] : Object.values(selectedFrameworkMap).flat();
   const journey = useMemo(
     () =>
       yearGroups.map((yearName) => ({
@@ -26,9 +29,9 @@ export default function CurriculumJourneyPage() {
         entries: mappings.filter(
           (entry) =>
             entry.year === yearName &&
-            entry.framework === selectedFramework &&
-            (!strand || entry.strand === strand) &&
-            (!element || entry.element === element) &&
+            entryHasFramework(entry, selectedFramework) &&
+            (!strand || matchingFrameworkReferences(entry, selectedFramework).some((reference) => reference.strand === strand)) &&
+            (!element || matchingFrameworkReferences(entry, selectedFramework).some((reference) => reference.element === element)) &&
             (!subject || entry.subject === subject) &&
             (!year || entry.year === year)
         )
@@ -78,6 +81,7 @@ export default function CurriculumJourneyPage() {
                   <div className="text-sm font-bold text-gray-900">{entry.subject}</div>
                   <div className="mt-1 text-xs font-semibold text-gray-500">AoLE: {subjectAoleMap[entry.subject] ?? "Not set"}</div>
                   <div className="mt-1 text-sm text-gray-700">{entry.unit}</div>
+                  <div className="mt-2 text-xs font-semibold text-gray-600">{matchingFrameworkReferences(entry, selectedFramework).map(frameworkReferenceText).join(", ")}</div>
                   <div className="mt-2 text-xs font-semibold text-gray-500">
                     {entry.term} · {entry.schemeReference}
                   </div>

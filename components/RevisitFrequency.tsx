@@ -1,4 +1,5 @@
 import { useCurrentSchoolData } from "@/lib/currentSchool";
+import { matchingFrameworkReferences } from "@/lib/mappingFrameworks";
 import type { AreaTheme } from "@/lib/theme";
 
 export function RevisitFrequency({ framework, theme }: { framework?: string; theme: AreaTheme }) {
@@ -39,16 +40,21 @@ export function RevisitFrequency({ framework, theme }: { framework?: string; the
 }
 
 function buildRows(mappings: ReturnType<typeof useCurrentSchoolData>["mappings"], framework?: string) {
-  const entries = framework ? mappings.filter((entry) => entry.framework === framework) : mappings;
-  const groups = new Map<string, typeof entries>();
-  entries.forEach((entry) => groups.set(entry.element, [...(groups.get(entry.element) ?? []), entry]));
+  const rows = mappings.flatMap((entry) =>
+    matchingFrameworkReferences(entry, framework).map((reference) => ({
+      entry,
+      element: reference.element
+    }))
+  );
+  const groups = new Map<string, typeof rows>();
+  rows.forEach((row) => groups.set(row.element, [...(groups.get(row.element) ?? []), row]));
   return Array.from(groups.entries())
-    .map(([element, rows]) => ({
+    .map(([element, groupRows]) => ({
       element,
-      yearGroups: unique(rows.map((row) => row.year)),
-      subjects: unique(rows.map((row) => row.subject)),
-      terms: unique(rows.map((row) => row.term)),
-      count: rows.length
+      yearGroups: unique(groupRows.map((row) => row.entry.year)),
+      subjects: unique(groupRows.map((row) => row.entry.subject)),
+      terms: unique(groupRows.map((row) => row.entry.term)),
+      count: groupRows.length
     }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 6);

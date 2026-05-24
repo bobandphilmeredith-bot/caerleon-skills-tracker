@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
+import { entryHasFramework, frameworkReferenceText, frameworkShortLabel, matchingFrameworkReferences, primaryReferenceForFramework } from "@/lib/mappingFrameworks";
 import type { ElementDefinition, FrameworkDefinition, MappingEntry } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
@@ -25,8 +26,8 @@ export default function CurriculumExplorerPage() {
   const [sortBy, setSortBy] = useState("Most recent");
   const [selectedEntry, setSelectedEntry] = useState<MappingEntry | null>(null);
 
-  const strandOptions = framework === allValue ? unique(mappings.map((entry) => entry.strand)) : Object.keys(frameworkMap[framework]);
-  const elementOptions = framework === allValue ? unique(mappings.map((entry) => entry.element)) : strand === allValue ? Object.values(frameworkMap[framework]).flat() : frameworkMap[framework][strand];
+  const strandOptions = framework === allValue ? unique(mappings.flatMap((entry) => matchingFrameworkReferences(entry).map((reference) => reference.strand))) : Object.keys(frameworkMap[framework]);
+  const elementOptions = framework === allValue ? unique(mappings.flatMap((entry) => matchingFrameworkReferences(entry).map((reference) => reference.element))) : strand === allValue ? Object.values(frameworkMap[framework]).flat() : frameworkMap[framework][strand];
   const progressionStepOptions = useMemo(() => progressionStepsFromFrameworks(frameworkLibrary), [frameworkLibrary]);
   const yearGroupOptions = useMemo(() => unique(mappings.map((entry) => entry.year)).sort(compareYearGroups), [mappings]);
   const termOptions = useMemo(() => unique(mappings.map((entry) => entry.term)).sort(compareTerms), [mappings]);
@@ -35,14 +36,15 @@ export default function CurriculumExplorerPage() {
     const query = keyword.trim().toLowerCase();
     const filtered = mappings.filter((entry) => {
       const entryProgressionSteps = progressionStepsForEntry(entry);
-      const searchable = [entry.subject, entry.year, entry.term, entry.unit, entry.framework, entry.strand, entry.element, ...entryProgressionSteps, entry.activityDescription, entry.schemeReference, entry.note ?? ""]
+      const references = matchingFrameworkReferences(entry);
+      const searchable = [entry.subject, entry.year, entry.term, entry.unit, ...references.flatMap((reference) => [reference.framework, reference.frameworkShortName ?? "", reference.strand, reference.strandShortName ?? "", reference.element]), ...entryProgressionSteps, entry.activityDescription, entry.schemeReference, entry.note ?? ""]
         .join(" ")
         .toLowerCase();
 
       return (
-        (framework === allValue || entry.framework === framework) &&
-        (strand === allValue || entry.strand === strand) &&
-        (element === allValue || entry.element === element) &&
+        (framework === allValue || entryHasFramework(entry, framework)) &&
+        (strand === allValue || references.some((reference) => reference.strand === strand)) &&
+        (element === allValue || references.some((reference) => reference.element === element)) &&
         (subject === allValue || entry.subject === subject) &&
         (yearGroup === allValue || entry.year === yearGroup) &&
         (term === allValue || entry.term === term) &&
@@ -58,8 +60,8 @@ export default function CurriculumExplorerPage() {
     });
   }, [element, framework, keyword, mappings, progressionReference, sortBy, strand, subject, term, yearGroup]);
 
-  const popularElements = topCounts(mappings.map((entry) => entry.element)).slice(0, 5);
-  const representedStrands = topCounts(mappings.map((entry) => entry.strand)).slice(0, 5);
+  const popularElements = topCounts(mappings.flatMap((entry) => matchingFrameworkReferences(entry).map((reference) => reference.element))).slice(0, 5);
+  const representedStrands = topCounts(mappings.flatMap((entry) => matchingFrameworkReferences(entry).map((reference) => reference.strandShortName ?? reference.strand))).slice(0, 5);
   const recentSubjects = topCounts([...mappings].sort((a, b) => b.lastMappedDate.localeCompare(a.lastMappedDate)).slice(0, 30).map((entry) => entry.subject)).slice(0, 5);
 
   function updateFramework(nextFramework: string) {
@@ -244,7 +246,9 @@ function EntryCard({
   onOpen: () => void;
   onDelete: () => void;
 }) {
-  const theme = themeForFramework(entry.framework);
+  const primaryReference = primaryReferenceForFramework(entry);
+  const theme = themeForFramework(primaryReference?.framework ?? entry.framework);
+  const references = matchingFrameworkReferences(entry);
   return (
     <article className="rounded-lg border bg-white p-5 shadow-sm transition hover:shadow-md" style={{ borderColor: theme.border }}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -256,12 +260,12 @@ function EntryCard({
           <p className="mt-1 text-xs font-semibold text-gray-500">AoLE: {subjectAoleMap[entry.subject] ?? "Not set"}</p>
         </div>
         <span className="rounded-full px-3 py-1 text-xs font-bold" style={{ backgroundColor: theme.soft, color: theme.text, border: `1px solid ${theme.border}` }}>
-          {entry.framework === "Digital Competence Framework" ? "DCF" : entry.framework}
+          {references.length ? `${references.length} skill link${references.length === 1 ? "" : "s"}` : "No skill links"}
         </span>
       </div>
       <div className="mt-4 grid gap-2 text-sm text-gray-700 sm:grid-cols-2">
-        <Meta label="Strand" value={entry.strand} />
-        <Meta label="Element" value={entry.element} />
+        <Meta label="Frameworks" value={unique(references.map((reference) => frameworkShortLabel(reference.frameworkShortName ?? reference.framework))).join(", ") || "No framework reference"} />
+        <Meta label="Elements" value={references.map((reference) => reference.element).join(", ") || "No element reference"} />
         <Meta label="Progression step" value={progressionStepsForEntry(entry).join(", ") || "No descriptor linked"} />
         <Meta label="Scheme" value={entry.schemeReference} />
       </div>
@@ -325,12 +329,18 @@ function EntryDetailModal({
     progressionReference: primaryProgressionStep(entry) ?? "",
     activityDescription: entry.activityDescription
   });
-  const theme = themeForFramework(entry.framework);
   const displayEntry = { ...entry, ...draft };
-  const element = frameworkLibrary.flatMap((framework) => framework.strands.flatMap((strand) => strand.elements)).find((item) => item.name === displayEntry.element);
+  const activeReference = primaryReferenceForFramework(entry, draft.framework) ?? primaryReferenceForFramework(entry);
+  const theme = themeForFramework(activeReference?.framework ?? entry.framework);
+  const element = frameworkLibrary.flatMap((framework) => framework.strands.flatMap((strand) => strand.elements)).find((item) => item.name === (activeReference?.element ?? displayEntry.element));
   const entryProgression = draft.progressionReference || primaryProgressionStep(entry) || "No descriptor linked";
   const related = mappings
-    .filter((item) => item.id !== entry.id && (item.element === displayEntry.element || item.strand === displayEntry.strand) && item.subject !== displayEntry.subject)
+    .filter(
+      (item) =>
+        item.id !== entry.id &&
+        item.subject !== displayEntry.subject &&
+        matchingFrameworkReferences(item).some((reference) => reference.element === (activeReference?.element ?? displayEntry.element) || reference.strand === (activeReference?.strand ?? displayEntry.strand))
+    )
     .slice(0, 5);
   const strandOptions = Object.keys(frameworkMap[draft.framework] ?? {});
   const elementOptions = frameworkMap[draft.framework]?.[draft.strand] ?? [];
@@ -366,7 +376,7 @@ function EntryDetailModal({
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 pb-4">
           <div>
             <div className="text-sm font-bold uppercase tracking-[0.14em]" style={{ color: theme.accent }}>
-              {displayEntry.framework}
+              {matchingFrameworkReferences(entry).map((reference) => frameworkShortLabel(reference.frameworkShortName ?? reference.framework)).join(", ") || displayEntry.framework}
             </div>
             <h2 className="mt-1 text-2xl font-bold text-gray-950">{displayEntry.unit}</h2>
             <p className="mt-1 text-sm font-semibold text-gray-600">
@@ -434,7 +444,7 @@ function EntryDetailModal({
             </section>
             <section className="rounded-md border p-4" style={{ borderColor: theme.border, backgroundColor: theme.soft }}>
               <h3 className="font-bold" style={{ color: theme.text }}>
-                {entry.element}
+                {activeReference?.element ?? entry.element}
               </h3>
               <p className="mt-2 text-sm leading-6 text-gray-700">{element?.explanation ?? "Teacher-friendly explanation available in the framework library."}</p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -463,9 +473,9 @@ function EntryDetailModal({
             <section className="rounded-md border border-gray-200 p-4">
               <h3 className="font-bold text-gray-900">Mapping details</h3>
               <dl className="mt-3 space-y-2 text-sm">
-                <DetailRow label="Framework" value={displayEntry.framework} />
-                <DetailRow label="Strand" value={displayEntry.strand} />
-                <DetailRow label="Element" value={displayEntry.element} />
+                <DetailRow label="Framework references" value={matchingFrameworkReferences(entry).map(frameworkReferenceText).join(", ") || "No framework reference"} />
+                <DetailRow label="Strand" value={activeReference?.strand ?? displayEntry.strand} />
+                <DetailRow label="Element" value={activeReference?.element ?? displayEntry.element} />
                 <DetailRow label="Progression step" value={entryProgression} />
                 <DetailRow label="Scheme reference" value={displayEntry.schemeReference} />
                 <DetailRow label="Optional note" value={entry.note ?? "None added"} />

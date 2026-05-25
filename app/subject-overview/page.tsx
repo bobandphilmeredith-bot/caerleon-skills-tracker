@@ -54,7 +54,6 @@ export default function SubjectOverviewPage() {
                 <MiniFramework label="Themes" value={subject.themes} framework="Cross-cutting Themes" />
               </div>
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                <span className="text-xs font-semibold text-gray-500">Review suggested: {subject.lastReviewedDate}</span>
                 <Link className="focus-ring btn btn-secondary text-xs" href={`/subject-overview/${encodeURIComponent(subject.subject)}`}>
                   Open subject detail
                 </Link>

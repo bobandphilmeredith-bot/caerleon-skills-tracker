@@ -13,6 +13,11 @@ import type { MappingEntry, MappingFrameworkReference, SubjectConfig } from "@/l
 const allYears = "All year groups";
 const allTerms = "All terms";
 
+type DisplayMappingEntry = MappingEntry & {
+  duplicateIds?: string[];
+  duplicateCount?: number;
+};
+
 export default function EditCurriculumPage() {
   const { canEditMappings, canEditSubject } = useAuth();
   const { currentSchoolId, data } = useCurrentSchool();
@@ -47,12 +52,14 @@ export default function EditCurriculumPage() {
   const selectedSubject = editableSubjects.find((subject) => subject.id === subjectId);
   const filteredMappings = useMemo(
     () =>
-      mappings
-        .filter((entry) => matchesSubject(entry, selectedSubject))
-        .filter((entry) => yearFilter === allYears || entry.year === yearFilter)
-        .filter((entry) => termFilter === allTerms || entry.term === termFilter)
-        .filter((entry) => matchesKeyword(entry, keyword))
-        .sort(compareMappings),
+      collapseDuplicateMappings(
+        mappings
+          .filter((entry) => matchesSubject(entry, selectedSubject))
+          .filter((entry) => yearFilter === allYears || entry.year === yearFilter)
+          .filter((entry) => termFilter === allTerms || entry.term === termFilter)
+          .filter((entry) => matchesKeyword(entry, keyword))
+          .sort(compareMappings)
+      ),
     [keyword, mappings, selectedSubject, termFilter, yearFilter]
   );
   const groupedMappings = useMemo(() => groupMappings(filteredMappings, yearGroups), [filteredMappings, yearGroups]);
@@ -136,7 +143,7 @@ export default function EditCurriculumPage() {
   );
 }
 
-function MappingCard({ entry, subjectId }: { entry: MappingEntry; subjectId: string }) {
+function MappingCard({ entry, subjectId }: { entry: DisplayMappingEntry; subjectId: string }) {
   const skills = summariseSkills(entry.frameworkReferences ?? []);
   const themes = summariseThemes(entry.crossCuttingThemes ?? []);
   const href = `/edit-curriculum/${encodeURIComponent(entry.id)}?subject=${encodeURIComponent(subjectId)}&year=${encodeURIComponent(entry.year)}`;
@@ -152,6 +159,11 @@ function MappingCard({ entry, subjectId }: { entry: MappingEntry; subjectId: str
             <span>Updated {entry.lastMappedDate}</span>
           </div>
           <h3 className="mt-1 text-base font-bold text-gray-950">{entry.unit || entry.context || "Untitled mapping"}</h3>
+          {entry.duplicateCount && entry.duplicateCount > 1 ? (
+            <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">
+              {entry.duplicateCount} matching database records found for this activity. Showing one combined card.
+            </p>
+          ) : null}
           {entry.activityDescription ? <p className="mt-1 line-clamp-2 text-sm leading-6 text-gray-600">{entry.activityDescription}</p> : null}
           <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
             <SummaryBlock label="Skills" value={skills} empty="No framework references" />
@@ -217,12 +229,71 @@ function matchesKeyword(entry: MappingEntry, keyword: string) {
     .includes(needle);
 }
 
-function groupMappings(entries: MappingEntry[], configuredYears: string[]) {
+function groupMappings(entries: DisplayMappingEntry[], configuredYears: string[]) {
   const orderedYears = [...configuredYears].sort((a, b) => yearNumber(a) - yearNumber(b));
   return Array.from(new Set([...orderedYears, ...entries.map((entry) => entry.year)]))
     .sort((a, b) => yearNumber(a) - yearNumber(b))
     .map((year) => ({ year, entries: entries.filter((entry) => entry.year === year).sort(compareMappings) }))
     .filter((group) => group.entries.length > 0);
+}
+
+function collapseDuplicateMappings(entries: MappingEntry[]): DisplayMappingEntry[] {
+  const grouped = new Map<string, MappingEntry[]>();
+  for (const entry of entries) {
+    const key = duplicateKey(entry);
+    grouped.set(key, [...(grouped.get(key) ?? []), entry]);
+  }
+
+  return Array.from(grouped.values())
+    .map((group) => mergeDuplicateGroup(group))
+    .sort(compareMappings);
+}
+
+function duplicateKey(entry: MappingEntry) {
+  return [
+    entry.subjectId || entry.subject,
+    entry.year,
+    entry.term,
+    normaliseDuplicateText(entry.schemeReference),
+    normaliseDuplicateText(entry.unit || entry.context),
+    normaliseDuplicateText(entry.activityDescription)
+  ].join("::");
+}
+
+function mergeDuplicateGroup(group: MappingEntry[]): DisplayMappingEntry {
+  const [first, ...rest] = group.sort(compareMappings);
+  return {
+    ...first,
+    frameworkReferences: uniqueFrameworkReferences(group.flatMap((entry) => entry.frameworkReferences ?? [])),
+    crossCuttingThemes: uniqueStrings(group.flatMap((entry) => entry.crossCuttingThemes ?? [])),
+    crossCuttingThemeIds: uniqueStrings(group.flatMap((entry) => entry.crossCuttingThemeIds ?? [])),
+    crossCuttingThemeElementIds: uniqueStrings(group.flatMap((entry) => entry.crossCuttingThemeElementIds ?? [])),
+    crossCuttingThemeElementLinks: Array.from(new Map(group.flatMap((entry) => entry.crossCuttingThemeElementLinks ?? []).map((link) => [`${link.themeId}:${link.elementId}`, link])).values()),
+    duplicateIds: group.map((entry) => entry.id),
+    duplicateCount: group.length,
+    lastMappedDate: group.map((entry) => entry.lastMappedDate).sort().at(-1) ?? first.lastMappedDate,
+    note: uniqueStrings(group.map((entry) => entry.note ?? "")).join(" · "),
+    crossCuttingThemeNotes: uniqueStrings(group.map((entry) => entry.crossCuttingThemeNotes ?? "")).join(" · ")
+  };
+}
+
+function uniqueFrameworkReferences(references: MappingFrameworkReference[]) {
+  return Array.from(
+    new Map(
+      references.map((reference) => [
+        [reference.frameworkId, reference.strandId, reference.elementId, reference.progressionDescriptorId ?? "", reference.progressionStep ?? "", reference.notes ?? ""].join("::"),
+        reference
+      ])
+    ).values()
+  );
+}
+
+function uniqueStrings(items: string[]) {
+  return Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
+}
+
+function normaliseDuplicateText(value: string | undefined) {
+  return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function compareMappings(a: MappingEntry, b: MappingEntry) {

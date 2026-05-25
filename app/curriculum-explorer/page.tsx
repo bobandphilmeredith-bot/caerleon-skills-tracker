@@ -6,10 +6,15 @@ import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
 import { entryHasFramework, frameworkReferenceText, frameworkShortLabel, matchingFrameworkReferences, primaryReferenceForFramework } from "@/lib/mappingFrameworks";
-import type { ElementDefinition, FrameworkDefinition, MappingEntry } from "@/lib/types";
+import type { ElementDefinition, FrameworkDefinition, MappingEntry, MappingFrameworkReference } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
 const allValue = "All";
+
+type DisplayMappingEntry = MappingEntry & {
+  duplicateIds?: string[];
+  duplicateCount?: number;
+};
 
 export default function CurriculumExplorerPage() {
   const { data, updateMapping, deleteMapping } = useCurrentSchool();
@@ -52,7 +57,7 @@ export default function CurriculumExplorerPage() {
         (!query || searchable.includes(query))
       );
     });
-    return filtered.sort((a, b) => {
+    return collapseDuplicateMappings(filtered).sort((a, b) => {
       if (sortBy === "Subject") return a.subject.localeCompare(b.subject);
       if (sortBy === "Year group") return a.year.localeCompare(b.year);
       if (sortBy === "Framework") return a.framework.localeCompare(b.framework);
@@ -240,7 +245,7 @@ function EntryCard({
   onOpen,
   onDelete
 }: {
-  entry: MappingEntry;
+  entry: DisplayMappingEntry;
   subjectAoleMap: Record<string, string | undefined>;
   canEdit: boolean;
   onOpen: () => void;
@@ -258,6 +263,11 @@ function EntryCard({
             {entry.subject} · {entry.year} · {entry.term}
           </p>
           <p className="mt-1 text-xs font-semibold text-gray-500">AoLE: {subjectAoleMap[entry.subject] ?? "Not set"}</p>
+          {entry.duplicateCount && entry.duplicateCount > 1 ? (
+            <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">
+              {entry.duplicateCount} matching database records found for this activity. Showing one combined card.
+            </p>
+          ) : null}
         </div>
         <span className="rounded-full px-3 py-1 text-xs font-bold" style={{ backgroundColor: theme.soft, color: theme.text, border: `1px solid ${theme.border}` }}>
           {references.length ? `${references.length} skill link${references.length === 1 ? "" : "s"}` : "No skill links"}
@@ -583,6 +593,63 @@ function compareTerms(a: string, b: string) {
   const aIndex = order.indexOf(a);
   const bIndex = order.indexOf(b);
   return (aIndex === -1 ? order.length : aIndex) - (bIndex === -1 ? order.length : bIndex) || a.localeCompare(b);
+}
+
+function collapseDuplicateMappings(entries: MappingEntry[]): DisplayMappingEntry[] {
+  const grouped = new Map<string, MappingEntry[]>();
+  for (const entry of entries) {
+    const key = duplicateKey(entry);
+    grouped.set(key, [...(grouped.get(key) ?? []), entry]);
+  }
+
+  return Array.from(grouped.values()).map((group) => mergeDuplicateGroup(group));
+}
+
+function duplicateKey(entry: MappingEntry) {
+  return [
+    entry.subjectId || entry.subject,
+    entry.year,
+    entry.term,
+    normaliseDuplicateText(entry.schemeReference),
+    normaliseDuplicateText(entry.unit || entry.context),
+    normaliseDuplicateText(entry.activityDescription)
+  ].join("::");
+}
+
+function mergeDuplicateGroup(group: MappingEntry[]): DisplayMappingEntry {
+  const [first] = group.sort((a, b) => b.lastMappedDate.localeCompare(a.lastMappedDate));
+  return {
+    ...first,
+    frameworkReferences: uniqueFrameworkReferences(group.flatMap((entry) => entry.frameworkReferences ?? [])),
+    crossCuttingThemes: uniqueStrings(group.flatMap((entry) => entry.crossCuttingThemes ?? [])),
+    crossCuttingThemeIds: uniqueStrings(group.flatMap((entry) => entry.crossCuttingThemeIds ?? [])),
+    crossCuttingThemeElementIds: uniqueStrings(group.flatMap((entry) => entry.crossCuttingThemeElementIds ?? [])),
+    crossCuttingThemeElementLinks: Array.from(new Map(group.flatMap((entry) => entry.crossCuttingThemeElementLinks ?? []).map((link) => [`${link.themeId}:${link.elementId}`, link])).values()),
+    duplicateIds: group.map((entry) => entry.id),
+    duplicateCount: group.length,
+    lastMappedDate: group.map((entry) => entry.lastMappedDate).sort().at(-1) ?? first.lastMappedDate,
+    note: uniqueStrings(group.map((entry) => entry.note ?? "")).join(" · "),
+    crossCuttingThemeNotes: uniqueStrings(group.map((entry) => entry.crossCuttingThemeNotes ?? "")).join(" · ")
+  };
+}
+
+function uniqueFrameworkReferences(references: MappingFrameworkReference[]) {
+  return Array.from(
+    new Map(
+      references.map((reference) => [
+        [reference.frameworkId, reference.strandId, reference.elementId, reference.progressionDescriptorId ?? "", reference.progressionStep ?? "", reference.notes ?? ""].join("::"),
+        reference
+      ])
+    ).values()
+  );
+}
+
+function uniqueStrings(items: string[]) {
+  return Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
+}
+
+function normaliseDuplicateText(value: string | undefined) {
+  return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function unique(items: string[]) {

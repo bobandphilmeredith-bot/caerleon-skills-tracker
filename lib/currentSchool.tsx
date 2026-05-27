@@ -76,7 +76,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   const localCurrentSchool = schools.find((school) => school.id === currentSchoolId) ?? schools[0] ?? sampleSchools[0];
   const currentSchool = !isDemoLoginEnabled && liveSchool ? liveSchool : localCurrentSchool;
   const baseData = customData[currentSchool.id] ?? schoolDataById[currentSchool.id] ?? createEmptySchoolData(currentSchool.id);
-  const liveSchoolId = isDemoLoginEnabled ? currentSchool.id : (liveSchool?.id ?? currentUser?.schoolId ?? "caerleon");
+  const liveSchoolId = isDemoLoginEnabled ? currentSchool.id : (currentUser?.schoolId ?? "");
   const useLiveData = !isDemoLoginEnabled && Boolean(liveReferenceMaps);
   const currentMappings = useLiveData ? liveMappings : (mappingOverrides[currentSchool.id] ?? baseData.mappings);
   const currentFrameworkLibrary = useLiveData ? (liveReferenceMaps?.frameworkLibrary ?? []) : baseData.frameworkLibrary;

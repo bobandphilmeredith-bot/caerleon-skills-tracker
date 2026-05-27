@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 import { useSchoolSettings } from "@/lib/schoolSettings";
 import { roleBadgeClass, roleLabels, type UserRole, useAuth } from "@/lib/auth";
@@ -69,8 +69,9 @@ type NavItem = (typeof navGroups)[number]["items"][number] | (typeof primaryActi
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { settings } = useSchoolSettings();
-  const { currentUser, realUser, isDemoMode, users, loginAs, canPreviewRoles, previewRole, isRolePreview, setPreviewRole, clearRolePreview } = useAuth();
+  const { currentUser, realUser, isDemoMode, users, loginAs, canPreviewRoles, previewRole, isRolePreview, setPreviewRole, clearRolePreview, authLoading } = useAuth();
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [flyoutTop, setFlyoutTop] = useState(0);
   const shortSchoolName = settings.branding.schoolName.replace(" Comprehensive School", "");
@@ -96,6 +97,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, []);
+
+  const publicPage = isPublicPage(pathname);
+
+  useEffect(() => {
+    if (isDemoMode || authLoading || currentUser || publicPage) return;
+    const loginUrl = new URL("/login", window.location.origin);
+    loginUrl.searchParams.set("next", `${window.location.pathname}${window.location.search}`);
+    loginUrl.searchParams.set("session", "expired");
+    router.replace(loginUrl.pathname + loginUrl.search);
+  }, [authLoading, currentUser, isDemoMode, publicPage, router]);
 
   return (
     <div className="min-h-screen bg-white lg:grid lg:grid-cols-[280px_1fr]">
@@ -194,10 +205,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         ) : null}
-        <div className="mx-auto max-w-[1800px] px-5 py-6">{children}</div>
+        <div className="mx-auto max-w-[1800px] px-5 py-6">
+          {!isDemoMode && !publicPage && authLoading ? <SessionGate title="Checking sign-in" message="Checking your secure session before loading school data." /> : null}
+          {!isDemoMode && !publicPage && !authLoading && !currentUser ? <SessionGate title="Sign in required" message="This area is protected. Sign in to view curriculum data." showAction /> : null}
+          {isDemoMode || publicPage || currentUser ? children : null}
+        </div>
       </main>
     </div>
   );
+}
+
+function SessionGate({ title, message, showAction = false }: { title: string; message: string; showAction?: boolean }) {
+  return (
+    <section className="mx-auto max-w-2xl py-12">
+      <article className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <p className="text-sm font-bold uppercase tracking-[0.14em]" style={{ color: areaThemes.overview.text }}>
+          Protected area
+        </p>
+        <h1 className="mt-3 text-3xl font-bold text-gray-950">{title}</h1>
+        <p className="mt-3 text-base leading-7 text-gray-600">{message}</p>
+        {showAction ? (
+          <Link className="focus-ring btn btn-primary mt-5" href={`/login?next=${encodeURIComponent(typeof window === "undefined" ? "/" : `${window.location.pathname}${window.location.search}`)}&session=expired`}>
+            Sign in
+          </Link>
+        ) : null}
+      </article>
+    </section>
+  );
+}
+
+function isPublicPage(pathname: string) {
+  return pathname === "/login" || pathname.startsWith("/auth/callback") || pathname === "/reset-password";
 }
 
 function canShowItem(item: NavItem, currentUser: ReturnType<typeof useAuth>["currentUser"]) {

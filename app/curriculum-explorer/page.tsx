@@ -39,7 +39,7 @@ export default function CurriculumExplorerPage() {
 
   const filteredEntries = useMemo(() => {
     const query = keyword.trim().toLowerCase();
-    const filtered = mappings.filter((entry) => {
+    const filtered = collapseDuplicateMappings(mappings).filter((entry) => {
       const entryProgressionSteps = progressionStepsForEntry(entry);
       const references = matchingFrameworkReferences(entry);
       const searchable = [entry.subject, entry.year, entry.term, entry.unit, ...references.flatMap((reference) => [reference.framework, reference.frameworkShortName ?? "", reference.strand, reference.strandShortName ?? "", reference.element]), ...entryProgressionSteps, entry.activityDescription, entry.schemeReference, entry.note ?? ""]
@@ -57,7 +57,7 @@ export default function CurriculumExplorerPage() {
         (!query || searchable.includes(query))
       );
     });
-    return collapseDuplicateMappings(filtered).sort((a, b) => {
+    return filtered.sort((a, b) => {
       if (sortBy === "Subject") return a.subject.localeCompare(b.subject);
       if (sortBy === "Year group") return a.year.localeCompare(b.year);
       if (sortBy === "Framework") return a.framework.localeCompare(b.framework);

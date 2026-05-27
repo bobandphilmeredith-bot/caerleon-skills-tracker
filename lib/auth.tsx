@@ -236,6 +236,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (mounted) setAuthLoading(false);
     }
 
+    async function syncSecureAppSession(session: { access_token: string; refresh_token?: string; expires_in?: number } | null) {
+      if (!session?.access_token) return;
+      await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+          expires_in: session.expires_in
+        })
+      }).catch(() => undefined);
+    }
+
     loadUser();
 
     const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
@@ -246,6 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      void syncSecureAppSession(session);
       setAuthLoading(true);
       loadStaffProfile(session.user.id).finally(() => {
         if (mounted) setAuthLoading(false);

@@ -166,15 +166,56 @@ create table if not exists public.cross_cutting_themes (
   unique (school_id, name)
 );
 
+create table if not exists public.cross_cutting_theme_elements (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid references public.schools(id) on delete cascade,
+  theme_id uuid not null references public.cross_cutting_themes(id) on delete cascade,
+  name text not null,
+  description text,
+  display_order integer not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (school_id, theme_id, name)
+);
+
 create table if not exists public.curriculum_mapping_theme_links (
   id uuid primary key default gen_random_uuid(),
   mapping_id uuid not null references public.curriculum_mappings(id) on delete cascade,
   theme_id uuid not null references public.cross_cutting_themes(id),
+  theme_element_id uuid references public.cross_cutting_theme_elements(id) on delete restrict,
   notes text,
   created_by uuid,
-  created_at timestamptz not null default now(),
-  unique (mapping_id, theme_id)
+  created_at timestamptz not null default now()
 );
+
+do $$
+declare
+  v_constraint record;
+begin
+  for v_constraint in
+    select c.conname
+    from pg_constraint c
+    where c.conrelid = 'public.curriculum_mapping_theme_links'::regclass
+      and c.contype = 'u'
+      and array_length(c.conkey, 1) = 2
+      and exists (
+        select 1
+        from unnest(c.conkey) as key(attnum)
+        join pg_attribute a on a.attrelid = c.conrelid and a.attnum = key.attnum
+        where a.attname = 'mapping_id'
+      )
+      and exists (
+        select 1
+        from unnest(c.conkey) as key(attnum)
+        join pg_attribute a on a.attrelid = c.conrelid and a.attnum = key.attnum
+        where a.attname = 'theme_id'
+      )
+  loop
+    execute format('alter table public.curriculum_mapping_theme_links drop constraint %I', v_constraint.conname);
+  end loop;
+end
+$$;
 
 do $$
 declare
@@ -570,6 +611,15 @@ create unique index if not exists curriculum_mapping_framework_links_no_duplicat
   );
 create index if not exists curriculum_mapping_theme_links_mapping_idx on public.curriculum_mapping_theme_links(mapping_id);
 create index if not exists curriculum_mapping_theme_links_theme_idx on public.curriculum_mapping_theme_links(theme_id);
+create unique index if not exists curriculum_mapping_theme_links_mapping_theme_element_unique
+  on public.curriculum_mapping_theme_links (mapping_id, theme_id, theme_element_id)
+  where theme_element_id is not null;
+create unique index if not exists curriculum_mapping_theme_links_mapping_theme_legacy_unique
+  on public.curriculum_mapping_theme_links (mapping_id, theme_id)
+  where theme_element_id is null;
+create index if not exists curriculum_mapping_theme_links_theme_element_idx on public.curriculum_mapping_theme_links(theme_element_id);
+create index if not exists cross_cutting_theme_elements_school_idx on public.cross_cutting_theme_elements(school_id);
+create index if not exists cross_cutting_theme_elements_theme_idx on public.cross_cutting_theme_elements(theme_id);
 
 -- Diagnostics: these queries should return zero rows after this script runs.
 select 'old_active_label' as diagnostic, label

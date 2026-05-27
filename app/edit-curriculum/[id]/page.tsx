@@ -146,6 +146,7 @@ export default function EditCurriculumMappingPage() {
   useEffect(() => {
     if (!draft || !themeOptions.length) return;
     const validSelections = new Set(themeOptions.flatMap((theme) => (theme.elements ?? []).map((element) => `${theme.id}:${element.id}`)));
+    if (!validSelections.size) return;
     const nextSelection = draft.selectedCctElements.filter((item) => validSelections.has(`${item.themeId}:${item.elementId}`));
     if (nextSelection.length !== draft.selectedCctElements.length) updateDraft({ selectedCctElements: nextSelection });
   }, [draft, themeOptions]);

@@ -113,6 +113,7 @@ export default function AddEntryPage() {
 
   useEffect(() => {
     const validSelections = new Set(themeOptions.flatMap((themeItem) => (themeItem.elements ?? []).map((element) => `${themeItem.id}:${element.id}`)));
+    if (!validSelections.size) return;
     setSelectedCctElements((current) => current.filter((item) => validSelections.has(`${item.themeId}:${item.elementId}`)));
   }, [themeOptions]);
 

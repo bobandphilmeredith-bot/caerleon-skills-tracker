@@ -288,14 +288,27 @@ create table if not exists public.cross_cutting_themes (
   unique (id, school_id)
 );
 
+create table if not exists public.cross_cutting_theme_elements (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid references public.schools(id) on delete cascade,
+  theme_id uuid not null references public.cross_cutting_themes(id) on delete cascade,
+  name text not null,
+  description text,
+  display_order integer not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (school_id, theme_id, name)
+);
+
 create table if not exists public.curriculum_mapping_theme_links (
   id uuid primary key default gen_random_uuid(),
   mapping_id uuid not null references public.curriculum_mappings(id) on delete cascade,
   theme_id uuid not null references public.cross_cutting_themes(id),
+  theme_element_id uuid references public.cross_cutting_theme_elements(id) on delete restrict,
   notes text,
   created_by uuid references public.users(id) on delete set null,
-  created_at timestamptz not null default now(),
-  unique (mapping_id, theme_id)
+  created_at timestamptz not null default now()
 );
 
 create table if not exists public.curriculum_activity_theme_links (
@@ -404,7 +417,12 @@ create unique index if not exists curriculum_mapping_framework_links_no_duplicat
   );
 create index if not exists curriculum_mapping_theme_links_mapping_idx on public.curriculum_mapping_theme_links(mapping_id);
 create index if not exists curriculum_mapping_theme_links_theme_idx on public.curriculum_mapping_theme_links(theme_id);
+create unique index if not exists curriculum_mapping_theme_links_mapping_theme_element_unique on public.curriculum_mapping_theme_links(mapping_id, theme_id, theme_element_id) where theme_element_id is not null;
+create unique index if not exists curriculum_mapping_theme_links_mapping_theme_legacy_unique on public.curriculum_mapping_theme_links(mapping_id, theme_id) where theme_element_id is null;
+create index if not exists curriculum_mapping_theme_links_theme_element_idx on public.curriculum_mapping_theme_links(theme_element_id);
 create index if not exists cross_cutting_themes_school_idx on public.cross_cutting_themes(school_id);
+create index if not exists cross_cutting_theme_elements_school_idx on public.cross_cutting_theme_elements(school_id);
+create index if not exists cross_cutting_theme_elements_theme_idx on public.cross_cutting_theme_elements(theme_id);
 create index if not exists curriculum_activity_theme_links_school_idx on public.curriculum_activity_theme_links(school_id);
 create index if not exists curriculum_activity_theme_links_mapping_idx on public.curriculum_activity_theme_links(mapping_id);
 create index if not exists curriculum_activity_theme_links_theme_idx on public.curriculum_activity_theme_links(theme_id);

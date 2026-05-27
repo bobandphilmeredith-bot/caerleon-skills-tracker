@@ -647,7 +647,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
   const { data: linkRows } = mappingIds.length
     ? await client
     .from("curriculum_mapping_theme_links")
-    .select("mapping_id,theme_id,theme_element_id,notes")
+    .select("id,mapping_id,theme_id,theme_element_id,notes")
         .in("mapping_id", mappingIds)
     : { data: [] as ThemeLinkRow[] };
 
@@ -772,6 +772,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
 }
 
 type ThemeLinkRow = {
+  id?: string;
   mapping_id: string;
   theme_id: string;
   theme_element_id?: string | null;
@@ -1055,23 +1056,62 @@ async function replaceFrameworkLinks(client: SupabaseClient, mappingId: string, 
 }
 
 async function replaceThemeLinks(client: SupabaseClient, mappingId: string, themeLinks: SelectedCctElement[], notes: string, userId?: string): Promise<MappingMutationResult> {
-  const { error: deleteError } = await client.from("curriculum_mapping_theme_links").delete().eq("mapping_id", mappingId);
-  if (deleteError) return { ok: false, message: deleteError.message };
   const uniqueLinks = Array.from(new Map(themeLinks.filter((link) => link.themeId && link.elementId).map((link) => [`${link.themeId}:${link.elementId}`, link])).values());
-  if (!uniqueLinks.length) return { ok: true };
   if (!looksLikeUuid(mappingId) || uniqueLinks.some((link) => !looksLikeUuid(link.themeId) || !looksLikeUuid(link.elementId))) {
     return { ok: false, message: "Cross-cutting theme data is not using database IDs. Reload cross-cutting themes from Supabase." };
   }
-  const { error } = await client.from("curriculum_mapping_theme_links").insert(
-    uniqueLinks.map((link) => ({
+
+  const { data: existingRows, error: existingError } = await client
+    .from("curriculum_mapping_theme_links")
+    .select("id,mapping_id,theme_id,theme_element_id,notes")
+    .eq("mapping_id", mappingId);
+  if (existingError) return { ok: false, message: existingError.message };
+
+  const existing = (existingRows ?? []) as ThemeLinkRow[];
+  if (!uniqueLinks.length) {
+    const { error: deleteError } = await client.from("curriculum_mapping_theme_links").delete().eq("mapping_id", mappingId);
+    return deleteError ? { ok: false, message: deleteError.message } : { ok: true };
+  }
+
+  const desiredKeys = new Set(uniqueLinks.map((link) => cctLinkKey(link.themeId, link.elementId)));
+  const existingKeys = new Set(existing.filter((row) => row.theme_element_id).map((row) => cctLinkKey(row.theme_id, row.theme_element_id ?? "")));
+  const missingLinks = uniqueLinks.filter((link) => !existingKeys.has(cctLinkKey(link.themeId, link.elementId)));
+
+  if (missingLinks.length) {
+    const { error } = await client.from("curriculum_mapping_theme_links").insert(
+      missingLinks.map((link) => ({
       mapping_id: mappingId,
       theme_id: link.themeId,
       theme_element_id: link.elementId,
       notes: notes.trim() || null,
       created_by: userId ?? null
-    }))
-  );
-  return error ? { ok: false, message: error.message } : { ok: true };
+      }))
+    );
+    if (error) return { ok: false, message: error.message };
+  }
+
+  const obsoleteIds = existing
+    .filter((row) => row.id)
+    .filter((row) => !row.theme_element_id || !desiredKeys.has(cctLinkKey(row.theme_id, row.theme_element_id)))
+    .map((row) => row.id as string);
+  const existingDesiredIds = existing
+    .filter((row) => row.id && row.theme_element_id && desiredKeys.has(cctLinkKey(row.theme_id, row.theme_element_id)))
+    .map((row) => row.id as string);
+
+  if (existingDesiredIds.length) {
+    const { error: updateError } = await client
+      .from("curriculum_mapping_theme_links")
+      .update({ notes: notes.trim() || null })
+      .in("id", existingDesiredIds);
+    if (updateError) return { ok: false, message: updateError.message };
+  }
+
+  if (obsoleteIds.length) {
+    const { error: deleteError } = await client.from("curriculum_mapping_theme_links").delete().in("id", obsoleteIds);
+    if (deleteError) return { ok: false, message: deleteError.message };
+  }
+
+  return { ok: true };
 }
 
 function themeLinksForEntry(entry: MappingEntry): SelectedCctElement[] {
@@ -1081,6 +1121,10 @@ function themeLinksForEntry(entry: MappingEntry): SelectedCctElement[] {
 
 function looksLikeUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function cctLinkKey(themeId: string, elementId: string) {
+  return `${themeId}:${elementId}`;
 }
 
 function hasSubjectName(subjectName: string, existingNames: string[]) {

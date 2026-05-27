@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const accessTokenCookie = "caerleon-supabase-access-token";
+const refreshTokenCookie = "caerleon-supabase-refresh-token";
 
 const publicPathPrefixes = ["/login", "/auth/callback", "/reset-password", "/api/auth"];
 const publicExactPaths = ["/api/healthcheck"];
@@ -12,9 +13,19 @@ export async function middleware(request: NextRequest) {
   if (isPublicPath(pathname)) return NextResponse.next();
 
   const accessToken = request.cookies.get(accessTokenCookie)?.value;
+  const refreshToken = request.cookies.get(refreshTokenCookie)?.value;
 
   if (accessToken && (await hasAuthenticatedSupabaseUser(accessToken))) {
     return NextResponse.next();
+  }
+
+  if (refreshToken) {
+    const refreshedSession = await refreshSupabaseSession(refreshToken);
+    if (refreshedSession?.access_token) {
+      const response = NextResponse.next();
+      setSessionCookies(response, refreshedSession);
+      return response;
+    }
   }
 
   const loginUrl = new URL("/login", request.url);
@@ -22,6 +33,7 @@ export async function middleware(request: NextRequest) {
   loginUrl.searchParams.set("session", "expired");
   const response = NextResponse.redirect(loginUrl);
   response.cookies.delete(accessTokenCookie);
+  response.cookies.delete(refreshTokenCookie);
   return response;
 }
 
@@ -42,6 +54,56 @@ async function hasAuthenticatedSupabaseUser(accessToken: string) {
     return response.ok;
   } catch {
     return false;
+  }
+}
+
+type RefreshedSession = {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+};
+
+async function refreshSupabaseSession(refreshToken: string): Promise<RefreshedSession | null> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+
+  try {
+    const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: {
+        apikey: supabaseAnonKey,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ refresh_token: refreshToken })
+    });
+
+    if (!response.ok) return null;
+    const session = (await response.json()) as RefreshedSession;
+    return session.access_token ? session : null;
+  } catch {
+    return null;
+  }
+}
+
+function setSessionCookies(response: NextResponse, session: RefreshedSession) {
+  response.cookies.set(accessTokenCookie, session.access_token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: Math.max(60, session.expires_in ?? 3600)
+  });
+
+  if (session.refresh_token) {
+    response.cookies.set(refreshTokenCookie, session.refresh_token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30
+    });
   }
 }
 

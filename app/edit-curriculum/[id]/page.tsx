@@ -8,6 +8,7 @@ import { CctElementSelector } from "@/components/CctElementSelector";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
+import { supabase } from "@/lib/supabaseClient";
 import { useLiveSubjects } from "@/lib/useLiveSubjects";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 import type {
@@ -58,6 +59,12 @@ type ThemeApiRow = {
   }>;
 };
 
+type CctLinkApiRow = {
+  theme_id: string;
+  theme_element_id: string | null;
+  notes: string | null;
+};
+
 export default function EditCurriculumMappingPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -69,6 +76,9 @@ export default function EditCurriculumMappingPage() {
   const entry = mappings.find((item) => item.id === mappingId);
   const [themeRows, setThemeRows] = useState<CrossCuttingTheme[]>([]);
   const [draft, setDraft] = useState<EditDraft | null>(null);
+  const [draftMappingId, setDraftMappingId] = useState("");
+  const [cctLinksHydrated, setCctLinksHydrated] = useState(false);
+  const [cctSelectionTouched, setCctSelectionTouched] = useState(false);
   const [validationMessage, setValidationMessage] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -119,7 +129,7 @@ export default function EditCurriculumMappingPage() {
   }, [currentSchoolId]);
 
   useEffect(() => {
-    if (!entry || draft) return;
+    if (!entry || draftMappingId === entry.id) return;
     const firstFramework = progressionFrameworks[0];
     const firstStrand = firstFramework?.strands[0];
     const firstElement = firstStrand?.elements[0];
@@ -141,7 +151,50 @@ export default function EditCurriculumMappingPage() {
       frameworkNotes: "",
       showDescriptor: false
     });
-  }, [draft, entry, progressionFrameworks]);
+    setDraftMappingId(entry.id);
+    setCctLinksHydrated(false);
+    setCctSelectionTouched(false);
+  }, [draftMappingId, entry, progressionFrameworks]);
+
+  useEffect(() => {
+    if (!draft || !looksLikeUuid(mappingId) || !themeOptions.length || cctLinksHydrated || cctSelectionTouched || !supabase) return;
+    const validSelections = new Set(themeOptions.flatMap((theme) => (theme.elements ?? []).map((element) => `${theme.id}:${element.id}`)));
+    if (!validSelections.size) return;
+
+    let cancelled = false;
+    void supabase
+      .from("curriculum_mapping_theme_links")
+      .select("theme_id,theme_element_id,notes")
+      .eq("mapping_id", mappingId)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          setValidationMessage(`Could not load saved cross-cutting theme links: ${error.message}`);
+          setCctLinksHydrated(true);
+          return;
+        }
+
+        const rows = (data ?? []) as CctLinkApiRow[];
+        const liveSelected = rows
+          .filter((row) => row.theme_element_id && validSelections.has(`${row.theme_id}:${row.theme_element_id}`))
+          .map((row) => ({ themeId: row.theme_id, elementId: row.theme_element_id as string }));
+        const firstNote = rows.find((row) => row.notes)?.notes ?? "";
+
+        setDraft((current) => {
+          if (!current || cctSelectionTouched) return current;
+          return {
+            ...current,
+            selectedCctElements: liveSelected,
+            themeNotes: current.themeNotes || firstNote
+          };
+        });
+        setCctLinksHydrated(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cctLinksHydrated, cctSelectionTouched, draft, mappingId, themeOptions]);
 
   useEffect(() => {
     if (!draft || !themeOptions.length) return;
@@ -226,6 +279,10 @@ export default function EditCurriculumMappingPage() {
     const validation = validateDraft(draft, subject, themeOptions);
     if (validation) {
       setValidationMessage(validation);
+      return;
+    }
+    if (themeOptions.length && !cctLinksHydrated && !cctSelectionTouched) {
+      setValidationMessage("Cross-cutting theme links are still loading. Please wait a moment and try saving again.");
       return;
     }
 
@@ -351,7 +408,14 @@ export default function EditCurriculumMappingPage() {
 
           <FormSection number="3" title="Cross-cutting theme elements" description="Select any specific wider curriculum theme elements represented in this activity.">
             {entry.crossCuttingThemeIds?.length && !entry.crossCuttingThemeElementLinks?.length ? <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">This mapping has a legacy broad theme link. New saves use specific theme elements.</p> : null}
-            <CctElementSelector themes={themeOptions} selected={draft.selectedCctElements} onChange={(selectedCctElements) => updateDraft({ selectedCctElements })} />
+            <CctElementSelector
+              themes={themeOptions}
+              selected={draft.selectedCctElements}
+              onChange={(selectedCctElements) => {
+                setCctSelectionTouched(true);
+                updateDraft({ selectedCctElements });
+              }}
+            />
           </FormSection>
 
           <FormSection number="4" title="Notes" description="Add any shared explanation for selected theme elements.">

@@ -1111,7 +1111,7 @@ async function replaceThemeLinks(client: SupabaseClient, mappingId: string, them
     if (deleteError) return { ok: false, message: deleteError.message };
   }
 
-  return { ok: true };
+  return verifyThemeLinksSaved(client, mappingId, desiredKeys);
 }
 
 function themeLinksForEntry(entry: MappingEntry): SelectedCctElement[] {
@@ -1125,6 +1125,36 @@ function looksLikeUuid(value: string) {
 
 function cctLinkKey(themeId: string, elementId: string) {
   return `${themeId}:${elementId}`;
+}
+
+async function verifyThemeLinksSaved(client: SupabaseClient, mappingId: string, desiredKeys: Set<string>): Promise<MappingMutationResult> {
+  const { data, error } = await client
+    .from("curriculum_mapping_theme_links")
+    .select("theme_id,theme_element_id")
+    .eq("mapping_id", mappingId);
+
+  if (error) {
+    return {
+      ok: false,
+      message: `Cross-cutting theme selections could not be checked after saving: ${error.message}`
+    };
+  }
+
+  const savedKeys = new Set(
+    ((data ?? []) as Pick<ThemeLinkRow, "theme_id" | "theme_element_id">[])
+      .filter((row) => row.theme_element_id)
+      .map((row) => cctLinkKey(row.theme_id, row.theme_element_id ?? ""))
+  );
+  const missingKeys = Array.from(desiredKeys).filter((key) => !savedKeys.has(key));
+
+  if (missingKeys.length) {
+    return {
+      ok: false,
+      message: "Cross-cutting theme selections were not saved by Supabase. Check the curriculum_mapping_theme_links.theme_element_id column and table permissions."
+    };
+  }
+
+  return { ok: true };
 }
 
 function hasSubjectName(subjectName: string, existingNames: string[]) {

@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { useCurrentSchoolData } from "@/lib/currentSchool";
-import { entryHasFramework, frameworkReferenceText, matchingFrameworkReferences } from "@/lib/mappingFrameworks";
+import { entryHasFramework, frameworkReferenceText, frameworkShortLabel, matchingFrameworkReferences } from "@/lib/mappingFrameworks";
 import { areaThemes, themeForFramework } from "@/lib/theme";
+import type { MappingEntry } from "@/lib/types";
 
 const allValue = "";
 
@@ -16,6 +18,7 @@ export default function CurriculumJourneyPage() {
   const [element, setElement] = useState(allValue);
   const [subject, setSubject] = useState(allValue);
   const [year, setYear] = useState(allValue);
+  const [selectedEntry, setSelectedEntry] = useState<MappingEntry | null>(null);
   const selectedFramework = frameworkMap[framework] ? framework : defaultFramework;
   const theme = themeForFramework(selectedFramework);
   const selectedFrameworkMap = frameworkMap[selectedFramework] ?? {};
@@ -77,21 +80,116 @@ export default function CurriculumJourneyPage() {
             </h2>
             <div className="mt-4 space-y-3">
               {yearBlock.entries.map((entry) => (
-                <div key={entry.id} className="rounded-md border border-gray-200 p-3">
-                  <div className="text-sm font-bold text-gray-900">{entry.subject}</div>
-                  <div className="mt-1 text-xs font-semibold text-gray-500">AoLE: {subjectAoleMap[entry.subject] ?? "Not set"}</div>
-                  <div className="mt-1 text-sm text-gray-700">{entry.unit}</div>
-                  <div className="mt-2 text-xs font-semibold text-gray-600">{matchingFrameworkReferences(entry, selectedFramework).map(frameworkReferenceText).join(", ")}</div>
-                  <div className="mt-2 text-xs font-semibold text-gray-500">
-                    {entry.term} · {entry.schemeReference}
-                  </div>
-                </div>
+                <JourneyCard key={entry.id} entry={entry} framework={selectedFramework} onOpen={() => setSelectedEntry(entry)} />
               ))}
               {!yearBlock.entries.length ? <p className="text-sm text-gray-500">{mappings.length ? "Fewer recorded opportunities for this selection." : "No curriculum mapping entries have been created yet."}</p> : null}
             </div>
           </article>
         ))}
       </div>
+
+      {selectedEntry ? <JourneyModal entry={selectedEntry} framework={selectedFramework} onClose={() => setSelectedEntry(null)} /> : null}
+    </section>
+  );
+}
+
+function JourneyCard({ entry, framework, onOpen }: { entry: MappingEntry; framework: string; onOpen: () => void }) {
+  const elements = unique(matchingFrameworkReferences(entry, framework).map((reference) => reference.element).filter(Boolean));
+  return (
+    <button className="focus-ring w-full rounded-md border border-gray-200 bg-white p-3 text-left transition hover:shadow-sm" type="button" onClick={onOpen}>
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-sm font-bold text-gray-950">{entry.unit || entry.context || "Untitled curriculum"}</h3>
+        {entry.schemeReference ? <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-bold text-gray-600">{entry.schemeReference}</span> : null}
+      </div>
+      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-500">{elements.length === 1 ? "Element" : "Elements"}</p>
+      <p className="mt-1 text-sm font-bold leading-5 text-gray-800">{elements.join(", ") || "No matching element"}</p>
+    </button>
+  );
+}
+
+function JourneyModal({ entry, framework, onClose }: { entry: MappingEntry; framework: string; onClose: () => void }) {
+  const matchingReferences = matchingFrameworkReferences(entry, framework);
+  const allReferences = matchingFrameworkReferences(entry);
+  const themeItems = entry.crossCuttingThemes ?? [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6" role="dialog" aria-modal="true" aria-labelledby="journey-modal-title">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-5 shadow-xl">
+        <div className="flex items-start justify-between gap-4 border-b border-gray-200 pb-4">
+          <div>
+            <p className="text-sm font-bold uppercase tracking-wide text-gray-500">
+              {entry.schemeReference || "No scheme code"} · {entry.year} · {entry.term}
+            </p>
+            <h2 id="journey-modal-title" className="mt-1 text-2xl font-bold text-gray-950">
+              {entry.unit || entry.context || "Untitled curriculum"}
+            </h2>
+            <p className="mt-1 text-sm font-semibold text-gray-600">{entry.subject}</p>
+          </div>
+          <button className="focus-ring rounded-md border border-gray-300 px-3 py-2 text-sm font-bold text-gray-700" type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <DetailBlock title={`Matching ${frameworkShortLabel(framework)} references`}>
+            {matchingReferences.length ? (
+              <ul className="space-y-2 text-sm font-semibold text-gray-700">
+                {matchingReferences.map((reference, index) => (
+                  <li key={`${reference.elementId}-${reference.progressionDescriptorId ?? index}`}>{frameworkReferenceText(reference)}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-gray-600">No matching references.</p>
+            )}
+          </DetailBlock>
+
+          <DetailBlock title="All skills references">
+            {allReferences.length ? (
+              <ul className="space-y-2 text-sm font-semibold text-gray-700">
+                {allReferences.map((reference, index) => (
+                  <li key={`${reference.frameworkId}-${reference.elementId}-${reference.progressionDescriptorId ?? index}`}>{frameworkReferenceText(reference)}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-gray-600">No skills references mapped.</p>
+            )}
+          </DetailBlock>
+
+          <DetailBlock title="Cross-cutting themes">
+            {themeItems.length ? (
+              <ul className="space-y-2 text-sm font-semibold text-gray-700">
+                {themeItems.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-gray-600">No theme elements mapped.</p>
+            )}
+          </DetailBlock>
+
+          <DetailBlock title="Description">
+            <p className="text-sm leading-6 text-gray-700">{entry.activityDescription || "No description recorded."}</p>
+          </DetailBlock>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-3 border-t border-gray-200 pt-4">
+          <Link className="focus-ring btn btn-primary" href={`/edit-curriculum/${entry.id}`}>
+            Edit mapping
+          </Link>
+          <button className="focus-ring btn btn-secondary" type="button" onClick={onClose}>
+            Back to journey
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailBlock({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-lg border border-gray-200 p-4">
+      <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-500">{title}</h3>
+      {children}
     </section>
   );
 }
@@ -109,4 +207,8 @@ function Select({ label, value, options, onChange, emptyLabel }: { label: string
       </select>
     </label>
   );
+}
+
+function unique(values: string[]) {
+  return Array.from(new Set(values));
 }

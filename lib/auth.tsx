@@ -19,11 +19,17 @@ export type AppUser = {
 
 type AuthContextValue = {
   currentUser: AppUser | null;
+  realUser: AppUser | null;
   users: AppUser[];
   isDemoMode: boolean;
   isSupabaseConfigured: boolean;
   authLoading: boolean;
   accessDeniedMessage: string;
+  previewRole: UserRole | null;
+  isRolePreview: boolean;
+  canPreviewRoles: boolean;
+  setPreviewRole: (role: UserRole | null) => void;
+  clearRolePreview: () => void;
   signInWithPassword: (email: string, password: string) => Promise<string>;
   resetPassword: (email: string) => Promise<string>;
   sendSignInLink: (email: string) => Promise<string>;
@@ -42,6 +48,7 @@ type AuthContextValue = {
 
 const usersKey = "skills-tracker-users";
 const currentUserKey = "skills-tracker-current-user";
+const previewRoleKey = "skills-tracker-preview-role";
 
 export const roleLabels: Record<UserRole, string> = {
   platform_admin: "Platform admin",
@@ -115,6 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [liveUser, setLiveUser] = useState<AppUser | null>(null);
   const [authLoading, setAuthLoading] = useState(!isDemoLoginEnabled && isSupabaseConfigured);
   const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
+  const [previewRole, setPreviewRoleState] = useState<UserRole | null>(null);
 
   useEffect(() => {
     if (!isDemoLoginEnabled) return;
@@ -142,6 +150,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isDemoLoginEnabled) return;
     window.localStorage.setItem(currentUserKey, currentUserId);
   }, [currentUserId]);
+
+  useEffect(() => {
+    const savedPreviewRole = window.localStorage.getItem(previewRoleKey);
+    if (isUserRole(savedPreviewRole)) setPreviewRoleState(savedPreviewRole);
+  }, []);
+
+  useEffect(() => {
+    if (previewRole) window.localStorage.setItem(previewRoleKey, previewRole);
+    else window.localStorage.removeItem(previewRoleKey);
+  }, [previewRole]);
 
   useEffect(() => {
     if (isDemoLoginEnabled) return;
@@ -240,9 +258,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const currentUser = isDemoLoginEnabled
+  const realUser = isDemoLoginEnabled
     ? users.find((user) => user.id === currentUserId && user.active) ?? users.find((user) => user.active) ?? null
     : liveUser;
+  const canPreviewRoles = realUser?.role === "platform_admin";
+  const activePreviewRole = canPreviewRoles && previewRole && previewRole !== realUser.role ? previewRole : null;
+  const currentUser = realUser && activePreviewRole ? previewUserForRole(realUser, activePreviewRole) : realUser;
 
   const canManagePlatform = currentUser?.role === "platform_admin";
   const canManageSchool = currentUser?.role === "platform_admin" || currentUser?.role === "school_admin";
@@ -252,11 +273,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       currentUser,
+      realUser,
       users,
       isDemoMode: isDemoLoginEnabled,
       isSupabaseConfigured,
       authLoading,
       accessDeniedMessage,
+      previewRole: activePreviewRole,
+      isRolePreview: Boolean(activePreviewRole),
+      canPreviewRoles,
+      setPreviewRole: (role) => {
+        if (!canPreviewRoles || role === realUser?.role) {
+          setPreviewRoleState(null);
+          return;
+        }
+        setPreviewRoleState(role);
+      },
+      clearRolePreview: () => setPreviewRoleState(null),
       signInWithPassword: async (email, password) => {
         if (!supabase) return "Supabase environment variables are missing.";
 
@@ -306,7 +339,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!isDemoLoginEnabled) return;
 
         const nextUser = users.find((user) => user.id === userId && user.active);
-        if (nextUser) setCurrentUserId(nextUser.id);
+        if (nextUser) {
+          setCurrentUserId(nextUser.id);
+          setPreviewRoleState(null);
+        }
       },
       logout: () => {
         if (isDemoLoginEnabled) {
@@ -353,6 +389,7 @@ function normaliseSubjectName(subject: string) {
 }
 
 function hasAssignedSubject(assignedSubjects: string[], subject: string) {
+  if (assignedSubjects.includes("__all_subjects__")) return true;
   const selected = normaliseSubjectName(subject);
   return assignedSubjects.some((assignedSubject) => normaliseSubjectName(assignedSubject) === selected);
 }
@@ -380,6 +417,18 @@ function selectPrimaryMembership(memberships: { school_id: string; role: UserRol
   return memberships
     .filter((membership) => membership.active)
     .sort((a, b) => roleRank(a.role) - roleRank(b.role))[0] ?? null;
+}
+
+function previewUserForRole(user: AppUser, role: UserRole): AppUser {
+  return {
+    ...user,
+    role,
+    assignedSubjects: role === "teacher" || role === "subject_lead" ? ["__all_subjects__"] : user.assignedSubjects
+  };
+}
+
+function isUserRole(value: string | null): value is UserRole {
+  return value === "platform_admin" || value === "school_admin" || value === "teacher" || value === "subject_lead" || value === "viewer";
 }
 
 function roleRank(role: UserRole) {

@@ -70,7 +70,7 @@ type NavItem = (typeof navGroups)[number]["items"][number] | (typeof primaryActi
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { settings } = useSchoolSettings();
-  const { currentUser, isDemoMode, users, loginAs } = useAuth();
+  const { currentUser, realUser, isDemoMode, users, loginAs, canPreviewRoles, previewRole, isRolePreview, setPreviewRole, clearRolePreview } = useAuth();
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [flyoutTop, setFlyoutTop] = useState(0);
   const shortSchoolName = settings.branding.schoolName.replace(" Comprehensive School", "");
@@ -141,6 +141,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {currentUser ? (
                 <>
                   <span className={`rounded-full px-3 py-1 text-xs font-bold ${roleBadgeClass(currentUser.role)}`}>{roleLabels[currentUser.role]}</span>
+                  {canPreviewRoles && realUser ? (
+                    <label className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-bold text-gray-700">
+                      <span>View as</span>
+                      <select
+                        className="focus-ring rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-bold text-gray-700"
+                        value={previewRole ?? realUser.role}
+                        onChange={(event) => setPreviewRole(event.target.value as UserRole)}
+                        aria-label="Preview app as role"
+                      >
+                        {(Object.keys(roleLabels) as UserRole[]).map((role) => (
+                          <option key={role} value={role}>
+                            {roleLabels[role]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                   {isDemoMode ? (
                     <select className="focus-ring rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-700" value={currentUser.id} onChange={(event) => loginAs(event.target.value)} aria-label="Staff profile switcher">
                       {activeUsers.map((user) => (
@@ -164,6 +181,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
+        {isRolePreview && realUser && previewRole ? (
+          <div className="border-b border-gray-200 bg-white px-5 py-3">
+            <div className="mx-auto flex max-w-[1800px] flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+              <p className="text-sm font-semibold text-gray-700">
+                Viewing as <span className="font-bold text-gray-950">{roleLabels[previewRole]}</span>. Your real role is still{" "}
+                <span className="font-bold text-gray-950">{roleLabels[realUser.role]}</span>.
+              </p>
+              <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={clearRolePreview}>
+                Return to Platform Admin
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div className="mx-auto max-w-[1800px] px-5 py-6">{children}</div>
       </main>
     </div>

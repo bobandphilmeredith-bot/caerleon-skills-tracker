@@ -96,8 +96,8 @@ export default function ProgressionOverviewPage() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <Matrix title="Mapped opportunities by year group and progression step" rows={byYear} columns={progressionStepOptions} />
         <Matrix title="Mapped opportunities by subject and progression step" rows={bySubject.slice(0, 12)} columns={progressionStepOptions} />
+        <Matrix title="Mapped opportunities by year group and progression step" rows={byYear} columns={progressionStepOptions} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">

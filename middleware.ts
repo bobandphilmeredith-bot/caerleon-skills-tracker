@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const accessTokenCookie = "caerleon-supabase-access-token";
 
 const publicPathPrefixes = ["/login", "/auth/callback", "/reset-password", "/api/auth"];
+const publicExactPaths = ["/api/healthcheck"];
 const publicFilePattern = /\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|txt|xml)$/i;
 
 export async function middleware(request: NextRequest) {
@@ -48,6 +49,7 @@ function isPublicPath(pathname: string) {
   return (
     pathname.startsWith("/_next/") ||
     pathname === "/favicon.ico" ||
+    publicExactPaths.includes(pathname) ||
     publicFilePattern.test(pathname) ||
     publicPathPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
   );

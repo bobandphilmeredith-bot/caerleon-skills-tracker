@@ -13,10 +13,7 @@ import type { MappingEntry, MappingFrameworkReference, SubjectConfig } from "@/l
 const allYears = "All year groups";
 const allTerms = "All terms";
 
-type DisplayMappingEntry = MappingEntry & {
-  duplicateIds?: string[];
-  duplicateCount?: number;
-};
+type DisplayMappingEntry = MappingEntry;
 
 export default function EditCurriculumPage() {
   const { canEditMappings, canEditSubject } = useAuth();
@@ -159,11 +156,6 @@ function MappingCard({ entry, subjectId }: { entry: DisplayMappingEntry; subject
             <span>Updated {entry.lastMappedDate}</span>
           </div>
           <h3 className="mt-1 text-base font-bold text-gray-950">{entry.unit || entry.context || "Untitled mapping"}</h3>
-          {entry.duplicateCount && entry.duplicateCount > 1 ? (
-            <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">
-              {entry.duplicateCount} matching database records found for this activity. Showing one combined card.
-            </p>
-          ) : null}
           {entry.activityDescription ? <p className="mt-1 line-clamp-2 text-sm leading-6 text-gray-600">{entry.activityDescription}</p> : null}
           <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
             <SummaryBlock label="Skills" value={skills} empty="No framework references" />
@@ -269,8 +261,6 @@ function mergeDuplicateGroup(group: MappingEntry[]): DisplayMappingEntry {
     crossCuttingThemeIds: uniqueStrings(group.flatMap((entry) => entry.crossCuttingThemeIds ?? [])),
     crossCuttingThemeElementIds: uniqueStrings(group.flatMap((entry) => entry.crossCuttingThemeElementIds ?? [])),
     crossCuttingThemeElementLinks: Array.from(new Map(group.flatMap((entry) => entry.crossCuttingThemeElementLinks ?? []).map((link) => [`${link.themeId}:${link.elementId}`, link])).values()),
-    duplicateIds: group.map((entry) => entry.id),
-    duplicateCount: group.length,
     lastMappedDate: group.map((entry) => entry.lastMappedDate).sort().at(-1) ?? first.lastMappedDate,
     note: uniqueStrings(group.map((entry) => entry.note ?? "")).join(" · "),
     crossCuttingThemeNotes: uniqueStrings(group.map((entry) => entry.crossCuttingThemeNotes ?? "")).join(" · ")

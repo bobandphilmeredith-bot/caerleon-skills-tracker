@@ -325,6 +325,10 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
           if (!supabase) return { ok: false, message: "Supabase environment variables are missing." };
           if (!liveSchoolId) return { ok: false, message: "No live school is linked to this account." };
 
+          const { error: themeLinkError } = await supabase.from("curriculum_mapping_theme_links").delete().eq("mapping_id", entryId);
+          if (themeLinkError) return { ok: false, message: themeLinkError.message };
+          const { error: frameworkLinkError } = await supabase.from("curriculum_mapping_framework_links").delete().eq("mapping_id", entryId);
+          if (frameworkLinkError) return { ok: false, message: frameworkLinkError.message };
           const { error } = await supabase.from("curriculum_mappings").delete().eq("id", entryId).eq("school_id", liveSchool?.id ?? liveSchoolId);
           if (error) return { ok: false, message: error.message };
           await loadLiveMappings();

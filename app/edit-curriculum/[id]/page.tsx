@@ -68,8 +68,8 @@ type CctLinkApiRow = {
 export default function EditCurriculumMappingPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { canEditMappings, canEditSubject } = useAuth();
-  const { currentSchoolId, data, updateMapping } = useCurrentSchool();
+  const { canEditMappings, canEditSubject, canManageSchool } = useAuth();
+  const { currentSchoolId, data, updateMapping, deleteMapping } = useCurrentSchool();
   const { crossCuttingThemes, frameworkLibrary, mappings, terms, yearGroups } = data;
   const { subjects: databaseSubjects } = useLiveSubjects(currentSchoolId);
   const mappingId = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -82,6 +82,7 @@ export default function EditCurriculumMappingPage() {
   const [validationMessage, setValidationMessage] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [returnSubjectId, setReturnSubjectId] = useState("");
   const [returnYear, setReturnYear] = useState("");
 
@@ -326,6 +327,20 @@ export default function EditCurriculumMappingPage() {
     }
   }
 
+  async function deleteCurrentMapping() {
+    if (!entry || !canManageSchool || isDeleting) return;
+    const label = draft?.activityTitle || entry.unit || entry.context || entry.schemeReference || "this curriculum mapping";
+    if (!window.confirm(`Delete "${label}"? This will also remove its skills references and cross-cutting theme links.`)) return;
+    setIsDeleting(true);
+    const result = await deleteMapping(entry.id);
+    setIsDeleting(false);
+    if (result.ok) {
+      router.push(`/edit-curriculum?subject=${encodeURIComponent(returnSubjectId || entry.subjectId || "")}&year=${encodeURIComponent(returnYear || entry.year)}`);
+    } else {
+      setValidationMessage(`Could not delete mapping: ${result.message ?? "Unknown Supabase error"}`);
+    }
+  }
+
   if (!draft) {
     return (
       <section className="space-y-6">
@@ -438,6 +453,11 @@ export default function EditCurriculumMappingPage() {
           <Link className="focus-ring btn btn-muted" href="/edit-curriculum">
             Cancel
           </Link>
+          {canManageSchool ? (
+            <button className="focus-ring rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-700" type="button" onClick={deleteCurrentMapping} disabled={isSaving || isDeleting}>
+              {isDeleting ? "Deleting..." : "Delete mapping"}
+            </button>
+          ) : null}
         </div>
       </form>
     </section>

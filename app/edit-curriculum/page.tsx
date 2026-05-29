@@ -16,14 +16,16 @@ const allTerms = "All terms";
 type DisplayMappingEntry = MappingEntry;
 
 export default function EditCurriculumPage() {
-  const { canEditMappings, canEditSubject } = useAuth();
-  const { currentSchoolId, data } = useCurrentSchool();
+  const { canEditMappings, canEditSubject, canManageSchool } = useAuth();
+  const { currentSchoolId, data, deleteMapping } = useCurrentSchool();
   const { mappings, terms, yearGroups } = data;
   const { subjects: databaseSubjects } = useLiveSubjects(currentSchoolId);
   const [subjectId, setSubjectId] = useState("");
   const [yearFilter, setYearFilter] = useState(allYears);
   const [termFilter, setTermFilter] = useState(allTerms);
   const [keyword, setKeyword] = useState("");
+  const [deleteMessage, setDeleteMessage] = useState("");
+  const [deletingId, setDeletingId] = useState("");
 
   const editableSubjects = useMemo(
     () =>
@@ -63,6 +65,17 @@ export default function EditCurriculumPage() {
 
   if (!canEditMappings) {
     return <AccessDenied title="Edit Curriculum restricted" message="Your current role is read-only. Switch to a teacher, subject lead or school admin account to edit curriculum mappings." />;
+  }
+
+  async function handleDelete(entry: MappingEntry) {
+    if (!canManageSchool || deletingId) return;
+    const label = entry.unit || entry.context || entry.schemeReference || "this curriculum mapping";
+    if (!window.confirm(`Delete "${label}"? This will also remove its skills references and cross-cutting theme links.`)) return;
+    setDeletingId(entry.id);
+    setDeleteMessage("");
+    const result = await deleteMapping(entry.id);
+    setDeletingId("");
+    setDeleteMessage(result.ok ? "Curriculum mapping deleted." : `Could not delete mapping: ${result.message ?? "Unknown Supabase error"}`);
   }
 
   return (
@@ -114,6 +127,7 @@ export default function EditCurriculumPage() {
       </div>
 
       <div className="space-y-4">
+        {deleteMessage ? <div className="rounded-md border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 shadow-sm">{deleteMessage}</div> : null}
         {!editableSubjects.length ? (
           <EmptyState message="No editable subjects are assigned to your account. Contact a school administrator." />
         ) : !filteredMappings.length ? (
@@ -129,7 +143,7 @@ export default function EditCurriculumPage() {
               </div>
               <div className="mt-3 grid gap-3">
                 {entries.map((entry) => (
-                  <MappingCard key={entry.id} entry={entry} subjectId={subjectId} />
+                  <MappingCard key={entry.id} entry={entry} subjectId={subjectId} canDelete={canManageSchool} isDeleting={deletingId === entry.id} onDelete={() => handleDelete(entry)} />
                 ))}
               </div>
             </section>
@@ -140,7 +154,7 @@ export default function EditCurriculumPage() {
   );
 }
 
-function MappingCard({ entry, subjectId }: { entry: DisplayMappingEntry; subjectId: string }) {
+function MappingCard({ entry, subjectId, canDelete, isDeleting, onDelete }: { entry: DisplayMappingEntry; subjectId: string; canDelete: boolean; isDeleting: boolean; onDelete: () => void }) {
   const skills = summariseSkills(entry.frameworkReferences ?? []);
   const themes = summariseThemes(entry.crossCuttingThemes ?? []);
   const href = `/edit-curriculum/${encodeURIComponent(entry.id)}?subject=${encodeURIComponent(subjectId)}&year=${encodeURIComponent(entry.year)}`;
@@ -162,9 +176,16 @@ function MappingCard({ entry, subjectId }: { entry: DisplayMappingEntry; subject
             <SummaryBlock label="Themes" value={themes} empty="No theme elements" />
           </div>
         </div>
-        <Link className="focus-ring btn btn-secondary shrink-0" href={href}>
-          Edit
-        </Link>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Link className="focus-ring btn btn-secondary" href={href}>
+            Edit
+          </Link>
+          {canDelete ? (
+            <button className="focus-ring rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-700" type="button" onClick={onDelete} disabled={isDeleting}>
+              {isDeleting ? "Deleting..." : "Delete"}
+            </button>
+          ) : null}
+        </div>
       </div>
     </article>
   );

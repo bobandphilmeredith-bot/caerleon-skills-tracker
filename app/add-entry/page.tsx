@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AccessDenied } from "@/components/AccessDenied";
 import { CctElementSelector } from "@/components/CctElementSelector";
 import { PageHeader } from "@/components/PageHeader";
@@ -40,6 +40,8 @@ export default function AddEntryPage() {
   const [showValidation, setShowValidation] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [currentEntrySaved, setCurrentEntrySaved] = useState(false);
+  const saveInFlightRef = useRef(false);
 
   const themeOptions = useMemo(
     () => (themeRows.length ? themeRows : crossCuttingThemes).filter((themeItem) => themeItem.active && looksLikeUuid(themeItem.id)),
@@ -260,6 +262,7 @@ export default function AddEntryPage() {
   }
 
   async function handleSave() {
+    if (saveInFlightRef.current || currentEntrySaved) return;
     setShowValidation(true);
     if (formError) {
       setSaveMessage("");
@@ -268,10 +271,17 @@ export default function AddEntryPage() {
     if (!validateThemeIdsBeforeSave()) {
       return;
     }
+    saveInFlightRef.current = true;
     setIsSaving(true);
     const result = await addMapping(buildMappingEntry());
     setIsSaving(false);
-    setSaveMessage(result.ok ? "Mapping saved." : `Could not save mapping: ${result.message ?? "Unknown Supabase error"}`);
+    saveInFlightRef.current = false;
+    if (result.ok) {
+      setCurrentEntrySaved(true);
+      setSaveMessage("Mapping saved. Use Save and add new or Clear form before creating another entry.");
+    } else {
+      setSaveMessage(`Could not save mapping: ${result.message ?? "Unknown Supabase error"}`);
+    }
   }
 
   function resetForm(message = "Form cleared.") {
@@ -287,10 +297,13 @@ export default function AddEntryPage() {
     setThemeNotes("");
     setShowDescriptor(false);
     setShowValidation(false);
+    setCurrentEntrySaved(false);
+    saveInFlightRef.current = false;
     setSaveMessage(message);
   }
 
   async function saveAndAddNew() {
+    if (saveInFlightRef.current || currentEntrySaved) return;
     setShowValidation(true);
     if (formError) {
       setSaveMessage("");
@@ -299,9 +312,11 @@ export default function AddEntryPage() {
     if (!validateThemeIdsBeforeSave()) {
       return;
     }
+    saveInFlightRef.current = true;
     setIsSaving(true);
     const result = await addMapping(buildMappingEntry());
     setIsSaving(false);
+    saveInFlightRef.current = false;
     if (result.ok) resetForm("Mapping saved. Ready for a new entry.");
     else setSaveMessage(`Could not save mapping: ${result.message ?? "Unknown Supabase error"}`);
   }
@@ -506,10 +521,10 @@ export default function AddEntryPage() {
         </div>
 
         <div className="sticky bottom-0 -mx-5 mt-5 flex flex-wrap gap-3 border-t border-gray-200 bg-white/95 px-5 py-4 backdrop-blur">
-          <button className="focus-ring btn btn-primary" type="button" onClick={handleSave} disabled={isSaving || !hasEditableSubjects || !canEditSelectedSubject}>
-            {isSaving ? "Saving..." : "Save mapping"}
+          <button className="focus-ring btn btn-primary" type="button" onClick={handleSave} disabled={isSaving || currentEntrySaved || !hasEditableSubjects || !canEditSelectedSubject}>
+            {isSaving ? "Saving..." : currentEntrySaved ? "Mapping saved" : "Save mapping"}
           </button>
-          <button className="focus-ring btn btn-secondary" type="button" onClick={saveAndAddNew} disabled={isSaving || !hasEditableSubjects || !canEditSelectedSubject}>
+          <button className="focus-ring btn btn-secondary" type="button" onClick={saveAndAddNew} disabled={isSaving || currentEntrySaved || !hasEditableSubjects || !canEditSelectedSubject}>
             Save and add new
           </button>
           <button className="focus-ring btn btn-muted" type="button" onClick={() => resetForm()}>

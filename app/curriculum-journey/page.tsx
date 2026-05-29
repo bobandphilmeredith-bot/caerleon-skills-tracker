@@ -101,6 +101,7 @@ function JourneyCard({ entry, framework, onOpen }: { entry: MappingEntry; framew
         <h3 className="text-sm font-bold text-gray-950">{entry.unit || entry.context || "Untitled curriculum"}</h3>
         {entry.schemeReference ? <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-bold text-gray-600">{entry.schemeReference}</span> : null}
       </div>
+      <p className="mt-1 text-xs font-semibold text-gray-500">{entry.subject}</p>
       <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-500">{elements.length === 1 ? "Element" : "Elements"}</p>
       <p className="mt-1 text-sm font-bold leading-5 text-gray-800">{elements.join(", ") || "No matching element"}</p>
     </button>

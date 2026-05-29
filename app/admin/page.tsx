@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { progressionSteps } from "@/lib/progression";
 import type { AoleConfig, ElementDefinition, SubjectConfig } from "@/lib/types";
 import { areaThemes } from "@/lib/theme";
-import { defaultSchoolSettings, type BrandingSettings, useSchoolSettings } from "@/lib/schoolSettings";
+import { defaultSchoolSettings, type BrandingSettings, type FrameworkThemeSetting, useSchoolSettings } from "@/lib/schoolSettings";
 import { useCurrentSchool } from "@/lib/currentSchool";
 import { useAuth } from "@/lib/auth";
 import { isDemoLoginEnabled, supabase } from "@/lib/supabaseClient";
@@ -44,6 +44,10 @@ export default function AdminPage() {
   const [brandingDirty, setBrandingDirty] = useState(false);
   const [brandingSaving, setBrandingSaving] = useState(false);
   const [brandingError, setBrandingError] = useState("");
+  const [frameworkThemeDraft, setFrameworkThemeDraft] = useState<Record<string, FrameworkThemeSetting>>(settings.frameworkThemes);
+  const [frameworkThemeDirty, setFrameworkThemeDirty] = useState(false);
+  const [frameworkThemeSaving, setFrameworkThemeSaving] = useState(false);
+  const [frameworkThemeError, setFrameworkThemeError] = useState("");
   const schoolOptions = schools.some((school) => school.id === currentSchoolId) ? schools : [currentSchool, ...schools];
 
   if (!canManageSchool) {
@@ -69,6 +73,12 @@ export default function AdminPage() {
     settings.branding.secondaryColour,
     settings.branding.logoDataUrl
   ]);
+
+  useEffect(() => {
+    setFrameworkThemeDraft(settings.frameworkThemes);
+    setFrameworkThemeDirty(false);
+    setFrameworkThemeError("");
+  }, [currentSchool.id, settings.frameworkThemes]);
 
   const activeAoles = aoles.filter((aole) => aole.active);
   const subjectCounts = useMemo(
@@ -175,6 +185,65 @@ export default function AdminPage() {
     setBrandingDirty(false);
     setBrandingSaving(false);
     setNotice("Branding saved.");
+  }
+
+  function updateFrameworkThemeDraft(framework: string, patch: Partial<FrameworkThemeSetting>) {
+    setFrameworkThemeDraft((current) => ({
+      ...current,
+      [framework]: { ...current[framework], ...patch }
+    }));
+    setFrameworkThemeDirty(true);
+    setFrameworkThemeError("");
+  }
+
+  async function saveFrameworkColourThemes() {
+    const invalidTheme = Object.entries(frameworkThemeDraft).find(([, theme]) => !Object.values(theme).every(isHexColour));
+    if (invalidTheme) {
+      setFrameworkThemeError(`Check the colour values for ${invalidTheme[0]}. Use six-digit hex colours, for example #EA580C.`);
+      return;
+    }
+
+    setFrameworkThemeSaving(true);
+    setFrameworkThemeError("");
+
+    if (!isDemoLoginEnabled) {
+      if (!supabase) {
+        setFrameworkThemeSaving(false);
+        setFrameworkThemeError("Supabase is not configured, so framework colours could not be saved.");
+        return;
+      }
+
+      const rows = data.frameworkLibrary
+        .map((framework) => {
+          const key = frameworkThemeKey(framework.name, framework.shortName);
+          const theme = key ? frameworkThemeDraft[key] : undefined;
+          return framework.id && theme
+            ? {
+                school_id: currentSchool.id,
+                framework_id: framework.id,
+                primary_colour: theme.primary,
+                pale_colour: theme.pale,
+                badge_colour: theme.badge,
+                chart_colour: theme.chart
+              }
+            : null;
+        })
+        .filter((row) => row !== null);
+
+      if (rows.length) {
+        const { error } = await supabase.from("framework_colour_themes").upsert(rows, { onConflict: "framework_id" });
+        if (error) {
+          setFrameworkThemeSaving(false);
+          setFrameworkThemeError(error.message);
+          return;
+        }
+      }
+    }
+
+    Object.entries(frameworkThemeDraft).forEach(([framework, theme]) => updateFrameworkTheme(framework, theme));
+    setFrameworkThemeDirty(false);
+    setFrameworkThemeSaving(false);
+    setNotice("Framework colour themes saved.");
   }
 
   function addAole() {
@@ -446,9 +515,17 @@ export default function AdminPage() {
       </section>
 
       <section className={adminPanelClass(activeTab, "Branding")}>
-        <h2 className="text-lg font-bold text-gray-900">Framework Colour Themes</h2>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Framework Colour Themes</h2>
+            <p className="mt-1 text-sm text-gray-600">These colours are used for Literacy, Numeracy, DCF and theme reporting across dashboards and reports.</p>
+          </div>
+          <button className="focus-ring btn btn-primary" type="button" onClick={saveFrameworkColourThemes} disabled={frameworkThemeSaving || !frameworkThemeDirty}>
+            {frameworkThemeSaving ? "Saving..." : "Save framework colours"}
+          </button>
+        </div>
         <div className="mt-4 grid gap-4 xl:grid-cols-2">
-          {Object.entries(settings.frameworkThemes).map(([framework, theme]) => (
+          {Object.entries(frameworkThemeDraft).map(([framework, theme]) => (
             <article key={framework} className="rounded-lg border border-gray-200 p-4">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="font-bold text-gray-900">{framework}</h3>
@@ -457,13 +534,22 @@ export default function AdminPage() {
                 </span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <ColourInput label="Primary colour" value={theme.primary} onChange={(value) => updateFrameworkTheme(framework, { primary: value })} />
-                <ColourInput label="Pale background colour" value={theme.pale} onChange={(value) => updateFrameworkTheme(framework, { pale: value })} />
-                <ColourInput label="Badge colour" value={theme.badge} onChange={(value) => updateFrameworkTheme(framework, { badge: value })} />
-                <ColourInput label="Chart colour" value={theme.chart} onChange={(value) => updateFrameworkTheme(framework, { chart: value })} />
+                <ColourInput label="Primary colour" value={theme.primary} onChange={(value) => updateFrameworkThemeDraft(framework, { primary: value })} />
+                <ColourInput label="Pale background colour" value={theme.pale} onChange={(value) => updateFrameworkThemeDraft(framework, { pale: value })} />
+                <ColourInput label="Badge colour" value={theme.badge} onChange={(value) => updateFrameworkThemeDraft(framework, { badge: value })} />
+                <ColourInput label="Chart colour" value={theme.chart} onChange={(value) => updateFrameworkThemeDraft(framework, { chart: value })} />
               </div>
             </article>
           ))}
+        </div>
+        {frameworkThemeError ? <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{frameworkThemeError}</p> : null}
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button className="focus-ring btn btn-secondary" type="button" onClick={() => { setFrameworkThemeDraft(defaultSchoolSettings.frameworkThemes); setFrameworkThemeDirty(true); setFrameworkThemeError(""); }}>
+            Load default framework colours
+          </button>
+          <button className="focus-ring btn btn-muted" type="button" onClick={() => { setFrameworkThemeDraft(settings.frameworkThemes); setFrameworkThemeDirty(false); setFrameworkThemeError(""); }}>
+            Discard changes
+          </button>
         </div>
       </section>
 
@@ -837,6 +923,19 @@ function ContextCard({ label, value }: { label: string; value: string }) {
 
 function adminPanelClass(activeTab: AdminTab, tab: AdminTab) {
   return activeTab === tab ? "rounded-lg border border-gray-200 bg-white p-5 shadow-sm" : "hidden";
+}
+
+function isHexColour(value: string) {
+  return /^#[0-9A-Fa-f]{6}$/.test(value);
+}
+
+function frameworkThemeKey(name: string, shortName?: string | null) {
+  const label = `${name} ${shortName ?? ""}`.toLowerCase();
+  if (label.includes("literacy")) return "Literacy";
+  if (label.includes("numeracy")) return "Numeracy";
+  if (label.includes("digital") || label.includes("dcf")) return "DCF";
+  if (label.includes("cross") || label.includes("theme")) return "Cross-cutting themes";
+  return null;
 }
 
 function WizardStep({ step }: { step: number }) {

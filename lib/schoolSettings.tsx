@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 export type BrandingSettings = {
   schoolName: string;
@@ -73,22 +73,37 @@ export function SchoolSettingsProvider({ children }: { children: React.ReactNode
     applyCssVariables(settings);
   }, [settings]);
 
+  const updateBranding = useCallback((patch: Partial<BrandingSettings>) => {
+    setSettings((current) => ({ ...current, branding: { ...current.branding, ...patch } }));
+  }, []);
+
+  const updateFrameworkTheme = useCallback((framework: string, patch: Partial<FrameworkThemeSetting>) => {
+    setSettings((current) => ({
+      ...current,
+      frameworkThemes: {
+        ...current.frameworkThemes,
+        [framework]: { ...current.frameworkThemes[framework], ...patch }
+      }
+    }));
+  }, []);
+
+  const resetBranding = useCallback(() => {
+    setSettings((current) => ({ ...current, branding: defaultSchoolSettings.branding }));
+  }, []);
+
+  const resetAllSettings = useCallback(() => {
+    setSettings(defaultSchoolSettings);
+  }, []);
+
   const value = useMemo<SchoolSettingsContextValue>(
     () => ({
       settings,
-      updateBranding: (patch) => setSettings((current) => ({ ...current, branding: { ...current.branding, ...patch } })),
-      updateFrameworkTheme: (framework, patch) =>
-        setSettings((current) => ({
-          ...current,
-          frameworkThemes: {
-            ...current.frameworkThemes,
-            [framework]: { ...current.frameworkThemes[framework], ...patch }
-          }
-        })),
-      resetBranding: () => setSettings((current) => ({ ...current, branding: defaultSchoolSettings.branding })),
-      resetAllSettings: () => setSettings(defaultSchoolSettings)
+      updateBranding,
+      updateFrameworkTheme,
+      resetBranding,
+      resetAllSettings
     }),
-    [settings]
+    [resetAllSettings, resetBranding, settings, updateBranding, updateFrameworkTheme]
   );
 
   return <SchoolSettingsContext.Provider value={value}>{children}</SchoolSettingsContext.Provider>;

@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { useSchoolSettings } from "@/lib/schoolSettings";
+import { type FrameworkThemeSetting, useSchoolSettings } from "@/lib/schoolSettings";
 import { buildBundle, createEmptySchoolData, defaultSchoolId, sampleSchools, schoolDataById, type SchoolDataBundle } from "@/lib/multiSchoolData";
 import { isDemoLoginEnabled, supabase } from "@/lib/supabaseClient";
 import type { AoleConfig, CrossCuttingTheme, CrossCuttingThemeElement, MappingEntry, ProgressionReference, ProgressionStep, School, SelectedCctElement, SubjectConfig } from "@/lib/types";
@@ -50,7 +50,7 @@ const CurrentSchoolContext = createContext<CurrentSchoolContextValue | null>(nul
 
 export function CurrentSchoolProvider({ children }: { children: React.ReactNode }) {
   const { currentUser } = useAuth();
-  const { updateBranding } = useSchoolSettings();
+  const { updateBranding, updateFrameworkTheme } = useSchoolSettings();
   const [schools, setSchools] = useState<School[]>(sampleSchools);
   const [currentSchoolId, setCurrentSchoolId] = useState(defaultSchoolId);
   const [customData, setCustomData] = useState<Record<string, SchoolDataBundle>>({});
@@ -117,6 +117,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
     const client = supabase;
     const refs = await loadLiveReferenceMaps(client, liveSchoolId, localCurrentSchool);
     if (refs.school) setLiveSchool(refs.school);
+    Object.entries(refs.frameworkColourThemes).forEach(([framework, theme]) => updateFrameworkTheme(framework, theme));
     setLiveDiagnostics(refs.diagnostics);
     const { data: rows, error } = await client
       .from("curriculum_mappings")
@@ -132,7 +133,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
 
     setLiveReferenceMaps(refs);
     setLiveMappings(((rows ?? []) as CurriculumMappingRow[]).map((row) => curriculumRowToMapping(row, refs)));
-  }, [liveSchoolId, localCurrentSchool]);
+  }, [liveSchoolId, localCurrentSchool, updateFrameworkTheme]);
 
   useEffect(() => {
     void loadLiveMappings();
@@ -520,6 +521,14 @@ type BrandingSettingsRow = {
   secondary_colour: string | null;
 };
 
+type FrameworkColourThemeRow = {
+  framework_id: string;
+  primary_colour: string;
+  pale_colour: string;
+  badge_colour: string;
+  chart_colour: string;
+};
+
 type LiveReferenceMaps = {
   school?: School;
   diagnostics: LiveDataDiagnostics;
@@ -533,6 +542,7 @@ type LiveReferenceMaps = {
   elementsById: Map<string, ElementReferenceRow>;
   progressionDescriptorByElementAndStep: Map<string, ProgressionDescriptorRow>;
   frameworkLibrary: SchoolDataBundle["frameworkLibrary"];
+  frameworkColourThemes: Record<string, FrameworkThemeSetting>;
   subjectConfigs: SubjectConfig[];
   aoleConfigs: AoleConfig[];
   crossCuttingThemes: CrossCuttingTheme[];
@@ -578,7 +588,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
   const strandQuerySelect = "id, school_id, framework_id, name, short_name, description, display_order, active";
   const elementQuerySelect = "id, school_id, strand_id, name, description, official_wording, teacher_friendly_explanation, display_order, active";
   const descriptorQuerySelect = "id, school_id, element_id, progression_step, descriptor_text, display_order, active";
-  const [subjectsResult, aolesResult, frameworksResult, strandsResult, elementsResult, descriptorsResult] = await Promise.all([
+  const [subjectsResult, aolesResult, frameworksResult, strandsResult, elementsResult, descriptorsResult, frameworkColourThemesResult] = await Promise.all([
     client
       .from("subjects")
       .select(subjectQuerySelect)
@@ -615,7 +625,11 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
       .select(descriptorQuerySelect)
       .eq("school_id", querySchoolId)
       .eq("active", true)
-      .order("progression_step", { ascending: true })
+      .order("progression_step", { ascending: true }),
+    client
+      .from("framework_colour_themes")
+      .select("framework_id,primary_colour,pale_colour,badge_colour,chart_colour")
+      .eq("school_id", querySchoolId)
   ]);
   const { themes: themeRows, elements: themeElementRows } = await loadThemeRows(client, querySchoolId);
 
@@ -656,6 +670,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
     : { data: [] as ThemeLinkRow[] };
 
   const frameworksById = new Map(frameworks.map((row) => [row.id, row]));
+  const frameworkColourThemes = buildFrameworkColourThemeSettings((frameworkColourThemesResult.data ?? []) as FrameworkColourThemeRow[], frameworksById);
   const strandsById = new Map(strands.map((row) => [row.id, row]));
   const strandsByKey = new Map<string, StrandReferenceRow>();
   const elementsByKey = new Map<string, ElementReferenceRow>();
@@ -763,6 +778,7 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
     elementsById: new Map(elements.map((row) => [row.id, row])),
     progressionDescriptorByElementAndStep,
     frameworkLibrary,
+    frameworkColourThemes,
     subjectConfigs,
     aoleConfigs,
     crossCuttingThemes,
@@ -866,6 +882,32 @@ function buildThemeElementsByThemeId(rows: ThemeElementReferenceRow[]) {
     map.set(row.theme_id, [...(map.get(row.theme_id) ?? []), element]);
   }
   return map;
+}
+
+function buildFrameworkColourThemeSettings(rows: FrameworkColourThemeRow[], frameworksById: Map<string, FrameworkReferenceRow>) {
+  const themes: Record<string, FrameworkThemeSetting> = {};
+  for (const row of rows) {
+    const framework = frameworksById.get(row.framework_id);
+    if (!framework) continue;
+    const key = frameworkThemeKey(framework.name, framework.short_name);
+    if (!key) continue;
+    themes[key] = {
+      primary: row.primary_colour,
+      pale: row.pale_colour,
+      badge: row.badge_colour,
+      chart: row.chart_colour
+    };
+  }
+  return themes;
+}
+
+function frameworkThemeKey(name: string, shortName?: string | null) {
+  const label = `${name} ${shortName ?? ""}`.toLowerCase();
+  if (label.includes("literacy")) return "Literacy";
+  if (label.includes("numeracy")) return "Numeracy";
+  if (label.includes("digital") || label.includes("dcf")) return "DCF";
+  if (label.includes("cross") || label.includes("theme")) return "Cross-cutting themes";
+  return null;
 }
 
 function normaliseReferenceName<T extends ReferenceRow>(row: T): T {

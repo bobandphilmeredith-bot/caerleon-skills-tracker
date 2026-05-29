@@ -9,7 +9,9 @@
 
 begin;
 
-create temporary table duplicate_curriculum_mapping_groups on commit drop as
+drop table if exists public._curriculum_mapping_duplicate_groups;
+
+create table public._curriculum_mapping_duplicate_groups as
 with ranked as (
   select
     cm.*,
@@ -58,7 +60,7 @@ where duplicate_count > 1
 select
   'duplicates_to_delete' as diagnostic,
   count(*) as duplicate_parent_rows
-from duplicate_curriculum_mapping_groups;
+from public._curriculum_mapping_duplicate_groups;
 
 insert into public.curriculum_mapping_framework_links (
   mapping_id,
@@ -70,27 +72,51 @@ insert into public.curriculum_mapping_framework_links (
   notes,
   created_at
 )
-select
-  d.keep_id,
-  f.framework_id,
-  f.strand_id,
-  f.element_id,
-  f.progression_descriptor_id,
-  f.progression_step,
-  f.notes,
-  coalesce(f.created_at, now())
-from duplicate_curriculum_mapping_groups d
-join public.curriculum_mapping_framework_links f
-  on f.mapping_id = d.duplicate_id
+select distinct on (
+  source.keep_id,
+  source.framework_id,
+  source.strand_id,
+  source.element_id,
+  source.progression_descriptor_id
+)
+  source.keep_id,
+  source.framework_id,
+  source.strand_id,
+  source.element_id,
+  source.progression_descriptor_id,
+  source.progression_step,
+  source.notes,
+  source.created_at
+from (
+  select
+    d.keep_id,
+    f.framework_id,
+    f.strand_id,
+    f.element_id,
+    f.progression_descriptor_id,
+    f.progression_step,
+    f.notes,
+    coalesce(f.created_at, now()) as created_at
+  from public._curriculum_mapping_duplicate_groups d
+  join public.curriculum_mapping_framework_links f
+    on f.mapping_id = d.duplicate_id
+) source
 where not exists (
   select 1
   from public.curriculum_mapping_framework_links existing
-  where existing.mapping_id = d.keep_id
-    and existing.framework_id = f.framework_id
-    and existing.strand_id = f.strand_id
-    and existing.element_id = f.element_id
-    and existing.progression_descriptor_id is not distinct from f.progression_descriptor_id
-);
+  where existing.mapping_id = source.keep_id
+    and existing.framework_id = source.framework_id
+    and existing.strand_id = source.strand_id
+    and existing.element_id = source.element_id
+    and existing.progression_descriptor_id is not distinct from source.progression_descriptor_id
+)
+order by
+  source.keep_id,
+  source.framework_id,
+  source.strand_id,
+  source.element_id,
+  source.progression_descriptor_id,
+  source.created_at;
 
 insert into public.curriculum_mapping_theme_links (
   mapping_id,
@@ -100,26 +126,44 @@ insert into public.curriculum_mapping_theme_links (
   created_by,
   created_at
 )
-select
-  d.keep_id,
-  t.theme_id,
-  t.theme_element_id,
-  t.notes,
-  t.created_by,
-  coalesce(t.created_at, now())
-from duplicate_curriculum_mapping_groups d
-join public.curriculum_mapping_theme_links t
-  on t.mapping_id = d.duplicate_id
+select distinct on (
+  source.keep_id,
+  source.theme_id,
+  source.theme_element_id
+)
+  source.keep_id,
+  source.theme_id,
+  source.theme_element_id,
+  source.notes,
+  source.created_by,
+  source.created_at
+from (
+  select
+    d.keep_id,
+    t.theme_id,
+    t.theme_element_id,
+    t.notes,
+    t.created_by,
+    coalesce(t.created_at, now()) as created_at
+  from public._curriculum_mapping_duplicate_groups d
+  join public.curriculum_mapping_theme_links t
+    on t.mapping_id = d.duplicate_id
+) source
 where not exists (
   select 1
   from public.curriculum_mapping_theme_links existing
-  where existing.mapping_id = d.keep_id
-    and existing.theme_id = t.theme_id
-    and existing.theme_element_id is not distinct from t.theme_element_id
-);
+  where existing.mapping_id = source.keep_id
+    and existing.theme_id = source.theme_id
+    and existing.theme_element_id is not distinct from source.theme_element_id
+)
+order by
+  source.keep_id,
+  source.theme_id,
+  source.theme_element_id,
+  source.created_at;
 
 delete from public.curriculum_mappings cm
-using duplicate_curriculum_mapping_groups d
+using public._curriculum_mapping_duplicate_groups d
 where cm.id = d.duplicate_id;
 
 -- Prevent the same accidental double-save happening again at database level.
@@ -150,5 +194,7 @@ from (
     lower(trim(coalesce(cm.activity_description, '')))
   having count(*) > 1
 ) duplicates;
+
+drop table if exists public._curriculum_mapping_duplicate_groups;
 
 commit;

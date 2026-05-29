@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { AccessDenied } from "@/components/AccessDenied";
 import { PageHeader } from "@/components/PageHeader";
 import { progressionSteps } from "@/lib/progression";
-import type { AoleConfig, ElementDefinition, School, SubjectConfig } from "@/lib/types";
+import type { AoleConfig, ElementDefinition, SubjectConfig } from "@/lib/types";
 import { areaThemes } from "@/lib/theme";
-import { useSchoolSettings } from "@/lib/schoolSettings";
+import { defaultSchoolSettings, type BrandingSettings, useSchoolSettings } from "@/lib/schoolSettings";
 import { useCurrentSchool } from "@/lib/currentSchool";
 import { useAuth } from "@/lib/auth";
+import { isDemoLoginEnabled, supabase } from "@/lib/supabaseClient";
 
 type AdminFramework = { name: string; shortName: string; active: boolean; strands: AdminStrand[] };
 type AdminStrand = { name: string; active: boolean; elements: AdminElement[] };
@@ -19,7 +20,7 @@ const adminTabs: AdminTab[] = ["School", "Branding", "Subjects", "AoLE", "Framew
 
 export default function AdminPage() {
   const { canManageSchool } = useAuth();
-  const { settings, updateBranding, updateFrameworkTheme, resetBranding, resetAllSettings } = useSchoolSettings();
+  const { settings, updateBranding, updateFrameworkTheme, resetAllSettings } = useSchoolSettings();
   const { schools, currentSchool, currentSchoolId, data, switchSchool, addSchool, updateSchool, toggleSchoolActive, addSubjectConfig, updateSubjectConfig } = useCurrentSchool();
   const [subjects, setSubjects] = useState<SubjectConfig[]>(data.subjectConfigs);
   const [aoles, setAoles] = useState<AoleConfig[]>(data.aoleConfigs);
@@ -39,6 +40,10 @@ export default function AdminPage() {
   const [newSubjectActive, setNewSubjectActive] = useState(true);
   const [newSubjectAppears, setNewSubjectAppears] = useState(true);
   const [subjectFormError, setSubjectFormError] = useState("");
+  const [brandingDraft, setBrandingDraft] = useState<BrandingSettings>(settings.branding);
+  const [brandingDirty, setBrandingDirty] = useState(false);
+  const [brandingSaving, setBrandingSaving] = useState(false);
+  const [brandingError, setBrandingError] = useState("");
   const schoolOptions = schools.some((school) => school.id === currentSchoolId) ? schools : [currentSchool, ...schools];
 
   if (!canManageSchool) {
@@ -51,6 +56,19 @@ export default function AdminPage() {
     setFrameworks(loadAdminFrameworks(data.frameworkLibrary, currentSchoolId));
     setPracticeMappings(data.mappings.length);
   }, [currentSchoolId, data]);
+
+  useEffect(() => {
+    setBrandingDraft(settings.branding);
+    setBrandingDirty(false);
+    setBrandingError("");
+  }, [
+    currentSchool.id,
+    settings.branding.schoolName,
+    settings.branding.motto,
+    settings.branding.primaryColour,
+    settings.branding.secondaryColour,
+    settings.branding.logoDataUrl
+  ]);
 
   const activeAoles = aoles.filter((aole) => aole.active);
   const subjectCounts = useMemo(
@@ -99,18 +117,64 @@ export default function AdminPage() {
     });
   }
 
-  function updateLiveBranding(patch: { schoolName?: string; motto?: string; primaryColour?: string; secondaryColour?: string; logoDataUrl?: string }) {
-    updateBranding(patch);
-    const schoolPatch = Object.fromEntries(
-      Object.entries({
-        name: patch.schoolName,
-        motto: patch.motto,
-        primaryColour: patch.primaryColour,
-        secondaryColour: patch.secondaryColour,
-        logoUrl: patch.logoDataUrl
-      }).filter(([, value]) => value !== undefined)
-    ) as Partial<School>;
-    updateSchool(currentSchool.id, schoolPatch);
+  function updateBrandingDraft(patch: Partial<BrandingSettings>) {
+    setBrandingDraft((current) => ({ ...current, ...patch }));
+    setBrandingDirty(true);
+    setBrandingError("");
+  }
+
+  async function saveBrandingSettings() {
+    const nextBranding = {
+      ...brandingDraft,
+      schoolName: brandingDraft.schoolName.trim() || currentSchool.name,
+      motto: brandingDraft.motto.trim()
+    };
+    if (!/^#[0-9A-Fa-f]{6}$/.test(nextBranding.primaryColour) || !/^#[0-9A-Fa-f]{6}$/.test(nextBranding.secondaryColour)) {
+      setBrandingError("Use six-digit hex colours, for example #741B47.");
+      return;
+    }
+
+    setBrandingSaving(true);
+    setBrandingError("");
+
+    if (!isDemoLoginEnabled) {
+      if (!supabase) {
+        setBrandingSaving(false);
+        setBrandingError("Supabase is not configured, so branding could not be saved.");
+        return;
+      }
+
+      const { error } = await supabase.from("branding_settings").upsert(
+        {
+          school_id: currentSchool.id,
+          school_name: nextBranding.schoolName,
+          motto: nextBranding.motto || null,
+          logo_url: nextBranding.logoDataUrl,
+          primary_colour: nextBranding.primaryColour,
+          secondary_colour: nextBranding.secondaryColour
+        },
+        { onConflict: "school_id" }
+      );
+
+      if (error) {
+        setBrandingSaving(false);
+        setBrandingError(error.message);
+        return;
+      }
+    }
+
+    updateBranding(nextBranding);
+    updateSchool(currentSchool.id, {
+      name: nextBranding.schoolName,
+      motto: nextBranding.motto,
+      primaryColour: nextBranding.primaryColour,
+      secondaryColour: nextBranding.secondaryColour,
+      logoUrl: nextBranding.logoDataUrl
+    });
+    setBrandingDraft(nextBranding);
+    setBrandingDirty(false);
+    setBrandingSaving(false);
+    setNotice("Branding saved.");
   }
 
   function addAole() {
@@ -202,7 +266,7 @@ export default function AdminPage() {
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => updateLiveBranding({ logoDataUrl: String(reader.result) });
+    reader.onload = () => updateBrandingDraft({ logoDataUrl: String(reader.result) });
     reader.readAsDataURL(file);
   }
 
@@ -334,26 +398,51 @@ export default function AdminPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-gray-900">School Branding</h2>
-            <p className="mt-1 text-sm text-gray-600">Branding is used across the sidebar, page headers and printable reports.</p>
+            <p className="mt-1 text-sm text-gray-600">Branding is used across the sidebar, page headers and printable reports. Changes are saved only when you press Save branding.</p>
           </div>
           <div className="grid h-24 w-24 place-items-center rounded-md border border-gray-200 bg-white p-2">
-            <img src={settings.branding.logoDataUrl} alt="School logo preview" className="h-full w-full object-contain" />
+            <img src={brandingDraft.logoDataUrl} alt="School logo preview" className="h-full w-full object-contain" />
           </div>
         </div>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <LabelledInput label="School name" value={settings.branding.schoolName} onChange={(value) => updateLiveBranding({ schoolName: value })} />
-          <LabelledInput label="Motto / tagline" value={settings.branding.motto} onChange={(value) => updateLiveBranding({ motto: value })} />
-          <ColourInput label="Primary colour" value={settings.branding.primaryColour} onChange={(value) => updateLiveBranding({ primaryColour: value })} />
-          <ColourInput label="Secondary colour" value={settings.branding.secondaryColour} onChange={(value) => updateLiveBranding({ secondaryColour: value })} />
+          <LabelledInput label="School name" value={brandingDraft.schoolName} onChange={(value) => updateBrandingDraft({ schoolName: value })} />
+          <LabelledInput label="Motto / tagline" value={brandingDraft.motto} onChange={(value) => updateBrandingDraft({ motto: value })} />
+          <ColourInput label="Primary colour" value={brandingDraft.primaryColour} onChange={(value) => updateBrandingDraft({ primaryColour: value })} />
+          <ColourInput label="Secondary colour" value={brandingDraft.secondaryColour} onChange={(value) => updateBrandingDraft({ secondaryColour: value })} />
           <label className="lg:col-span-2">
             <span className="mb-1 block text-sm font-semibold text-gray-700">Logo upload</span>
             <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" type="file" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml" onChange={(event) => handleLogoUpload(event.target.files?.[0])} />
           </label>
         </div>
-        <button className="focus-ring btn btn-secondary mt-4" type="button" onClick={resetBranding}>
-          Reset to Caerleon branding
-        </button>
+        {brandingError ? <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{brandingError}</p> : null}
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button className="focus-ring btn btn-primary" type="button" onClick={saveBrandingSettings} disabled={brandingSaving || !brandingDirty}>
+            {brandingSaving ? "Saving..." : "Save branding"}
+          </button>
+          <button
+            className="focus-ring btn btn-secondary"
+            type="button"
+            onClick={() => {
+              setBrandingDraft(defaultSchoolSettings.branding);
+              setBrandingDirty(true);
+              setBrandingError("");
+            }}
+          >
+            Load default branding
+          </button>
+          <button
+            className="focus-ring btn btn-muted"
+            type="button"
+            onClick={() => {
+              setBrandingDraft(settings.branding);
+              setBrandingDirty(false);
+              setBrandingError("");
+            }}
+          >
+            Discard changes
+          </button>
+        </div>
       </section>
 
       <section className={adminPanelClass(activeTab, "Branding")}>

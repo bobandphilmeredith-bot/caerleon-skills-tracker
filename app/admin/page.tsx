@@ -64,6 +64,24 @@ export default function AdminPage() {
   }, [currentSchoolId, data]);
 
   useEffect(() => {
+    let cancelled = false;
+    async function loadCompleteFrameworkLibrary() {
+      if (isDemoLoginEnabled || !supabase) return;
+      const result = await loadAdminFrameworksFromSupabase(currentSchool.id);
+      if (cancelled) return;
+      if (result.ok) {
+        setFrameworks(result.frameworks);
+      } else {
+        setFrameworkError(result.message);
+      }
+    }
+    void loadCompleteFrameworkLibrary();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSchool.id]);
+
+  useEffect(() => {
     setBrandingDraft(settings.branding);
     setBrandingDirty(false);
     setBrandingError("");
@@ -297,6 +315,47 @@ export default function AdminPage() {
           : framework
       )
     );
+  }
+
+  async function toggleFrameworkActive(frameworkIndex: number) {
+    const framework = frameworks[frameworkIndex];
+    if (!framework) return;
+    const nextActive = !framework.active;
+    updateFramework(frameworkIndex, { active: nextActive });
+    if (framework.id) await persistActiveState("frameworks", framework.id, nextActive, () => updateFramework(frameworkIndex, { active: framework.active }));
+  }
+
+  async function toggleStrandActive(frameworkIndex: number, strandIndex: number) {
+    const strand = frameworks[frameworkIndex]?.strands[strandIndex];
+    if (!strand) return;
+    const nextActive = !strand.active;
+    updateStrand(frameworkIndex, strandIndex, { active: nextActive });
+    if (strand.id) await persistActiveState("strands", strand.id, nextActive, () => updateStrand(frameworkIndex, strandIndex, { active: strand.active }));
+  }
+
+  async function toggleElementActive(frameworkIndex: number, strandIndex: number, elementIndex: number) {
+    const element = frameworks[frameworkIndex]?.strands[strandIndex]?.elements[elementIndex];
+    if (!element) return;
+    const nextActive = !element.active;
+    updateElement(frameworkIndex, strandIndex, elementIndex, { active: nextActive });
+    if (element.id) await persistActiveState("elements", element.id, nextActive, () => updateElement(frameworkIndex, strandIndex, elementIndex, { active: element.active }));
+  }
+
+  async function persistActiveState(table: "frameworks" | "strands" | "elements", id: string, active: boolean, revert: () => void) {
+    setFrameworkError("");
+    if (isDemoLoginEnabled) return;
+    if (!supabase) {
+      revert();
+      setFrameworkError("Supabase is not configured, so archive status could not be saved.");
+      return;
+    }
+    const { error } = await supabase.from(table).update({ active }).eq("id", id).eq("school_id", currentSchool.id);
+    if (error) {
+      revert();
+      setFrameworkError(error.message);
+      return;
+    }
+    setNotice(active ? "Item reactivated." : "Item archived.");
   }
 
   async function saveFrameworksToSupabase() {
@@ -958,7 +1017,7 @@ export default function AdminPage() {
               <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_160px_auto]">
                 <input className="focus-ring rounded-md border border-gray-300 px-3 py-2 font-semibold" value={framework.name} onChange={(event) => updateFramework(frameworkIndex, { name: event.target.value })} />
                 <input className="focus-ring rounded-md border border-gray-300 px-3 py-2" value={framework.shortName} onChange={(event) => updateFramework(frameworkIndex, { shortName: event.target.value })} />
-                <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => updateFramework(frameworkIndex, { active: !framework.active })}>
+                <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => void toggleFrameworkActive(frameworkIndex)}>
                   {framework.active ? "Archive" : "Reactivate"}
                 </button>
               </div>
@@ -972,7 +1031,7 @@ export default function AdminPage() {
                       <button className="focus-ring btn btn-muted text-xs" type="button" onClick={() => addElement(frameworkIndex, strandIndex)}>
                         Add element
                       </button>
-                      <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => updateStrand(frameworkIndex, strandIndex, { active: !strand.active })}>
+                      <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => void toggleStrandActive(frameworkIndex, strandIndex)}>
                         {strand.active ? "Archive" : "Reactivate"}
                       </button>
                     </div>
@@ -990,7 +1049,7 @@ export default function AdminPage() {
                               onChange={(event) => updateElement(frameworkIndex, strandIndex, elementIndex, { examples: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) })}
                               placeholder="Example classroom opportunities"
                             />
-                            <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => updateElement(frameworkIndex, strandIndex, elementIndex, { active: !element.active })}>
+                            <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => void toggleElementActive(frameworkIndex, strandIndex, elementIndex)}>
                               {element.active ? "Archive" : "Reactivate"}
                             </button>
                           </div>
@@ -1198,16 +1257,134 @@ function loadAdminFrameworks(frameworkLibrary: Parameters<typeof normaliseFramew
   return normaliseFrameworks(frameworkLibrary);
 }
 
+async function loadAdminFrameworksFromSupabase(schoolId: string): Promise<{ ok: true; frameworks: AdminFramework[] } | { ok: false; message: string }> {
+  if (!supabase) return { ok: false, message: "Supabase is not configured, so frameworks could not be loaded." };
+
+  const [frameworksResult, strandsResult, elementsResult, descriptorsResult] = await Promise.all([
+    supabase
+      .from("frameworks")
+      .select("id, school_id, name, short_name, display_order, active")
+      .eq("school_id", schoolId)
+      .order("display_order", { ascending: true })
+      .order("name", { ascending: true }),
+    supabase
+      .from("strands")
+      .select("id, school_id, framework_id, name, short_name, description, display_order, active")
+      .eq("school_id", schoolId)
+      .order("display_order", { ascending: true })
+      .order("name", { ascending: true }),
+    supabase
+      .from("elements")
+      .select("id, school_id, strand_id, name, description, official_wording, teacher_friendly_explanation, display_order, active")
+      .eq("school_id", schoolId)
+      .order("display_order", { ascending: true })
+      .order("name", { ascending: true }),
+    supabase
+      .from("progression_descriptors")
+      .select("id, element_id, progression_step, descriptor_text, display_order, active")
+      .eq("school_id", schoolId)
+      .order("progression_step", { ascending: true })
+  ]);
+
+  const error = frameworksResult.error ?? strandsResult.error ?? elementsResult.error ?? descriptorsResult.error;
+  if (error) return { ok: false, message: error.message };
+
+  type FrameworkRow = { id: string; school_id?: string; name: string; short_name?: string | null; display_order?: number | null; active?: boolean | null };
+  type StrandRow = { id: string; school_id?: string; framework_id: string; name: string; short_name?: string | null; description?: string | null; display_order?: number | null; active?: boolean | null };
+  type ElementRow = {
+    id: string;
+    school_id?: string;
+    strand_id: string;
+    name: string;
+    description?: string | null;
+    official_wording?: string | null;
+    teacher_friendly_explanation?: string | null;
+    display_order?: number | null;
+    active?: boolean | null;
+  };
+  type DescriptorRow = { id: string; element_id: string; progression_step: number; descriptor_text?: string | null; active?: boolean | null };
+
+  const frameworks = (frameworksResult.data ?? []) as FrameworkRow[];
+  const strands = (strandsResult.data ?? []) as StrandRow[];
+  const elements = (elementsResult.data ?? []) as ElementRow[];
+  const descriptors = (descriptorsResult.data ?? []) as DescriptorRow[];
+  const descriptorsByElementId = new Map<string, DescriptorRow[]>();
+  descriptors.forEach((descriptor) => descriptorsByElementId.set(descriptor.element_id, [...(descriptorsByElementId.get(descriptor.element_id) ?? []), descriptor]));
+
+  return {
+    ok: true,
+    frameworks: frameworks.map((framework, frameworkIndex) => ({
+      id: framework.id,
+      schoolId: framework.school_id,
+      name: framework.name,
+      shortName: framework.short_name ?? framework.name,
+      active: framework.active ?? true,
+      displayOrder: framework.display_order ?? frameworkIndex + 1,
+      strands: strands
+        .filter((strand) => strand.framework_id === framework.id)
+        .map((strand, strandIndex) => ({
+          id: strand.id,
+          schoolId: strand.school_id,
+          frameworkId: framework.id,
+          name: strand.name,
+          shortName: strand.short_name,
+          description: strand.description,
+          active: strand.active ?? true,
+          displayOrder: strand.display_order ?? strandIndex + 1,
+          elements: elements
+            .filter((element) => element.strand_id === strand.id)
+            .map((element, elementIndex) => {
+              const elementDescriptors = descriptorsByElementId.get(element.id) ?? [];
+              const progressionDescriptors = Object.fromEntries(
+                progressionSteps.map((step) => {
+                  const stepNumber = progressionStepNumber(step);
+                  const descriptor = elementDescriptors.find((item) => item.progression_step === stepNumber);
+                  return [step, descriptor?.descriptor_text ?? ""];
+                })
+              ) as Record<ProgressionStep, string>;
+              return {
+                id: element.id,
+                schoolId: element.school_id,
+                name: element.name,
+                officialWording: element.official_wording ?? element.description ?? element.teacher_friendly_explanation ?? element.name,
+                explanation: element.teacher_friendly_explanation ?? element.description ?? "",
+                examples: [],
+                progressionDescriptors,
+                progressionDescriptorRefs: elementDescriptors.map((descriptor) => {
+                  const stepNumber = descriptor.progression_step;
+                  return {
+                    id: descriptor.id,
+                    progressionStep: `Step ${stepNumber}` as ProgressionStep,
+                    progressionStepNumber: stepNumber,
+                    descriptorText: descriptor.descriptor_text ?? ""
+                  };
+                }),
+                searchKeywords: [],
+                relatedConnections: [],
+                active: element.active ?? true,
+                displayOrder: element.display_order ?? elementIndex + 1
+              };
+            })
+        }))
+    }))
+  };
+}
+
 function normaliseFrameworks(frameworkLibrary: FrameworkDefinition[]): AdminFramework[] {
   return frameworkLibrary.map((framework, frameworkIndex) => ({
     ...framework,
-    displayOrder: frameworkIndex + 1,
-    active: true,
+    displayOrder: (framework as FrameworkDefinition & { displayOrder?: number }).displayOrder ?? frameworkIndex + 1,
+    active: (framework as FrameworkDefinition & { active?: boolean }).active ?? true,
     strands: framework.strands.map((strand, strandIndex) => ({
       ...strand,
-      displayOrder: strandIndex + 1,
-      active: true,
-      elements: strand.elements.map((element, elementIndex) => ({ ...element, displayOrder: elementIndex + 1, progressionDescriptors: element.progressionDescriptors ?? newElement().progressionDescriptors, active: true }))
+      displayOrder: (strand as typeof strand & { displayOrder?: number }).displayOrder ?? strandIndex + 1,
+      active: (strand as typeof strand & { active?: boolean }).active ?? true,
+      elements: strand.elements.map((element, elementIndex) => ({
+        ...element,
+        displayOrder: (element as typeof element & { displayOrder?: number }).displayOrder ?? elementIndex + 1,
+        progressionDescriptors: element.progressionDescriptors ?? newElement().progressionDescriptors,
+        active: (element as typeof element & { active?: boolean }).active ?? true
+      }))
     }))
   }));
 }

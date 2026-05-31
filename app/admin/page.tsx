@@ -50,7 +50,8 @@ export default function AdminPage() {
   const [frameworkThemeError, setFrameworkThemeError] = useState("");
   const [frameworkSaving, setFrameworkSaving] = useState(false);
   const [frameworkError, setFrameworkError] = useState("");
-  const schoolOptions = schools.some((school) => school.id === currentSchoolId) ? schools : [currentSchool, ...schools];
+  const schoolOptions = isDemoLoginEnabled ? (schools.some((school) => school.id === currentSchoolId) ? schools : [currentSchool, ...schools]) : [currentSchool];
+  const visibleSchoolCards = isDemoLoginEnabled ? schools : [currentSchool];
 
   if (!canManageSchool) {
     return <AccessDenied title="Admin setup restricted" message="Only platform admins and school admins can manage school setup, users, frameworks, branding and practice records." />;
@@ -266,12 +267,71 @@ export default function AdminPage() {
     setNotice("Framework colour themes saved.");
   }
 
-  function addAole() {
-    setAoles((current) => [...current, { id: `aole-${Date.now()}`, name: "New AoLE", active: true }]);
+  async function addAole() {
+    if (isDemoLoginEnabled) {
+      setAoles((current) => [...current, { id: `aole-${Date.now()}`, name: "New AoLE", active: true, displayOrder: current.length + 1 }]);
+      return;
+    }
+
+    const name = window.prompt("AoLE name");
+    const trimmedName = name?.trim();
+    if (!trimmedName) return;
+    if (aoles.some((aole) => aole.name.trim().toLowerCase() === trimmedName.toLowerCase())) {
+      setNotice(`${trimmedName} already exists.`);
+      return;
+    }
+    if (!supabase) {
+      setNotice("Supabase is not configured, so the AoLE could not be saved.");
+      return;
+    }
+
+    const { data: inserted, error } = await supabase
+      .from("aoles")
+      .insert({
+        school_id: currentSchool.id,
+        name: trimmedName,
+        display_order: aoles.length + 1,
+        active: true
+      })
+      .select("id, school_id, name, display_order, active")
+      .single();
+    if (error) {
+      setNotice(error.message);
+      return;
+    }
+
+    setAoles((current) => [
+      ...current,
+      {
+        id: inserted.id,
+        schoolId: inserted.school_id,
+        name: inserted.name,
+        displayOrder: inserted.display_order ?? current.length + 1,
+        active: inserted.active ?? true
+      }
+    ]);
+    setNotice("AoLE saved.");
   }
 
   function updateAole(id: string, patch: Partial<AoleConfig>) {
     setAoles((current) => current.map((aole) => (aole.id === id ? { ...aole, ...patch } : aole)));
+    if (isDemoLoginEnabled) return;
+    if (!supabase) {
+      setNotice("Supabase is not configured, so the AoLE change could not be saved.");
+      return;
+    }
+    const payload: { name?: string; active?: boolean; display_order?: number } = {};
+    if ("name" in patch) payload.name = patch.name;
+    if ("active" in patch) payload.active = patch.active;
+    if ("displayOrder" in patch) payload.display_order = patch.displayOrder;
+    void supabase
+      .from("aoles")
+      .update(payload)
+      .eq("id", id)
+      .eq("school_id", currentSchool.id)
+      .then(({ error }) => {
+        if (error) setNotice(error.message);
+      });
   }
 
   function addFramework() {
@@ -608,9 +668,9 @@ export default function AdminPage() {
         </div>
       ) : null}
 
-      <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm font-semibold text-amber-900 shadow-sm">
+      {isDemoLoginEnabled ? <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm font-semibold text-amber-900 shadow-sm">
         Manage sample curriculum records used in dashboards, framework views and reports.
-      </section>
+      </section> : null}
 
       <div className="rounded-lg border border-gray-200 bg-white p-2 shadow-sm">
         <div className="flex flex-wrap gap-2">
@@ -641,16 +701,20 @@ export default function AdminPage() {
                 </option>
               ))}
             </select>
-            <button className="focus-ring btn btn-primary" type="button" onClick={() => { const school = addSchool(); setNotice(`${school.name} added. Use the fields below to edit its setup.`); }}>
-              Add school
-            </button>
-            <button className="focus-ring btn btn-secondary" type="button" onClick={() => setWizardOpen(true)}>
-              New School Setup Wizard
-            </button>
+            {isDemoLoginEnabled ? (
+              <>
+                <button className="focus-ring btn btn-primary" type="button" onClick={() => { const school = addSchool(); setNotice(`${school.name} added. Use the fields below to edit its setup.`); }}>
+                  Add school
+                </button>
+                <button className="focus-ring btn btn-secondary" type="button" onClick={() => setWizardOpen(true)}>
+                  New School Setup Wizard
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
         <div className="mt-4 grid gap-4 xl:grid-cols-2">
-          {schools.map((school) => (
+          {visibleSchoolCards.map((school) => (
             <article key={school.id} className="rounded-lg border border-gray-200 p-4">
               <div className="flex items-start gap-3">
                 <div className="grid h-16 w-16 shrink-0 place-items-center rounded-md border border-gray-200 bg-white p-1.5">
@@ -671,12 +735,16 @@ export default function AdminPage() {
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-700">ID: {school.id}</span>
                 <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-700">Created: {school.createdAt}</span>
-                <button className="focus-ring btn btn-muted text-xs" type="button" onClick={() => toggleSchoolActive(school.id)}>
-                  {school.active ? "Deactivate school" : "Reactivate school"}
-                </button>
-                <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => switchSchool(school.id)} disabled={!school.active}>
-                  Switch to this school
-                </button>
+                {isDemoLoginEnabled ? (
+                  <>
+                    <button className="focus-ring btn btn-muted text-xs" type="button" onClick={() => toggleSchoolActive(school.id)}>
+                      {school.active ? "Deactivate school" : "Reactivate school"}
+                    </button>
+                    <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => switchSchool(school.id)} disabled={!school.active}>
+                      Switch to this school
+                    </button>
+                  </>
+                ) : null}
               </div>
             </article>
           ))}
@@ -791,12 +859,18 @@ export default function AdminPage() {
           </div>
           <span className="rounded-full bg-[#f7edf3] px-3 py-1 text-xs font-bold text-[#571435]">Planning records</span>
         </div>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <PracticeButton label="Add curriculum records" onClick={() => confirmPracticeAction("Add curriculum records", "This will add subjects, frameworks, strands, elements, curriculum entries, recent activity and review dates.", () => { setPracticeMappings((value) => value + 48); setNotice("Curriculum records added."); })} />
-          <PracticeButton label="Clear curriculum records" onClick={() => confirmPracticeAction("Clear curriculum records", "This will remove curriculum mappings only and keep branding, subjects, frameworks and admin settings.", () => { setPracticeMappings(0); setNotice("Curriculum mappings cleared."); })} />
-          <PracticeButton label="Reset curriculum records" onClick={() => confirmPracticeAction("Reset curriculum records", "This will reset branding, framework colours and curriculum records to the current school setup.", () => { resetAllSettings(); setSubjects(data.subjectConfigs); setAoles(data.aoleConfigs); setPracticeMappings(data.mappings.length); setNotice("Curriculum records reset."); })} />
-          <PracticeButton label="Restore default Caerleon records" onClick={() => confirmPracticeAction("Restore default Caerleon records", "This will switch back to the Caerleon school and reload its curriculum mappings.", () => { switchSchool("school_caerleon"); resetAllSettings(); setNotice("Default Caerleon records restored."); })} />
-        </div>
+        {isDemoLoginEnabled ? (
+          <div className="mt-4 flex flex-wrap gap-3">
+            <PracticeButton label="Add curriculum records" onClick={() => confirmPracticeAction("Add curriculum records", "This will add subjects, frameworks, strands, elements, curriculum entries, recent activity and review dates.", () => { setPracticeMappings((value) => value + 48); setNotice("Curriculum records added."); })} />
+            <PracticeButton label="Clear curriculum records" onClick={() => confirmPracticeAction("Clear curriculum records", "This will remove curriculum mappings only and keep branding, subjects, frameworks and admin settings.", () => { setPracticeMappings(0); setNotice("Curriculum mappings cleared."); })} />
+            <PracticeButton label="Reset curriculum records" onClick={() => confirmPracticeAction("Reset curriculum records", "This will reset branding, framework colours and curriculum records to the current school setup.", () => { resetAllSettings(); setSubjects(data.subjectConfigs); setAoles(data.aoleConfigs); setPracticeMappings(data.mappings.length); setNotice("Curriculum records reset."); })} />
+            <PracticeButton label="Restore default Caerleon records" onClick={() => confirmPracticeAction("Restore default Caerleon records", "This will switch back to the Caerleon school and reload its curriculum mappings.", () => { switchSchool("school_caerleon"); resetAllSettings(); setNotice("Default Caerleon records restored."); })} />
+          </div>
+        ) : (
+          <p className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-700">
+            Demo record tools are disabled in live mode. Use Add Curriculum, Edit Curriculum or the CSV import tool for Supabase-backed curriculum data.
+          </p>
+        )}
       </section>
 
       <section className={adminPanelClass(activeTab, "Subjects")}>
@@ -928,7 +1002,7 @@ export default function AdminPage() {
         </div>
       </section>
 
-      <section className={activeTab === "Subjects" ? "grid gap-5 xl:grid-cols-2" : "hidden"}>
+      {isDemoLoginEnabled ? <section className={activeTab === "Subjects" ? "grid gap-5 xl:grid-cols-2" : "hidden"}>
         <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-bold text-gray-900">Review Cycle Settings</h2>
           <label className="mt-4 block">
@@ -961,7 +1035,7 @@ export default function AdminPage() {
             ))}
           </div>
         </article>
-      </section>
+      </section> : null}
 
       <section className={adminPanelClass(activeTab, "AoLE")}>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -984,12 +1058,12 @@ export default function AdminPage() {
               </div>
               <p className="mt-3 text-xs font-bold uppercase tracking-[0.12em] text-gray-500">Subjects assigned</p>
               <div className="mt-2 flex flex-wrap gap-2">
-                {subjects.filter((subject) => subject.aole === aole.name).map((subject) => (
+                {subjects.filter((subject) => subject.aoeId === aole.id).map((subject) => (
                   <span key={subject.id} className="rounded-full bg-[#f7edf3] px-3 py-1 text-xs font-semibold text-[#571435]">
                     {subject.name}
                   </span>
                 ))}
-                {!subjects.some((subject) => subject.aole === aole.name) ? <span className="text-sm text-gray-500">No subjects assigned yet.</span> : null}
+                {!subjects.some((subject) => subject.aoeId === aole.id) ? <span className="text-sm text-gray-500">No subjects assigned yet.</span> : null}
               </div>
             </article>
           ))}

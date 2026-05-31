@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { isDemoLoginEnabled } from "@/lib/supabaseClient";
 
 export type BrandingSettings = {
   schoolName: string;
@@ -54,6 +55,7 @@ export function SchoolSettingsProvider({ children }: { children: React.ReactNode
   const [settings, setSettings] = useState<SchoolSettings>(defaultSchoolSettings);
 
   useEffect(() => {
+    if (!isDemoLoginEnabled) return;
     const saved = window.localStorage.getItem("caerleon-school-settings");
     if (saved) {
       try {
@@ -69,7 +71,7 @@ export function SchoolSettingsProvider({ children }: { children: React.ReactNode
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem("caerleon-school-settings", JSON.stringify(settings));
+    if (isDemoLoginEnabled) window.localStorage.setItem("caerleon-school-settings", JSON.stringify(settings));
     applyCssVariables(settings);
   }, [settings]);
 

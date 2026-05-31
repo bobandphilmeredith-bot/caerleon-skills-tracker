@@ -61,6 +61,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   const [liveDiagnostics, setLiveDiagnostics] = useState<LiveDataDiagnostics | null>(null);
 
   useEffect(() => {
+    if (!isDemoLoginEnabled) return;
     const savedSchools = window.localStorage.getItem("skills-tracker-schools");
     const savedCurrent = window.localStorage.getItem("skills-tracker-current-school");
     if (savedSchools) {
@@ -75,13 +76,14 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
 
   const localCurrentSchool = schools.find((school) => school.id === currentSchoolId) ?? schools[0] ?? sampleSchools[0];
   const currentSchool = !isDemoLoginEnabled && liveSchool ? liveSchool : localCurrentSchool;
-  const baseData = customData[currentSchool.id] ?? schoolDataById[currentSchool.id] ?? createEmptySchoolData(currentSchool.id);
+  const baseData = isDemoLoginEnabled
+    ? customData[currentSchool.id] ?? schoolDataById[currentSchool.id] ?? createEmptySchoolData(currentSchool.id)
+    : buildBundle({ schoolId: currentSchool.id, subjectConfigs: [], aoleConfigs: [], frameworkLibrary: [], crossCuttingThemes: [], mappings: [] });
   const liveSchoolId = isDemoLoginEnabled ? currentSchool.id : (currentUser?.schoolId ?? "");
-  const useLiveData = !isDemoLoginEnabled && Boolean(liveReferenceMaps);
-  const currentMappings = useLiveData ? liveMappings : (mappingOverrides[currentSchool.id] ?? baseData.mappings);
-  const currentFrameworkLibrary = useLiveData ? (liveReferenceMaps?.frameworkLibrary ?? []) : baseData.frameworkLibrary;
-  const currentSubjectConfigs = useLiveData ? (liveReferenceMaps?.subjectConfigs ?? []) : baseData.subjectConfigs;
-  const currentAoleConfigs = useLiveData ? (liveReferenceMaps?.aoleConfigs ?? []) : baseData.aoleConfigs;
+  const currentMappings = isDemoLoginEnabled ? (mappingOverrides[currentSchool.id] ?? baseData.mappings) : liveMappings;
+  const currentFrameworkLibrary = isDemoLoginEnabled ? baseData.frameworkLibrary : (liveReferenceMaps?.frameworkLibrary ?? []);
+  const currentSubjectConfigs = isDemoLoginEnabled ? baseData.subjectConfigs : (liveReferenceMaps?.subjectConfigs ?? []);
+  const currentAoleConfigs = isDemoLoginEnabled ? baseData.aoleConfigs : (liveReferenceMaps?.aoleConfigs ?? []);
   const currentCrossCuttingThemes = isDemoLoginEnabled ? baseData.crossCuttingThemes : (liveReferenceMaps?.crossCuttingThemes ?? []);
   const data = useMemo(
     () =>
@@ -140,11 +142,13 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   }, [loadLiveMappings]);
 
   useEffect(() => {
+    if (!isDemoLoginEnabled) return;
     window.localStorage.setItem("skills-tracker-schools", JSON.stringify(schools));
   }, [schools]);
 
   useEffect(() => {
-    window.localStorage.setItem("skills-tracker-current-school", currentSchool.id);
+    if (isDemoLoginEnabled) window.localStorage.setItem("skills-tracker-current-school", currentSchool.id);
+    if (!isDemoLoginEnabled && !liveSchool) return;
     updateBranding({
       schoolName: currentSchool.name,
       motto: currentSchool.motto,
@@ -172,6 +176,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
         if (next) setCurrentSchoolId(next.id);
       },
       addSchool: () => {
+        if (!isDemoLoginEnabled) return currentSchool;
         const id = `school_${Date.now()}`;
         const newSchool: School = {
           id,

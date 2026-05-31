@@ -19,13 +19,14 @@ export default function EditCurriculumPage() {
   const { canEditMappings, canEditSubject, canManageSchool } = useAuth();
   const { currentSchoolId, data, deleteMapping } = useCurrentSchool();
   const { mappings, terms, yearGroups } = data;
-  const { subjects: databaseSubjects } = useLiveSubjects(currentSchoolId);
+  const { subjects: databaseSubjects, loading: subjectsLoading } = useLiveSubjects(currentSchoolId);
   const [subjectId, setSubjectId] = useState("");
   const [yearFilter, setYearFilter] = useState(allYears);
   const [termFilter, setTermFilter] = useState(allTerms);
   const [keyword, setKeyword] = useState("");
   const [deleteMessage, setDeleteMessage] = useState("");
   const [deletingId, setDeletingId] = useState("");
+  const [hasReadReturnParams, setHasReadReturnParams] = useState(false);
 
   const editableSubjects = useMemo(
     () =>
@@ -41,12 +42,18 @@ export default function EditCurriculumPage() {
     const year = params.get("year");
     if (subject) setSubjectId(subject);
     if (year) setYearFilter(year);
+    setHasReadReturnParams(true);
   }, []);
 
   useEffect(() => {
+    if (!hasReadReturnParams || subjectsLoading) return;
+    if (!editableSubjects.length) {
+      if (subjectId) setSubjectId("");
+      return;
+    }
     if (!subjectId && editableSubjects.length) setSubjectId(editableSubjects[0].id);
     if (subjectId && !editableSubjects.some((subject) => subject.id === subjectId)) setSubjectId(editableSubjects[0]?.id ?? "");
-  }, [editableSubjects, subjectId]);
+  }, [editableSubjects, hasReadReturnParams, subjectId, subjectsLoading]);
 
   const selectedSubject = editableSubjects.find((subject) => subject.id === subjectId);
   const filteredMappings = useMemo(

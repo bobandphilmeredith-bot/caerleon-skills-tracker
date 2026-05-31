@@ -33,7 +33,16 @@ export function DashboardPage({ dashboard }: { dashboard: Dashboard }) {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">
-        <CoverageHeatmap title={dashboard.heatmapTitle} rows={dashboard.heatmapRows} rowTitles={dashboard.heatmapRowTitles} columns={dashboard.heatmapColumns} values={dashboard.heatmapValues} theme={theme} />
+        <CoverageHeatmap
+          title={dashboard.heatmapTitle}
+          description={dashboard.heatmapDescription}
+          rows={dashboard.heatmapRows}
+          rowTitles={dashboard.heatmapRowTitles}
+          columns={dashboard.heatmapColumns}
+          values={dashboard.heatmapValues}
+          cells={dashboard.heatmapCells}
+          theme={theme}
+        />
 
         <CoverageAlerts dashboard={dashboard} mappings={mappings} subjects={subjects} yearGroups={yearGroups} frameworkCoverage={frameworkCoverage} crossCuttingThemes={crossCuttingThemes} theme={theme} />
       </div>

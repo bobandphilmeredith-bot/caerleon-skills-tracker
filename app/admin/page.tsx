@@ -4,16 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import { AccessDenied } from "@/components/AccessDenied";
 import { PageHeader } from "@/components/PageHeader";
 import { progressionSteps } from "@/lib/progression";
-import type { AoleConfig, ElementDefinition, SubjectConfig } from "@/lib/types";
+import type { AoleConfig, ElementDefinition, FrameworkDefinition, ProgressionStep, SubjectConfig } from "@/lib/types";
 import { areaThemes } from "@/lib/theme";
 import { defaultSchoolSettings, type BrandingSettings, type FrameworkThemeSetting, useSchoolSettings } from "@/lib/schoolSettings";
 import { useCurrentSchool } from "@/lib/currentSchool";
 import { useAuth } from "@/lib/auth";
 import { isDemoLoginEnabled, supabase } from "@/lib/supabaseClient";
 
-type AdminFramework = { name: string; shortName: string; active: boolean; strands: AdminStrand[] };
-type AdminStrand = { name: string; active: boolean; elements: AdminElement[] };
-type AdminElement = ElementDefinition & { active: boolean };
+type AdminFramework = { id?: string; schoolId?: string; name: string; shortName: string; active: boolean; displayOrder?: number; strands: AdminStrand[] };
+type AdminStrand = { id?: string; schoolId?: string; frameworkId?: string; name: string; shortName?: string | null; description?: string | null; active: boolean; displayOrder?: number; elements: AdminElement[] };
+type AdminElement = ElementDefinition & { active: boolean; displayOrder?: number };
 type AdminTab = "School" | "Branding" | "Subjects" | "AoLE" | "Frameworks" | "Records";
 
 const adminTabs: AdminTab[] = ["School", "Branding", "Subjects", "AoLE", "Frameworks", "Records"];
@@ -48,6 +48,8 @@ export default function AdminPage() {
   const [frameworkThemeDirty, setFrameworkThemeDirty] = useState(false);
   const [frameworkThemeSaving, setFrameworkThemeSaving] = useState(false);
   const [frameworkThemeError, setFrameworkThemeError] = useState("");
+  const [frameworkSaving, setFrameworkSaving] = useState(false);
+  const [frameworkError, setFrameworkError] = useState("");
   const schoolOptions = schools.some((school) => school.id === currentSchoolId) ? schools : [currentSchool, ...schools];
 
   if (!canManageSchool) {
@@ -297,11 +299,180 @@ export default function AdminPage() {
     );
   }
 
-  function saveFrameworksLocally() {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(`skills-tracker-admin-frameworks-${currentSchoolId}`, JSON.stringify(frameworks));
+  async function saveFrameworksToSupabase() {
+    setFrameworkError("");
+
+    const invalidFramework = frameworks.find((framework) => !framework.name.trim() || !framework.shortName.trim());
+    if (invalidFramework) {
+      setFrameworkError("Every framework needs a name and short name before saving.");
+      return;
     }
-    setNotice("Framework progression descriptors saved.");
+
+    const invalidStrand = frameworks.flatMap((framework) => framework.strands).find((strand) => !strand.name.trim());
+    if (invalidStrand) {
+      setFrameworkError("Every strand needs a name before saving.");
+      return;
+    }
+
+    const invalidElement = frameworks.flatMap((framework) => framework.strands.flatMap((strand) => strand.elements)).find((element) => !element.name.trim());
+    if (invalidElement) {
+      setFrameworkError("Every element needs a name before saving.");
+      return;
+    }
+
+    if (!isDemoLoginEnabled && !supabase) {
+      setFrameworkError("Supabase is not configured, so framework changes could not be saved.");
+      return;
+    }
+
+    setFrameworkSaving(true);
+
+    if (isDemoLoginEnabled) {
+      setFrameworkSaving(false);
+      setNotice("Framework changes saved for this demo session.");
+      return;
+    }
+
+    const savedFrameworks: AdminFramework[] = [];
+    const client = supabase!;
+
+    for (const [frameworkIndex, framework] of frameworks.entries()) {
+      const frameworkPayload = {
+        school_id: currentSchool.id,
+        name: framework.name.trim(),
+        short_name: framework.shortName.trim(),
+        description: null,
+        display_order: framework.displayOrder ?? frameworkIndex + 1,
+        active: framework.active
+      };
+      const frameworkResult = framework.id
+        ? await client.from("frameworks").update(frameworkPayload).eq("id", framework.id).eq("school_id", currentSchool.id).select("id,school_id,display_order").single()
+        : await client.from("frameworks").insert(frameworkPayload).select("id,school_id,display_order").single();
+
+      if (frameworkResult.error || !frameworkResult.data) {
+        setFrameworkSaving(false);
+        setFrameworkError(frameworkResult.error?.message ?? `Could not save ${framework.name}.`);
+        return;
+      }
+
+      const savedStrands: AdminStrand[] = [];
+      const frameworkId = frameworkResult.data.id;
+
+      for (const [strandIndex, strand] of framework.strands.entries()) {
+        const strandPayload = {
+          school_id: currentSchool.id,
+          framework_id: frameworkId,
+          name: strand.name.trim(),
+          short_name: strand.shortName?.trim() || strand.name.trim(),
+          description: strand.description ?? null,
+          display_order: strand.displayOrder ?? strandIndex + 1,
+          active: strand.active
+        };
+        const strandResult = strand.id
+          ? await client.from("strands").update(strandPayload).eq("id", strand.id).eq("school_id", currentSchool.id).select("id,school_id,framework_id,display_order").single()
+          : await client.from("strands").insert(strandPayload).select("id,school_id,framework_id,display_order").single();
+
+        if (strandResult.error || !strandResult.data) {
+          setFrameworkSaving(false);
+          setFrameworkError(strandResult.error?.message ?? `Could not save ${strand.name}.`);
+          return;
+        }
+
+        const savedElements: AdminElement[] = [];
+        const strandId = strandResult.data.id;
+
+        for (const [elementIndex, element] of strand.elements.entries()) {
+          const explanation = element.explanation?.trim() || element.officialWording?.trim() || element.name.trim();
+          const elementPayload = {
+            school_id: currentSchool.id,
+            strand_id: strandId,
+            name: element.name.trim(),
+            description: explanation,
+            official_wording: element.officialWording?.trim() || element.name.trim(),
+            teacher_friendly_explanation: explanation,
+            display_order: element.displayOrder ?? elementIndex + 1,
+            active: element.active
+          };
+          const elementResult = element.id
+            ? await client.from("elements").update(elementPayload).eq("id", element.id).eq("school_id", currentSchool.id).select("id,school_id,display_order").single()
+            : await client.from("elements").insert(elementPayload).select("id,school_id,display_order").single();
+
+          if (elementResult.error || !elementResult.data) {
+            setFrameworkSaving(false);
+            setFrameworkError(elementResult.error?.message ?? `Could not save ${element.name}.`);
+            return;
+          }
+
+          const elementId = elementResult.data.id;
+          const descriptorRefs = [];
+
+          for (const step of progressionSteps) {
+            const text = element.progressionDescriptors?.[step]?.trim() ?? "";
+            const existingDescriptor = element.progressionDescriptorRefs?.find((descriptor) => descriptor.progressionStep === step || descriptor.progressionStepNumber === progressionStepNumber(step));
+
+            if (!text) {
+              if (existingDescriptor?.id) await client.from("progression_descriptors").update({ active: false }).eq("id", existingDescriptor.id).eq("school_id", currentSchool.id);
+              continue;
+            }
+
+            const descriptorPayload = {
+              school_id: currentSchool.id,
+              element_id: elementId,
+              progression_step: progressionStepNumber(step),
+              descriptor_text: text,
+              display_order: progressionStepNumber(step),
+              active: true
+            };
+            const descriptorResult = existingDescriptor?.id
+              ? await client.from("progression_descriptors").update(descriptorPayload).eq("id", existingDescriptor.id).eq("school_id", currentSchool.id).select("id").single()
+              : await client.from("progression_descriptors").upsert(descriptorPayload, { onConflict: "element_id,progression_step" }).select("id").single();
+
+            if (descriptorResult.error || !descriptorResult.data) {
+              setFrameworkSaving(false);
+              setFrameworkError(descriptorResult.error?.message ?? `Could not save ${element.name} ${step} descriptor.`);
+              return;
+            }
+
+            descriptorRefs.push({
+              id: descriptorResult.data.id,
+              progressionStep: step,
+              progressionStepNumber: progressionStepNumber(step),
+              descriptorText: text
+            });
+          }
+
+          savedElements.push({
+            ...element,
+            id: elementId,
+            schoolId: currentSchool.id,
+            displayOrder: elementResult.data.display_order ?? element.displayOrder ?? elementIndex + 1,
+            progressionDescriptorRefs: descriptorRefs
+          });
+        }
+
+        savedStrands.push({
+          ...strand,
+          id: strandId,
+          schoolId: currentSchool.id,
+          frameworkId,
+          displayOrder: strandResult.data.display_order ?? strand.displayOrder ?? strandIndex + 1,
+          elements: savedElements
+        });
+      }
+
+      savedFrameworks.push({
+        ...framework,
+        id: frameworkId,
+        schoolId: currentSchool.id,
+        displayOrder: frameworkResult.data.display_order ?? framework.displayOrder ?? frameworkIndex + 1,
+        strands: savedStrands
+      });
+    }
+
+    if (typeof window !== "undefined") window.localStorage.removeItem(`skills-tracker-admin-frameworks-${currentSchoolId}`);
+    setFrameworks(savedFrameworks);
+    setFrameworkSaving(false);
+    setNotice("Frameworks, strands, elements and progression descriptors saved to Supabase.");
   }
 
   function addStrand(frameworkIndex: number) {
@@ -770,7 +941,7 @@ export default function AdminPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Framework Library</h2>
-            <p className="mt-1 text-sm text-gray-600">Edit frameworks, strands, elements, progression descriptors, explanations and classroom opportunities in local system state.</p>
+            <p className="mt-1 text-sm text-gray-600">Edit frameworks, strands, elements and progression descriptors in Supabase. Add Curriculum uses these saved records.</p>
           </div>
           <button className="focus-ring btn btn-primary" type="button" onClick={addFramework}>
             Add framework
@@ -795,8 +966,9 @@ export default function AdminPage() {
               <div className="mt-4 space-y-4">
                 {framework.strands.map((strand, strandIndex) => (
                   <div key={`${strand.name}-${strandIndex}`} className="rounded-lg bg-gray-50 p-4">
-                    <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+                    <div className="grid gap-3 sm:grid-cols-[1fr_220px_auto_auto]">
                       <input className="focus-ring rounded-md border border-gray-300 px-3 py-2 font-semibold" value={strand.name} onChange={(event) => updateStrand(frameworkIndex, strandIndex, { name: event.target.value })} />
+                      <input className="focus-ring rounded-md border border-gray-300 px-3 py-2" value={strand.shortName ?? ""} onChange={(event) => updateStrand(frameworkIndex, strandIndex, { shortName: event.target.value })} placeholder="Short label" />
                       <button className="focus-ring btn btn-muted text-xs" type="button" onClick={() => addElement(frameworkIndex, strandIndex)}>
                         Add element
                       </button>
@@ -861,8 +1033,9 @@ export default function AdminPage() {
         </div>
       </section>
 
-      <button className={activeTab === "Frameworks" ? "focus-ring btn btn-secondary" : "hidden"} type="button" onClick={saveFrameworksLocally}>
-        Save system changes
+      {frameworkError && activeTab === "Frameworks" ? <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{frameworkError}</p> : null}
+      <button className={activeTab === "Frameworks" ? "focus-ring btn btn-secondary" : "hidden"} type="button" onClick={saveFrameworksToSupabase} disabled={frameworkSaving}>
+        {frameworkSaving ? "Saving..." : "Save framework changes"}
       </button>
 
       {wizardOpen ? (
@@ -997,6 +1170,10 @@ function normaliseColour(value: string) {
   return /^#[0-9a-fA-F]{6}$/.test(value) ? value : "#741B47";
 }
 
+function progressionStepNumber(step: ProgressionStep) {
+  return Number(step.replace("Step ", ""));
+}
+
 function newElement(): AdminElement {
   return {
     name: "New element",
@@ -1017,27 +1194,20 @@ function newElement(): AdminElement {
 }
 
 function loadAdminFrameworks(frameworkLibrary: Parameters<typeof normaliseFrameworks>[0], schoolId: string): AdminFramework[] {
-  if (typeof window !== "undefined") {
-    const saved = window.localStorage.getItem(`skills-tracker-admin-frameworks-${schoolId}`);
-    if (saved) {
-      try {
-        return JSON.parse(saved) as AdminFramework[];
-      } catch {
-        window.localStorage.removeItem(`skills-tracker-admin-frameworks-${schoolId}`);
-      }
-    }
-  }
+  if (typeof window !== "undefined") window.localStorage.removeItem(`skills-tracker-admin-frameworks-${schoolId}`);
   return normaliseFrameworks(frameworkLibrary);
 }
 
-function normaliseFrameworks(frameworkLibrary: { name: string; shortName: string; strands: { name: string; elements: ElementDefinition[] }[] }[]): AdminFramework[] {
-  return frameworkLibrary.map((framework) => ({
+function normaliseFrameworks(frameworkLibrary: FrameworkDefinition[]): AdminFramework[] {
+  return frameworkLibrary.map((framework, frameworkIndex) => ({
     ...framework,
+    displayOrder: frameworkIndex + 1,
     active: true,
-    strands: framework.strands.map((strand) => ({
+    strands: framework.strands.map((strand, strandIndex) => ({
       ...strand,
+      displayOrder: strandIndex + 1,
       active: true,
-      elements: strand.elements.map((element) => ({ ...element, progressionDescriptors: element.progressionDescriptors ?? newElement().progressionDescriptors, active: true }))
+      elements: strand.elements.map((element, elementIndex) => ({ ...element, displayOrder: elementIndex + 1, progressionDescriptors: element.progressionDescriptors ?? newElement().progressionDescriptors, active: true }))
     }))
   }));
 }

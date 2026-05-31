@@ -277,8 +277,7 @@ export default function AddEntryPage() {
     setIsSaving(false);
     saveInFlightRef.current = false;
     if (result.ok) {
-      setCurrentEntrySaved(true);
-      setSaveMessage("Mapping saved. Use Save and add new or Clear form before creating another entry.");
+      resetForm("Mapping saved. Ready for a new entry.");
     } else {
       setSaveMessage(`Could not save mapping: ${result.message ?? "Unknown Supabase error"}`);
     }

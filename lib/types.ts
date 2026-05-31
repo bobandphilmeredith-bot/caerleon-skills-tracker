@@ -186,13 +186,27 @@ export type Dashboard = {
   description: string;
   cards: Card[];
   heatmapTitle: string;
+  heatmapDescription?: string;
   heatmapRows: string[];
   heatmapRowTitles?: string[];
   heatmapColumns: string[];
   heatmapValues: number[][];
+  heatmapCells?: HeatmapCell[][];
   reviewItems: ReviewItem[];
   entries: MappingEntry[];
   coverage?: FrameworkCoverage;
+};
+
+export type HeatmapCell = {
+  percentage: number | null;
+  count: number;
+  total: number;
+  entries: {
+    id: string;
+    title: string;
+    subject: string;
+    schemeReference: string;
+  }[];
 };
 
 export type SubjectOverview = {

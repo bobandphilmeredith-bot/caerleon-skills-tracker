@@ -1,6 +1,6 @@
 import * as base from "@/lib/fakeData";
 import { defaultCrossCuttingThemes } from "@/lib/crossCuttingThemes";
-import type { AoleConfig, Card, CrossCuttingTheme, Dashboard, ElementCoverageRow, FrameworkCoverage, FrameworkDefinition, MappingEntry, MappingFrameworkReference, School, SubjectConfig, SubjectDetail, SubjectOverview } from "@/lib/types";
+import type { AoleConfig, Card, CrossCuttingTheme, Dashboard, ElementCoverageRow, FrameworkCoverage, FrameworkDefinition, HeatmapCell, MappingEntry, MappingFrameworkReference, School, SubjectConfig, SubjectDetail, SubjectOverview } from "@/lib/types";
 
 export type SchoolDataBundle = {
   schoolId: string;
@@ -151,6 +151,7 @@ export function buildBundle(input: { schoolId: string; subjectConfigs: SubjectCo
 }
 
 function makeWholeSchoolDashboard(schoolId: string, subjects: string[], mappings: MappingEntry[], frameworkReferences: ExpandedFrameworkReference[]): Dashboard {
+  const heatmapCells = wholeSchoolHeatValues(mappings, frameworkReferences);
   return {
     eyebrow: "Whole-school view",
     title: "Whole-school Dashboard",
@@ -161,10 +162,12 @@ function makeWholeSchoolDashboard(schoolId: string, subjects: string[], mappings
       { label: "Subjects included", value: String(subjects.length), note: "Subject-first curriculum list configured in admin." },
       { label: "Recent updates", value: String(mappings.filter((entryItem) => entryItem.lastMappedDate >= "2026-04-01").length), note: "Curriculum entries updated this term." }
     ],
-    heatmapTitle: "Framework Coverage by Year Group",
+    heatmapTitle: "Mapped Evidence by Year Group",
+    heatmapDescription: "Shows the proportion of mapped curriculum entries in each year group that include at least one reference to each framework or theme area.",
     heatmapRows: ["Literacy", "Numeracy", "DCF", "Cross-cutting themes"],
     heatmapColumns: base.yearGroups,
-    heatmapValues: wholeSchoolHeatValues(mappings, frameworkReferences),
+    heatmapValues: heatmapCells.map((row) => row.map((cell) => cell.percentage ?? 0)),
+    heatmapCells,
     reviewItems: [],
     entries: [...mappings].sort((a, b) => b.lastMappedDate.localeCompare(a.lastMappedDate)).slice(0, 8)
   };
@@ -346,7 +349,7 @@ function subject(name: string, aole: string | undefined, displayOrder: number, s
   return { schoolId, id: `${schoolId}-${name}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"), name, aole, active: true, displayOrder, appearsInMappingDropdowns: true };
 }
 
-function wholeSchoolHeatValues(mappings: MappingEntry[], frameworkReferences: ExpandedFrameworkReference[]) {
+function wholeSchoolHeatValues(mappings: MappingEntry[], frameworkReferences: ExpandedFrameworkReference[]): HeatmapCell[][] {
   const frameworkGroups = [
     ["Literacy", "Literacy Framework"],
     ["Numeracy", "Numeracy Framework"],
@@ -354,11 +357,28 @@ function wholeSchoolHeatValues(mappings: MappingEntry[], frameworkReferences: Ex
     ["__theme_links__"]
   ];
   return frameworkGroups.map((frameworks) =>
-    base.yearGroups.map((year) =>
-      frameworks.includes("__theme_links__")
-        ? mappings.filter((entry) => entry.year === year && (entry.crossCuttingThemeIds?.length ?? entry.crossCuttingThemes?.length ?? 0) > 0).length
-        : frameworkReferences.filter((entry) => frameworks.includes(entry.framework) && entry.year === year).length
-    )
+    base.yearGroups.map((year) => {
+      const yearMappings = mappings.filter((entry) => entry.year === year);
+      const matchingIds = frameworks.includes("__theme_links__")
+        ? new Set(
+            yearMappings
+              .filter((entry) => (entry.crossCuttingThemeElementIds?.length ?? entry.crossCuttingThemeElementLinks?.length ?? entry.crossCuttingThemeIds?.length ?? entry.crossCuttingThemes?.length ?? 0) > 0)
+              .map((entry) => entry.id)
+          )
+        : new Set(frameworkReferences.filter((reference) => frameworks.includes(reference.framework) && reference.year === year).map((reference) => reference.mappingId));
+      const matchedEntries = yearMappings.filter((entry) => matchingIds.has(entry.id));
+      return {
+        percentage: yearMappings.length ? Math.round((matchedEntries.length / yearMappings.length) * 100) : null,
+        count: matchedEntries.length,
+        total: yearMappings.length,
+        entries: matchedEntries.map((entry) => ({
+          id: entry.id,
+          title: entry.unit || entry.context || "Untitled curriculum",
+          subject: entry.subject,
+          schemeReference: entry.schemeReference
+        }))
+      };
+    })
   );
 }
 

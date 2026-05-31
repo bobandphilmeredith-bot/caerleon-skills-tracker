@@ -47,7 +47,7 @@ export function DashboardPage({ dashboard }: { dashboard: Dashboard }) {
         <CoverageAlerts dashboard={dashboard} mappings={mappings} subjects={subjects} yearGroups={yearGroups} frameworkCoverage={frameworkCoverage} crossCuttingThemes={crossCuttingThemes} theme={theme} />
       </div>
 
-      {dashboard.coverage ? <FrameworkCoveragePanel coverage={dashboard.coverage} theme={theme} /> : null}
+      {dashboard.coverage ? <FrameworkCoveragePanel coverage={dashboard.coverage} entries={mappings} yearGroups={yearGroups} theme={theme} /> : null}
 
       <RevisitFrequency framework={dashboard.coverage?.framework} theme={theme} />
 

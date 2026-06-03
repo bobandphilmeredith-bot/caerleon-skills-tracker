@@ -67,7 +67,7 @@ const primaryActions = [
 
 type NavItem = (typeof navGroups)[number]["items"][number] | (typeof primaryActions)[number];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, buildTimestamp }: { children: React.ReactNode; buildTimestamp: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const { settings } = useSchoolSettings();
@@ -189,6 +189,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="rounded-full border bg-[#fff8fb] px-3 py-1 text-xs font-bold" style={{ borderColor: settings.branding.primaryColour, color: settings.branding.primaryColour }}>
                 Curriculum mapping only
               </div>
+              <div className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-bold text-gray-500">
+                Updated {formatBuildTimestamp(buildTimestamp)}
+              </div>
             </div>
           </div>
         </div>
@@ -240,6 +243,20 @@ function isPublicPage(pathname: string) {
 
 function canShowItem(item: NavItem, currentUser: ReturnType<typeof useAuth>["currentUser"]) {
   return !("roles" in item) || !item.roles || (currentUser && item.roles.includes(currentUser.role));
+}
+
+function formatBuildTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "unknown";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Europe/London"
+  }).format(date);
 }
 
 type NavGroup = (typeof navGroups)[number] & { items: NavItem[] };

@@ -4,6 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { SchoolSettingsProvider } from "@/lib/schoolSettings";
 import { CurrentSchoolProvider } from "@/lib/currentSchool";
 import { AuthProvider } from "@/lib/auth";
+import { buildTimestamp } from "@/lib/buildInfo";
 
 export const metadata: Metadata = {
   title: "Caerleon Skills Tracker",
@@ -21,7 +22,7 @@ export default function RootLayout({
         <SchoolSettingsProvider>
           <AuthProvider>
             <CurrentSchoolProvider>
-              <AppShell>{children}</AppShell>
+              <AppShell buildTimestamp={buildTimestamp}>{children}</AppShell>
             </CurrentSchoolProvider>
           </AuthProvider>
         </SchoolSettingsProvider>

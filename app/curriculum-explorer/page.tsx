@@ -5,7 +5,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { useCurrentSchool } from "@/lib/currentSchool";
-import { entryHasFramework, frameworkReferenceText, frameworkShortLabel, matchingFrameworkReferences, primaryReferenceForFramework } from "@/lib/mappingFrameworks";
+import { entryHasFramework, frameworkMatches, frameworkReferenceText, frameworkShortLabel, matchingFrameworkReferences, primaryReferenceForFramework } from "@/lib/mappingFrameworks";
 import type { ElementDefinition, FrameworkDefinition, MappingEntry, MappingFrameworkReference } from "@/lib/types";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 
@@ -62,9 +62,21 @@ export default function CurriculumExplorerPage() {
     });
   }, [element, framework, keyword, mappings, progressionReference, sortBy, strand, subject, term, yearGroup]);
 
-  const popularElements = topCounts(mappings.flatMap((entry) => matchingFrameworkReferences(entry).map((reference) => reference.element))).slice(0, 5);
-  const representedStrands = topCounts(mappings.flatMap((entry) => matchingFrameworkReferences(entry).map((reference) => reference.strandShortName ?? reference.strand))).slice(0, 5);
-  const recentSubjects = topCounts([...mappings].sort((a, b) => b.lastMappedDate.localeCompare(a.lastMappedDate)).slice(0, 30).map((entry) => entry.subject)).slice(0, 5);
+  const filteredReferences = useMemo(
+    () =>
+      filteredEntries.flatMap((entry) =>
+        matchingFrameworkReferences(entry)
+          .filter((reference) => framework === allValue || frameworkMatchesReference(reference, framework))
+          .filter((reference) => strand === allValue || reference.strand === strand)
+          .filter((reference) => element === allValue || reference.element === element)
+          .filter((reference) => progressionReference === allValue || referenceHasProgressionStep(reference, progressionReference))
+      ),
+    [element, filteredEntries, framework, progressionReference, strand]
+  );
+
+  const popularElements = useMemo(() => topCounts(filteredReferences.map((reference) => reference.element)).slice(0, 5), [filteredReferences]);
+  const representedStrands = useMemo(() => topCounts(filteredReferences.map((reference) => reference.strandShortName ?? reference.strand)).slice(0, 5), [filteredReferences]);
+  const recentSubjects = useMemo(() => topCounts([...filteredEntries].sort((a, b) => b.lastMappedDate.localeCompare(a.lastMappedDate)).slice(0, 30).map((entry) => entry.subject)).slice(0, 5), [filteredEntries]);
 
   function updateFramework(nextFramework: string) {
     setFramework(nextFramework);
@@ -224,12 +236,12 @@ function SummaryPanel({ title, rows }: { title: string; rows: { label: string; v
     <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
       <h2 className="text-sm font-bold uppercase tracking-[0.12em] text-gray-500">{title}</h2>
       <div className="mt-3 space-y-2">
-        {rows.map((row) => (
+        {rows.length ? rows.map((row) => (
           <div key={row.label} className="flex items-center justify-between gap-3 rounded-md bg-gray-50 px-3 py-2 text-sm">
             <span className="font-semibold text-gray-800">{row.label}</span>
             <span className="font-bold text-[#741B47]">{row.value}</span>
           </div>
-        ))}
+        )) : <p className="rounded-md bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-600">No matching data</p>}
       </div>
     </article>
   );
@@ -561,6 +573,14 @@ function descriptorTextForStep(element: ElementDefinition | undefined, step: str
 
 function progressionStepLabel(step: number | null | undefined) {
   return step ? `Step ${step}` : null;
+}
+
+function referenceHasProgressionStep(reference: MappingFrameworkReference, step: string) {
+  return progressionStepLabel(reference.progressionStep) === step || validProgressionStep(reference.progressionReference) === step;
+}
+
+function frameworkMatchesReference(reference: MappingFrameworkReference, framework: string) {
+  return frameworkMatches(reference.frameworkShortName ?? reference.framework, framework);
 }
 
 function validProgressionStep(step: string | undefined) {

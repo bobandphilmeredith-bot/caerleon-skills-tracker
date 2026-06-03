@@ -146,7 +146,7 @@ export function AppShell({ children, buildTimestamp }: { children: React.ReactNo
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3 text-sm font-semibold text-gray-600">
               <img src={settings.branding.logoDataUrl} alt="" className="h-8 w-8 object-contain" />
-              <span>{settings.branding.schoolName} curriculum mapping system</span>
+              <span>{settings.branding.schoolName}</span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {currentUser ? (

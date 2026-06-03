@@ -175,6 +175,7 @@ function makeWholeSchoolDashboard(schoolId: string, subjects: string[], mappings
 
 function makeDashboard(framework: string, title: string, description: string, coverage: Record<string, FrameworkCoverage>, mappings: MappingEntry[], frameworkReferences: ExpandedFrameworkReference[]): Dashboard {
   const frameworkCoverage = coverage[framework] ?? emptyCoverage(framework);
+  const heatmapCells = frameworkHeatCells(framework, frameworkCoverage.strands, frameworkReferences);
   return {
     eyebrow: "Framework view",
     title,
@@ -185,11 +186,14 @@ function makeDashboard(framework: string, title: string, description: string, co
       { label: "Elements tracked", value: String(frameworkCoverage.strands.reduce((sum, item) => sum + item.elements.length, 0)), note: "Elements available in the browser." },
       { label: "Unmapped elements", value: String(frameworkCoverage.unmappedElements.length), note: "Elements with no current entries yet." }
     ],
-    heatmapTitle: `${frameworkCoverage.framework} Coverage by Year Group`,
+    heatmapTitle: `${frameworkCoverage.framework} Skill Links by Year Group`,
+    heatmapDescription: `Shows which strands are most represented in each year group. Each cell shows the number of skill links first, with its share of that year group's ${frameworkCoverage.framework} links underneath.`,
     heatmapRows: frameworkCoverage.strands.map((item) => strandDisplayName(item)),
     heatmapRowTitles: frameworkCoverage.strands.map((item) => item.strand),
     heatmapColumns: base.yearGroups,
-    heatmapValues: frameworkHeatValues(framework, frameworkCoverage.strands, frameworkReferences),
+    heatmapValues: heatmapCells.map((row) => row.map((cell) => cell.percentage ?? 0)),
+    heatmapCells,
+    heatmapDisplayMode: "countShare",
     reviewItems: [
       { title: "Distribution by strand", status: "Visibility", description: "Shows how mapped opportunities are spread across this framework." },
       { title: "Element library", status: "Visibility", description: "Teachers can browse strand and element explanations before mapping." },
@@ -382,8 +386,24 @@ function wholeSchoolHeatValues(mappings: MappingEntry[], frameworkReferences: Ex
   );
 }
 
-function frameworkHeatValues(framework: string, strands: FrameworkCoverage["strands"], frameworkReferences: ExpandedFrameworkReference[]) {
-  return strands.map((strand) => base.yearGroups.map((year) => frameworkReferences.filter((entry) => entry.framework === framework && entry.strand === strand.strand && entry.year === year).length));
+function frameworkHeatCells(framework: string, strands: FrameworkCoverage["strands"], frameworkReferences: ExpandedFrameworkReference[]): HeatmapCell[][] {
+  return strands.map((strand) =>
+    base.yearGroups.map((year) => {
+      const yearReferences = frameworkReferences.filter((reference) => reference.framework === framework && reference.year === year);
+      const strandReferences = yearReferences.filter((reference) => reference.strand === strand.strand);
+      return {
+        percentage: yearReferences.length ? Math.round((strandReferences.length / yearReferences.length) * 100) : null,
+        count: strandReferences.length,
+        total: yearReferences.length,
+        entries: uniqueByMappingId(strandReferences).map((reference) => ({
+          id: reference.mappingId,
+          title: reference.element,
+          subject: reference.subject,
+          schemeReference: reference.element
+        }))
+      };
+    })
+  );
 }
 
 function countFramework(items: ExpandedFrameworkReference[], framework: string) {
@@ -392,6 +412,10 @@ function countFramework(items: ExpandedFrameworkReference[], framework: string) 
 
 function unique(items: string[]) {
   return Array.from(new Set(items)).filter(Boolean);
+}
+
+function uniqueByMappingId(items: ExpandedFrameworkReference[]) {
+  return Array.from(new Map(items.map((item) => [item.mappingId, item])).values());
 }
 
 type ExpandedFrameworkReference = MappingFrameworkReference & {

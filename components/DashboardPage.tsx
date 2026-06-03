@@ -47,6 +47,7 @@ export function DashboardPage({ dashboard }: { dashboard: Dashboard }) {
           columns={dashboard.heatmapColumns}
           values={dashboard.heatmapValues}
           cells={dashboard.heatmapCells}
+          displayMode={dashboard.heatmapDisplayMode}
           theme={theme}
         />
 

@@ -192,6 +192,7 @@ export type Dashboard = {
   heatmapColumns: string[];
   heatmapValues: number[][];
   heatmapCells?: HeatmapCell[][];
+  heatmapDisplayMode?: "percentage" | "countShare";
   reviewItems: ReviewItem[];
   entries: MappingEntry[];
   coverage?: FrameworkCoverage;

@@ -9,6 +9,7 @@ export function CoverageHeatmap({
   columns,
   values,
   cells,
+  displayMode = "percentage",
   theme = areaThemes.overview
 }: {
   title: string;
@@ -18,6 +19,7 @@ export function CoverageHeatmap({
   columns: string[];
   values: number[][];
   cells?: HeatmapCell[][];
+  displayMode?: "percentage" | "countShare";
   theme?: AreaTheme;
 }) {
   return (
@@ -43,7 +45,7 @@ export function CoverageHeatmap({
               </div>
             ))}
             {rows.map((row, rowIndex) => (
-              <Row key={row} row={row} title={rowTitles?.[rowIndex]} values={values[rowIndex]} cells={cells?.[rowIndex]} theme={theme} />
+              <Row key={row} row={row} title={rowTitles?.[rowIndex]} values={values[rowIndex]} cells={cells?.[rowIndex]} displayMode={displayMode} theme={theme} />
             ))}
           </div>
         </div>
@@ -52,7 +54,7 @@ export function CoverageHeatmap({
   );
 }
 
-function Row({ row, title, values, cells, theme }: { row: string; title?: string; values: number[]; cells?: HeatmapCell[]; theme: AreaTheme }) {
+function Row({ row, title, values, cells, displayMode, theme }: { row: string; title?: string; values: number[]; cells?: HeatmapCell[]; displayMode: "percentage" | "countShare"; theme: AreaTheme }) {
   return (
     <>
       <div className="flex min-h-12 items-center rounded-md px-3 text-sm font-bold leading-snug" style={{ backgroundColor: theme.soft, color: theme.text }} title={title}>
@@ -62,20 +64,25 @@ function Row({ row, title, values, cells, theme }: { row: string; title?: string
         const cell = cells?.[index];
         const displayValue = cell?.percentage ?? value;
         const hasMappings = cell ? cell.total > 0 : true;
+        const countShareMode = displayMode === "countShare" && cell;
         return (
           <div
             key={`${row}-${index}`}
-            className="grid min-h-14 place-items-center rounded-md px-2 text-center text-sm font-bold"
+            className="grid min-h-16 place-items-center rounded-md px-2 text-center text-sm font-bold"
             style={{ backgroundColor: hasMappings ? heatColour(displayValue, theme) : theme.soft, color: hasMappings && displayValue > 68 ? theme.contrast : theme.text }}
-            title={cell ? cellTitle(row, cell) : `${value}% mapped`}
+            title={cell ? cellTitle(row, cell, displayMode) : `${value}% mapped`}
           >
             {hasMappings ? (
               <span>
-                <span className="block">{displayValue}%</span>
-                {cell ? <span className="mt-0.5 block text-[0.68rem] font-semibold opacity-80">{cell.count} of {cell.total} entries</span> : null}
+                <span className={countShareMode ? "block text-lg" : "block"}>{countShareMode ? cell.count : `${displayValue}%`}</span>
+                {cell ? (
+                  <span className="mt-0.5 block text-[0.68rem] font-semibold opacity-80">
+                    {countShareMode ? `${displayValue}% of ${cell.total} links` : `${cell.count} of ${cell.total} entries`}
+                  </span>
+                ) : null}
               </span>
             ) : (
-              <span className="text-xs leading-4">No mappings</span>
+              <span className="text-xs leading-4">{displayMode === "countShare" ? "No links" : "No mappings"}</span>
             )}
           </div>
         );
@@ -84,8 +91,9 @@ function Row({ row, title, values, cells, theme }: { row: string; title?: string
   );
 }
 
-function cellTitle(row: string, cell: HeatmapCell) {
-  if (!cell.total) return `${row}: no mappings in this year group`;
+function cellTitle(row: string, cell: HeatmapCell, displayMode: "percentage" | "countShare") {
+  if (!cell.total) return `${row}: ${displayMode === "countShare" ? "no skill links" : "no mappings"} in this year group`;
+  if (displayMode === "countShare") return `${row}: ${cell.count} of ${cell.total} skill links in this year group`;
   const examples = cell.entries.slice(0, 4).map((entry) => `${entry.subject}: ${entry.schemeReference || entry.title}`).join("; ");
   return `${row}: ${cell.count} of ${cell.total} entries include this area${examples ? `. Examples: ${examples}` : ""}`;
 }

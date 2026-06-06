@@ -87,6 +87,7 @@ export default function UserManagementPage() {
   const [bulkSubjectSearch, setBulkSubjectSearch] = useState("");
   const [savingBulkSubjects, setSavingBulkSubjects] = useState(false);
   const [bulkSubjectMessage, setBulkSubjectMessage] = useState("");
+  const [bulkSubjectPanelOpen, setBulkSubjectPanelOpen] = useState(false);
 
   const schoolOptions = isDemoMode ? schools.map((school) => ({ id: school.id, name: school.name, slug: school.slug, active: school.active })) : managedSchools;
   const targetSchoolId = currentUser?.role === "platform_admin" ? selectedSchoolId : (currentUser?.schoolId ?? "");
@@ -551,72 +552,81 @@ export default function UserManagementPage() {
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-700">{dirtyBulkSubjectUserIds.length} unsaved</span>
-                <button className="focus-ring btn btn-primary px-3 py-2 text-sm" type="button" onClick={saveBulkSubjectAssignments} disabled={savingBulkSubjects || !hasLiveSupabaseSchool || !dirtyBulkSubjectUserIds.length}>
-                  {savingBulkSubjects ? "Saving..." : "Save subject assignments"}
+                <button className="focus-ring btn btn-muted px-3 py-2 text-sm" type="button" onClick={() => setBulkSubjectPanelOpen((current) => !current)} aria-expanded={bulkSubjectPanelOpen}>
+                  {bulkSubjectPanelOpen ? "Collapse" : "Open picker"}
                 </button>
+                {bulkSubjectPanelOpen ? (
+                  <button className="focus-ring btn btn-primary px-3 py-2 text-sm" type="button" onClick={saveBulkSubjectAssignments} disabled={savingBulkSubjects || !hasLiveSupabaseSchool || !dirtyBulkSubjectUserIds.length}>
+                    {savingBulkSubjects ? "Saving..." : "Save subject assignments"}
+                  </button>
+                ) : null}
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-end gap-3">
-              <label className="min-w-72 flex-1">
-                <span className="mb-1 block text-sm font-semibold text-gray-700">Search staff</span>
-                <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={bulkSubjectSearch} onChange={(event) => setBulkSubjectSearch(event.target.value)} placeholder="Search teacher or subject lead" />
-              </label>
-              <button className="focus-ring btn btn-muted px-3 py-2 text-sm" type="button" onClick={() => setBulkSubjectSearch("")}>
-                Clear search
-              </button>
-            </div>
+            {bulkSubjectPanelOpen ? (
+              <>
+                <div className="mt-4 flex flex-wrap items-end gap-3">
+                  <label className="min-w-72 flex-1">
+                    <span className="mb-1 block text-sm font-semibold text-gray-700">Search staff</span>
+                    <input className="focus-ring w-full rounded-md border border-gray-300 px-3 py-2" value={bulkSubjectSearch} onChange={(event) => setBulkSubjectSearch(event.target.value)} placeholder="Search teacher or subject lead" />
+                  </label>
+                  <button className="focus-ring btn btn-muted px-3 py-2 text-sm" type="button" onClick={() => setBulkSubjectSearch("")}>
+                    Clear search
+                  </button>
+                </div>
 
-            <div className="mt-4 max-h-[70vh] overflow-auto rounded-lg border border-gray-200">
-              <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50 text-gray-600">
-                    <th className="sticky left-0 top-0 z-30 w-72 bg-gray-50 py-3 pl-4 pr-3 font-bold shadow-sm">Staff member</th>
-                    {subjects.map((subject) => (
-                      <th key={subject} className="sticky top-0 z-20 min-w-28 bg-gray-50 px-3 py-3 text-center text-xs font-bold shadow-sm">
-                        {subject}
-                      </th>
-                    ))}
-                    <th className="sticky right-0 top-0 z-30 min-w-32 bg-gray-50 px-3 py-3 text-center text-xs font-bold shadow-sm">Quick actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bulkSubjectUsers.map((user) => {
-                    const selectedSubjects = bulkSubjectDrafts[user.id] ?? [];
-                    const dirty = !subjectListsEqual(selectedSubjects, bulkSubjectBaseline[user.id] ?? []);
-                    return (
-                      <tr key={user.id} className={`border-b border-gray-100 ${dirty ? "bg-[#fff8fb]" : "bg-white"}`}>
-                        <td className="sticky left-0 z-10 bg-inherit py-3 pl-4 pr-3">
-                          <div className="font-bold text-gray-900">{user.display_name}</div>
-                          <div className="mt-1 truncate text-xs font-semibold text-gray-500">{user.email}</div>
-                          <div className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-gray-400">{roleLabels[user.role]}</div>
-                        </td>
-                        {subjects.map((subject) => {
-                          const checked = selectedSubjects.includes("__all_subjects__") || selectedSubjects.includes(subject);
-                          return (
-                            <td key={`${user.id}-${subject}`} className="px-3 py-3 text-center">
-                              <input className="h-4 w-4 accent-[#741B47]" type="checkbox" checked={checked} onChange={() => toggleBulkUserSubject(user.id, subject)} aria-label={`${user.display_name} ${subject}`} />
-                            </td>
-                          );
-                        })}
-                        <td className="sticky right-0 bg-inherit px-3 py-3">
-                          <div className="flex justify-center gap-2">
-                            <button className="focus-ring rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-bold text-gray-700" type="button" onClick={() => setBulkUserSubjects(user.id, subjects)}>
-                              All
-                            </button>
-                            <button className="focus-ring rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-bold text-gray-700" type="button" onClick={() => setBulkUserSubjects(user.id, [])}>
-                              None
-                            </button>
-                          </div>
-                        </td>
+                <div className="mt-4 max-h-[70vh] overflow-auto rounded-lg border border-gray-200">
+                  <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50 text-gray-600">
+                        <th className="sticky left-0 top-0 z-30 w-72 bg-gray-50 py-3 pl-4 pr-3 font-bold shadow-sm">Staff member</th>
+                        {subjects.map((subject) => (
+                          <th key={subject} className="sticky top-0 z-20 min-w-28 bg-gray-50 px-3 py-3 text-center text-xs font-bold shadow-sm">
+                            {subject}
+                          </th>
+                        ))}
+                        <th className="sticky right-0 top-0 z-30 min-w-32 bg-gray-50 px-3 py-3 text-center text-xs font-bold shadow-sm">Quick actions</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {!bulkSubjectUsers.length ? <p className="p-4 text-sm text-gray-600">{loadingUsers ? "Loading staff users..." : "No teachers or subject leads match this search."}</p> : null}
-            </div>
-            {bulkSubjectMessage ? <p className="mt-3 text-sm font-semibold text-gray-700" role="status">{bulkSubjectMessage}</p> : null}
+                    </thead>
+                    <tbody>
+                      {bulkSubjectUsers.map((user) => {
+                        const selectedSubjects = bulkSubjectDrafts[user.id] ?? [];
+                        const dirty = !subjectListsEqual(selectedSubjects, bulkSubjectBaseline[user.id] ?? []);
+                        return (
+                          <tr key={user.id} className={`border-b border-gray-100 ${dirty ? "bg-[#fff8fb]" : "bg-white"}`}>
+                            <td className="sticky left-0 z-10 bg-inherit py-3 pl-4 pr-3">
+                              <div className="font-bold text-gray-900">{user.display_name}</div>
+                              <div className="mt-1 truncate text-xs font-semibold text-gray-500">{user.email}</div>
+                              <div className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-gray-400">{roleLabels[user.role]}</div>
+                            </td>
+                            {subjects.map((subject) => {
+                              const checked = selectedSubjects.includes("__all_subjects__") || selectedSubjects.includes(subject);
+                              return (
+                                <td key={`${user.id}-${subject}`} className="px-3 py-3 text-center">
+                                  <input className="h-4 w-4 accent-[#741B47]" type="checkbox" checked={checked} onChange={() => toggleBulkUserSubject(user.id, subject)} aria-label={`${user.display_name} ${subject}`} />
+                                </td>
+                              );
+                            })}
+                            <td className="sticky right-0 bg-inherit px-3 py-3">
+                              <div className="flex justify-center gap-2">
+                                <button className="focus-ring rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-bold text-gray-700" type="button" onClick={() => setBulkUserSubjects(user.id, subjects)}>
+                                  All
+                                </button>
+                                <button className="focus-ring rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-bold text-gray-700" type="button" onClick={() => setBulkUserSubjects(user.id, [])}>
+                                  None
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {!bulkSubjectUsers.length ? <p className="p-4 text-sm text-gray-600">{loadingUsers ? "Loading staff users..." : "No teachers or subject leads match this search."}</p> : null}
+                </div>
+                {bulkSubjectMessage ? <p className="mt-3 text-sm font-semibold text-gray-700" role="status">{bulkSubjectMessage}</p> : null}
+              </>
+            ) : null}
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">

@@ -28,6 +28,7 @@ import {
   type MappingEvidence
 } from "@/lib/reporting";
 import { areaThemes, themeForFramework } from "@/lib/theme";
+import type { FrameworkDefinition, MappingFrameworkReference } from "@/lib/types";
 
 const allValue = "All";
 
@@ -62,6 +63,7 @@ export function SubjectHealthReportClient() {
   const groupedEntries = groupEntriesByYear(filteredEntries);
   const gaps = buildSubjectGaps(entries);
   const frameworkByYear = buildFrameworkByYear(entries);
+  const frameworkElementCoverage = useMemo(() => buildFrameworkElementCoverage(data.frameworkLibrary, filteredEntries), [data.frameworkLibrary, filteredEntries]);
   const cctCoverage = buildCctCoverage(entries, data.crossCuttingThemes);
   const stepCounts = progressionCounts(frameworkRefs);
 
@@ -130,6 +132,21 @@ export function SubjectHealthReportClient() {
         <SummaryCard label="Numeracy" value={countFramework(entries, "Numeracy")} note="Framework link rows." framework="Numeracy" />
         <SummaryCard label="DCF" value={countFramework(entries, "DCF")} note="Framework link rows." framework="DCF" />
         <SummaryCard label="CCT elements" value={entries.reduce((total, entry) => total + themeElementCount(entry), 0)} note="Theme element link rows." framework="Cross-cutting Themes" />
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-gray-950">Framework strand and element coverage</h2>
+            <p className="mt-1 text-sm leading-6 text-gray-600">Shows which live framework strands and elements are represented by the current subject report filters.</p>
+          </div>
+          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-700">{filteredEntries.length} filtered mappings</span>
+        </div>
+        <div className="mt-4 grid gap-4 xl:grid-cols-3">
+          {frameworkElementCoverage.map((framework) => (
+            <FrameworkCoverageCard key={framework.framework} coverage={framework} />
+          ))}
+        </div>
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
@@ -272,6 +289,134 @@ function buildFrameworkByYear(entries: MappingEvidence[]) {
       ];
     })
   );
+}
+
+type ElementCoverage = {
+  name: string;
+  mapped: boolean;
+  count: number;
+  years: string[];
+  schemes: string[];
+};
+
+type StrandElementCoverage = {
+  strand: string;
+  strandShortName?: string | null;
+  total: number;
+  mapped: number;
+  elements: ElementCoverage[];
+};
+
+type FrameworkElementCoverage = {
+  framework: string;
+  shortName: "Literacy" | "Numeracy" | "DCF";
+  total: number;
+  mapped: number;
+  strands: StrandElementCoverage[];
+};
+
+function buildFrameworkElementCoverage(frameworkLibrary: FrameworkDefinition[], entries: MappingEvidence[]): FrameworkElementCoverage[] {
+  const references = entries.flatMap((entry) => entry.frameworkRefs.map((reference) => ({ reference, entry })));
+  return reportFrameworks.map((shortName) => {
+    const framework = frameworkLibrary.find((item) => frameworkLibraryMatches(item, shortName));
+    const strands = (framework?.strands ?? []).map((strand) => {
+      const elements = strand.elements.map((element) => {
+        const matches = references.filter(({ reference }) => referenceMatchesElement(reference, shortName, strand.name, element.name));
+        return {
+          name: element.name,
+          mapped: matches.length > 0,
+          count: matches.length,
+          years: unique(matches.map(({ entry }) => entry.mapping.year)).sort(),
+          schemes: unique(matches.map(({ entry }) => entry.mapping.schemeReference || formatMappingTitle(entry.mapping))).slice(0, 4)
+        };
+      });
+      return {
+        strand: strand.name,
+        strandShortName: strand.shortName,
+        total: elements.length,
+        mapped: elements.filter((element) => element.mapped).length,
+        elements
+      };
+    });
+    const total = strands.reduce((sum, strand) => sum + strand.total, 0);
+    const mapped = strands.reduce((sum, strand) => sum + strand.mapped, 0);
+    return {
+      framework: framework?.name ?? `${shortName} Framework`,
+      shortName,
+      total,
+      mapped,
+      strands
+    };
+  });
+}
+
+function FrameworkCoverageCard({ coverage }: { coverage: FrameworkElementCoverage }) {
+  const theme = themeForFramework(coverage.shortName);
+  const unmapped = coverage.total - coverage.mapped;
+  return (
+    <article className="rounded-lg border bg-white p-4" style={{ borderColor: theme.border }}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-base font-bold text-gray-950">{coverage.shortName}</h3>
+          <p className="mt-1 text-sm text-gray-600">{coverage.mapped} of {coverage.total} elements represented.</p>
+        </div>
+        <span className="rounded-full px-3 py-1 text-xs font-bold" style={{ backgroundColor: theme.soft, color: theme.text }}>
+          {unmapped} not mapped
+        </span>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {coverage.strands.map((strand) => (
+          <details key={strand.strand} className="rounded-md border border-gray-200 bg-gray-50 p-3" open={strand.mapped > 0 && strand.mapped < strand.total}>
+            <summary className="cursor-pointer list-none">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="font-bold text-gray-900">{strand.strandShortName ?? strand.strand}</h4>
+                <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-gray-600">{strand.mapped}/{strand.total}</span>
+              </div>
+              {strand.strandShortName && strand.strandShortName !== strand.strand ? <p className="mt-1 text-xs leading-5 text-gray-500">{strand.strand}</p> : null}
+            </summary>
+            <div className="mt-3 space-y-2">
+              {strand.elements.map((element) => (
+                <ElementCoverageRow key={element.name} element={element} />
+              ))}
+            </div>
+          </details>
+        ))}
+        {!coverage.strands.length ? <p className="rounded-md bg-gray-50 p-3 text-sm text-gray-600">No live framework structure found for this framework.</p> : null}
+      </div>
+    </article>
+  );
+}
+
+function ElementCoverageRow({ element }: { element: ElementCoverage }) {
+  return (
+    <div className={`rounded-md border px-3 py-2 ${element.mapped ? "border-green-200 bg-green-50" : "border-gray-200 bg-white"}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="text-sm font-bold text-gray-900">{element.name}</p>
+        <span className={`rounded-full px-2 py-1 text-xs font-bold ${element.mapped ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}`}>
+          {element.mapped ? `${element.count} mapped` : "Not mapped"}
+        </span>
+      </div>
+      {element.mapped ? (
+        <p className="mt-1 text-xs leading-5 text-gray-600">
+          {element.years.join(", ")}{element.schemes.length ? ` · ${element.schemes.join(", ")}` : ""}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function frameworkLibraryMatches(framework: FrameworkDefinition, target: "Literacy" | "Numeracy" | "DCF") {
+  if (target === "DCF") return framework.shortName === "DCF" || framework.name === "Digital Competence Framework";
+  return framework.shortName === target || framework.name === `${target} Framework` || framework.name === target;
+}
+
+function referenceMatchesElement(reference: MappingFrameworkReference, framework: "Literacy" | "Numeracy" | "DCF", strand: string, element: string) {
+  return compactFrameworkName(reference) === framework && normaliseCoverageLabel(reference.strand) === normaliseCoverageLabel(strand) && normaliseCoverageLabel(reference.element) === normaliseCoverageLabel(element);
+}
+
+function normaliseCoverageLabel(value: string) {
+  return value.trim().toLowerCase();
 }
 
 function buildCctCoverage(entries: MappingEvidence[], themes: ReturnType<typeof useCurrentSchool>["data"]["crossCuttingThemes"]) {

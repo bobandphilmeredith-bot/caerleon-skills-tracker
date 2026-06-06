@@ -567,17 +567,17 @@ export default function UserManagementPage() {
               </button>
             </div>
 
-            <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200">
+            <div className="mt-4 max-h-[70vh] overflow-auto rounded-lg border border-gray-200">
               <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50 text-gray-600">
-                    <th className="sticky left-0 z-10 w-72 bg-gray-50 py-3 pl-4 pr-3 font-bold">Staff member</th>
+                    <th className="sticky left-0 top-0 z-30 w-72 bg-gray-50 py-3 pl-4 pr-3 font-bold shadow-sm">Staff member</th>
                     {subjects.map((subject) => (
-                      <th key={subject} className="min-w-28 px-3 py-3 text-center text-xs font-bold">
+                      <th key={subject} className="sticky top-0 z-20 min-w-28 bg-gray-50 px-3 py-3 text-center text-xs font-bold shadow-sm">
                         {subject}
                       </th>
                     ))}
-                    <th className="min-w-32 px-3 py-3 text-center text-xs font-bold">Quick actions</th>
+                    <th className="sticky right-0 top-0 z-30 min-w-32 bg-gray-50 px-3 py-3 text-center text-xs font-bold shadow-sm">Quick actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -599,7 +599,7 @@ export default function UserManagementPage() {
                             </td>
                           );
                         })}
-                        <td className="px-3 py-3">
+                        <td className="sticky right-0 bg-inherit px-3 py-3">
                           <div className="flex justify-center gap-2">
                             <button className="focus-ring rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-bold text-gray-700" type="button" onClick={() => setBulkUserSubjects(user.id, subjects)}>
                               All

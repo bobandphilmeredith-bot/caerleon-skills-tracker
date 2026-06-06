@@ -57,8 +57,10 @@ export default function UserManagementPage() {
   const [selectedSchoolId, setSelectedSchoolId] = useState(isDemoMode ? (currentUser?.schoolId ?? "school_caerleon") : "");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
-  const [csv, setCsv] = useState("");
+  const [selectedCsvFile, setSelectedCsvFile] = useState<File | null>(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState("");
   const [uploadResults, setUploadResults] = useState<{ row: number; email: string; success: boolean; message: string }[]>([]);
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
   const [managedSchools, setManagedSchools] = useState<ManagedSchool[]>([]);
@@ -288,37 +290,62 @@ export default function UserManagementPage() {
   async function uploadCsv() {
     setUploading(true);
     setNotice("");
+    setUploadMessage("");
     setUploadResults([]);
+    if (!selectedCsvFile) {
+      setUploading(false);
+      setUploadMessage("Choose a CSV file before uploading users.");
+      return;
+    }
     if (!hasLiveSupabaseSchool) {
       setUploading(false);
-      setNotice("Choose a Supabase school before uploading users.");
+      setUploadMessage("Choose a Supabase school before uploading users.");
       return;
     }
     const token = await getAccessToken();
     if (!token) {
       setUploading(false);
-      setNotice("You must be signed in before uploading users.");
+      setUploadMessage("You must be signed in before uploading users.");
       return;
     }
+    const formData = new FormData();
+    formData.append("file", selectedCsvFile);
+    formData.append("school_id", targetSchoolId);
     const response = await fetch("/api/admin/users/bulk-upload", {
       method: "POST",
       headers: {
-        "content-type": "application/json",
         authorization: `Bearer ${token}`
       },
-      body: JSON.stringify({
-        csv,
-        school_id: targetSchoolId
-      })
+      body: formData
     });
     const result = await response.json();
     setUploading(false);
     if (!response.ok) {
-      setNotice(result.error ?? "Could not upload users.");
+      setUploadMessage(result.error ?? "Could not upload users.");
       return;
     }
-    setUploadResults(result.results ?? []);
+    const results = result.results ?? [];
+    const successCount = results.filter((item: { success: boolean }) => item.success).length;
+    const failedCount = results.length - successCount;
+    setUploadResults(results);
+    setUploadMessage(
+      results.length
+        ? `Upload complete: ${successCount} user${successCount === 1 ? "" : "s"} created or updated${failedCount ? `, ${failedCount} failed` : ""}.`
+        : "No users were found in the CSV."
+    );
+    setSelectedCsvFile(null);
+    setFileInputKey((current) => current + 1);
     await loadLiveData();
+  }
+
+  function downloadCsvTemplate() {
+    const template = 'display_name,email,role,assigned_subjects,active,password\nJane Smith,smithj@newportschools.wales,teacher,"English;History",true,TempPass2026!\n';
+    const url = URL.createObjectURL(new Blob([template], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "bulk-user-upload-template.csv";
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   async function setLiveUserActive(user: ManagedUser, active: boolean, message: string) {
@@ -533,16 +560,33 @@ export default function UserManagementPage() {
 
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900">Bulk CSV upload</h2>
-            <p className="mt-1 text-sm leading-6 text-gray-600">Use columns: display_name,email,role,assigned_subjects,active,password</p>
-            <textarea
-              className="focus-ring mt-4 min-h-40 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm"
-              value={csv}
-              onChange={(event) => setCsv(event.target.value)}
-              placeholder={'display_name,email,role,assigned_subjects,active,password\nJane Smith,smithj@newportschools.wales,teacher,"English;History",true,TempPass2026!'}
-            />
-            <button className="focus-ring btn btn-primary mt-4" type="button" onClick={uploadCsv} disabled={uploading || !hasLiveSupabaseSchool}>
-              {uploading ? "Uploading..." : "Upload users"}
-            </button>
+            <p className="mt-1 text-sm leading-6 text-gray-600">Use columns: display_name,email,role,assigned_subjects,active,password. Header row optional.</p>
+            <div className="mt-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
+              <label>
+                <span className="mb-2 block text-sm font-bold text-gray-800">CSV file</span>
+                <input
+                  key={fileInputKey}
+                  className="focus-ring block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 file:mr-4 file:rounded-md file:border-0 file:bg-[#741B47] file:px-3 file:py-2 file:text-sm file:font-bold file:text-white"
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(event) => {
+                    setSelectedCsvFile(event.target.files?.[0] ?? null);
+                    setUploadMessage("");
+                    setUploadResults([]);
+                  }}
+                />
+              </label>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button className="focus-ring btn btn-primary" type="button" onClick={uploadCsv} disabled={uploading || !hasLiveSupabaseSchool || !selectedCsvFile}>
+                  {uploading ? "Uploading..." : "Upload users"}
+                </button>
+                <button className="focus-ring btn btn-muted" type="button" onClick={downloadCsvTemplate}>
+                  Download template
+                </button>
+                <span className="text-sm font-semibold text-gray-600">{selectedCsvFile ? selectedCsvFile.name : "No file selected"}</span>
+              </div>
+            </div>
+            {uploadMessage ? <p className="mt-3 text-sm font-semibold text-gray-700" role="status">{uploadMessage}</p> : null}
             {uploadResults.length ? (
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full min-w-[640px] border-collapse text-left text-sm">

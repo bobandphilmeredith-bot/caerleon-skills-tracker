@@ -17,9 +17,9 @@ export async function POST(request: Request) {
   const admin = getSupabaseAdmin();
   if (!admin) return NextResponse.json({ error: "Supabase admin is not configured." }, { status: 500 });
 
-  const body = await request.json().catch(() => null);
-  const csv = typeof body?.csv === "string" ? body.csv : "";
-  const requestedSchoolId = typeof body?.school_id === "string" ? body.school_id : null;
+  const payload = await readUploadPayload(request);
+  const csv = payload.csv;
+  const requestedSchoolId = payload.schoolId;
   const actor = await getActorProfile(admin, bearerToken(request), requestedSchoolId);
   if ("error" in actor) return NextResponse.json({ error: actor.error, debug: actor.debug }, { status: 401 });
   if (!canManageUsers(actor.profile)) {
@@ -30,10 +30,10 @@ export async function POST(request: Request) {
   if (!csv.trim()) return NextResponse.json({ error: "CSV content is required." }, { status: 400 });
 
   const rows = parseCsv(csv);
-  const [header, ...records] = rows;
+  const { records, startRow } = rowsWithOptionalHeader(rows);
   const expected = ["display_name", "email", "role", "assigned_subjects", "active", "password"];
-  if (!header || expected.some((column, index) => header[index]?.trim() !== column)) {
-    return NextResponse.json({ error: `CSV header must be: ${expected.join(",")}` }, { status: 400 });
+  if (!records.length) {
+    return NextResponse.json({ error: `CSV content is required. Paste rows with or without this header: ${expected.join(",")}` }, { status: 400 });
   }
 
   const results = [];
@@ -42,11 +42,11 @@ export async function POST(request: Request) {
     if (!record.email && !record.display_name) continue;
 
     if (!record.display_name || !record.email || !record.role || !record.password) {
-      results.push({ row: index + 2, email: record.email, success: false, message: "Missing required fields." });
+      results.push({ row: startRow + index, email: record.email, success: false, message: "Missing required fields." });
       continue;
     }
     if (!validRoles.includes(record.role as UserRole)) {
-      results.push({ row: index + 2, email: record.email, success: false, message: "Invalid role." });
+      results.push({ row: startRow + index, email: record.email, success: false, message: "Invalid role." });
       continue;
     }
 
@@ -63,10 +63,35 @@ export async function POST(request: Request) {
       actor.profile
     );
     const result = await upsertStaffUser(admin, actor.profile, input);
-    results.push({ row: index + 2, email: input.email, success: result.success, message: result.message });
+    results.push({ row: startRow + index, email: input.email, success: result.success, message: result.message });
   }
 
   return NextResponse.json({ results });
+}
+
+async function readUploadPayload(request: Request) {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (contentType.includes("multipart/form-data")) {
+    const formData = await request.formData();
+    const file = formData.get("file");
+    const schoolIdValue = formData.get("school_id");
+    const csvValue = formData.get("csv");
+    const fileText = hasTextMethod(file) ? await file.text() : "";
+    return {
+      csv: fileText || (typeof csvValue === "string" ? csvValue : ""),
+      schoolId: typeof schoolIdValue === "string" ? schoolIdValue : null
+    };
+  }
+
+  const body = await request.json().catch(() => null);
+  return {
+    csv: typeof body?.csv === "string" ? body.csv : "",
+    schoolId: typeof body?.school_id === "string" ? body.school_id : null
+  };
+}
+
+function hasTextMethod(value: FormDataEntryValue | null): value is File {
+  return Boolean(value && typeof value !== "string" && typeof value.text === "function");
 }
 
 function debugFor(profile: { id: string; email: string; role: string; school_id: string }, targetSchoolId: string | null) {
@@ -128,4 +153,14 @@ function parseCsv(csv: string) {
   row.push(cell);
   if (row.some((item) => item.trim())) rows.push(row);
   return rows;
+}
+
+function rowsWithOptionalHeader(rows: string[][]) {
+  const expected = ["display_name", "email", "role", "assigned_subjects", "active", "password"];
+  const firstRow = rows[0] ?? [];
+  const firstRowLooksLikeHeader = expected.every((column, index) => firstRow[index]?.trim().toLowerCase() === column);
+
+  return firstRowLooksLikeHeader
+    ? { records: rows.slice(1), startRow: 2 }
+    : { records: rows, startRow: 1 };
 }

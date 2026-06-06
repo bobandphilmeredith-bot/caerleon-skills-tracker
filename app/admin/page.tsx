@@ -22,7 +22,7 @@ let draftIdSequence = 0;
 export default function AdminPage() {
   const { canManageSchool } = useAuth();
   const { settings, updateBranding, updateFrameworkTheme, resetAllSettings } = useSchoolSettings();
-  const { schools, currentSchool, currentSchoolId, data, switchSchool, addSchool, updateSchool, toggleSchoolActive, addSubjectConfig, updateSubjectConfig } = useCurrentSchool();
+  const { schools, currentSchool, currentSchoolId, data, liveDiagnostics, switchSchool, addSchool, updateSchool, toggleSchoolActive, addSubjectConfig, updateSubjectConfig } = useCurrentSchool();
   const [subjects, setSubjects] = useState<SubjectConfig[]>(data.subjectConfigs);
   const [aoles, setAoles] = useState<AoleConfig[]>(data.aoleConfigs);
   const [frameworks, setFrameworks] = useState<AdminFramework[]>(() => loadAdminFrameworks(data.frameworkLibrary, currentSchoolId));
@@ -51,6 +51,7 @@ export default function AdminPage() {
   const [frameworkThemeError, setFrameworkThemeError] = useState("");
   const [frameworkSaving, setFrameworkSaving] = useState(false);
   const [frameworkError, setFrameworkError] = useState("");
+  const liveAdminSchoolId = !isDemoLoginEnabled ? liveDiagnostics?.schoolId ?? (looksLikeUuid(currentSchool.id) ? currentSchool.id : "") : currentSchool.id;
   const schoolOptions = isDemoLoginEnabled ? (schools.some((school) => school.id === currentSchoolId) ? schools : [currentSchool, ...schools]) : [currentSchool];
   const visibleSchoolCards = isDemoLoginEnabled ? schools : [currentSchool];
 
@@ -68,11 +69,12 @@ export default function AdminPage() {
   useEffect(() => {
     let cancelled = false;
     async function loadCompleteFrameworkLibrary() {
-      if (isDemoLoginEnabled || !supabase) return;
-      const result = await loadAdminFrameworksFromSupabase(currentSchool.id);
+      if (isDemoLoginEnabled || !supabase || !liveAdminSchoolId) return;
+      const result = await loadAdminFrameworksFromSupabase(liveAdminSchoolId);
       if (cancelled) return;
       if (result.ok) {
         setFrameworks(result.frameworks);
+        setFrameworkError("");
       } else {
         setFrameworkError(result.message);
       }
@@ -81,7 +83,7 @@ export default function AdminPage() {
     return () => {
       cancelled = true;
     };
-  }, [currentSchool.id]);
+  }, [liveAdminSchoolId]);
 
   useEffect(() => {
     setBrandingDraft(settings.branding);
@@ -228,6 +230,14 @@ export default function AdminPage() {
     setFrameworkThemeSaving(true);
     setFrameworkThemeError("");
 
+    const schoolIdForFrameworkThemeSave = isDemoLoginEnabled ? currentSchool.id : liveAdminSchoolId;
+
+    if (!schoolIdForFrameworkThemeSave) {
+      setFrameworkThemeSaving(false);
+      setFrameworkThemeError("The live school record is still loading. Please wait a moment, then try again.");
+      return;
+    }
+
     if (!isDemoLoginEnabled) {
       if (!supabase) {
         setFrameworkThemeSaving(false);
@@ -241,7 +251,7 @@ export default function AdminPage() {
           const theme = key ? frameworkThemeDraft[key] : undefined;
           return framework.id && theme
             ? {
-                school_id: currentSchool.id,
+                school_id: schoolIdForFrameworkThemeSave,
                 framework_id: framework.id,
                 primary_colour: theme.primary,
                 pale_colour: theme.pale,
@@ -406,12 +416,17 @@ export default function AdminPage() {
   async function persistActiveState(table: "frameworks" | "strands" | "elements", id: string, active: boolean, revert: () => void) {
     setFrameworkError("");
     if (isDemoLoginEnabled) return;
+    if (!liveAdminSchoolId) {
+      revert();
+      setFrameworkError("The live school record is still loading. Please wait a moment, then try again.");
+      return;
+    }
     if (!supabase) {
       revert();
       setFrameworkError("Supabase is not configured, so archive status could not be saved.");
       return;
     }
-    const { error } = await supabase.from(table).update({ active }).eq("id", id).eq("school_id", currentSchool.id);
+    const { error } = await supabase.from(table).update({ active }).eq("id", id).eq("school_id", liveAdminSchoolId);
     if (error) {
       revert();
       setFrameworkError(error.message);
@@ -446,6 +461,12 @@ export default function AdminPage() {
       return;
     }
 
+    const schoolIdForFrameworkSave = isDemoLoginEnabled ? currentSchool.id : liveAdminSchoolId;
+    if (!schoolIdForFrameworkSave) {
+      setFrameworkError("The live school record is still loading. Please wait a moment, then try again.");
+      return;
+    }
+
     setFrameworkSaving(true);
 
     if (isDemoLoginEnabled) {
@@ -459,7 +480,7 @@ export default function AdminPage() {
 
     for (const [frameworkIndex, framework] of frameworks.entries()) {
       const frameworkPayload = {
-        school_id: currentSchool.id,
+        school_id: schoolIdForFrameworkSave,
         name: framework.name.trim(),
         short_name: framework.shortName.trim(),
         description: null,
@@ -467,7 +488,7 @@ export default function AdminPage() {
         active: framework.active
       };
       const frameworkResult = framework.id
-        ? await client.from("frameworks").update(frameworkPayload).eq("id", framework.id).eq("school_id", currentSchool.id).select("id,school_id,display_order").single()
+        ? await client.from("frameworks").update(frameworkPayload).eq("id", framework.id).eq("school_id", schoolIdForFrameworkSave).select("id,school_id,display_order").single()
         : await client.from("frameworks").insert(frameworkPayload).select("id,school_id,display_order").single();
 
       if (frameworkResult.error || !frameworkResult.data) {
@@ -481,7 +502,7 @@ export default function AdminPage() {
 
       for (const [strandIndex, strand] of framework.strands.entries()) {
         const strandPayload = {
-          school_id: currentSchool.id,
+          school_id: schoolIdForFrameworkSave,
           framework_id: frameworkId,
           name: strand.name.trim(),
           short_name: strand.shortName?.trim() || strand.name.trim(),
@@ -490,7 +511,7 @@ export default function AdminPage() {
           active: strand.active
         };
         const strandResult = strand.id
-          ? await client.from("strands").update(strandPayload).eq("id", strand.id).eq("school_id", currentSchool.id).select("id,school_id,framework_id,display_order").single()
+          ? await client.from("strands").update(strandPayload).eq("id", strand.id).eq("school_id", schoolIdForFrameworkSave).select("id,school_id,framework_id,display_order").single()
           : await client.from("strands").insert(strandPayload).select("id,school_id,framework_id,display_order").single();
 
         if (strandResult.error || !strandResult.data) {
@@ -505,7 +526,7 @@ export default function AdminPage() {
         for (const [elementIndex, element] of strand.elements.entries()) {
           const explanation = element.explanation?.trim() || element.officialWording?.trim() || element.name.trim();
           const elementPayload = {
-            school_id: currentSchool.id,
+            school_id: schoolIdForFrameworkSave,
             strand_id: strandId,
             name: element.name.trim(),
             description: explanation,
@@ -515,7 +536,7 @@ export default function AdminPage() {
             active: element.active
           };
           const elementResult = element.id
-            ? await client.from("elements").update(elementPayload).eq("id", element.id).eq("school_id", currentSchool.id).select("id,school_id,display_order").single()
+            ? await client.from("elements").update(elementPayload).eq("id", element.id).eq("school_id", schoolIdForFrameworkSave).select("id,school_id,display_order").single()
             : await client.from("elements").insert(elementPayload).select("id,school_id,display_order").single();
 
           if (elementResult.error || !elementResult.data) {
@@ -532,12 +553,12 @@ export default function AdminPage() {
             const existingDescriptor = element.progressionDescriptorRefs?.find((descriptor) => descriptor.progressionStep === step || descriptor.progressionStepNumber === progressionStepNumber(step));
 
             if (!text) {
-              if (existingDescriptor?.id) await client.from("progression_descriptors").update({ active: false }).eq("id", existingDescriptor.id).eq("school_id", currentSchool.id);
+              if (existingDescriptor?.id) await client.from("progression_descriptors").update({ active: false }).eq("id", existingDescriptor.id).eq("school_id", schoolIdForFrameworkSave);
               continue;
             }
 
             const descriptorPayload = {
-              school_id: currentSchool.id,
+              school_id: schoolIdForFrameworkSave,
               element_id: elementId,
               progression_step: progressionStepNumber(step),
               descriptor_text: text,
@@ -545,7 +566,7 @@ export default function AdminPage() {
               active: true
             };
             const descriptorResult = existingDescriptor?.id
-              ? await client.from("progression_descriptors").update(descriptorPayload).eq("id", existingDescriptor.id).eq("school_id", currentSchool.id).select("id").single()
+              ? await client.from("progression_descriptors").update(descriptorPayload).eq("id", existingDescriptor.id).eq("school_id", schoolIdForFrameworkSave).select("id").single()
               : await client.from("progression_descriptors").upsert(descriptorPayload, { onConflict: "element_id,progression_step" }).select("id").single();
 
             if (descriptorResult.error || !descriptorResult.data) {
@@ -566,7 +587,7 @@ export default function AdminPage() {
             ...element,
             id: elementId,
             draftId: element.draftId,
-            schoolId: currentSchool.id,
+            schoolId: schoolIdForFrameworkSave,
             displayOrder: elementResult.data.display_order ?? element.displayOrder ?? elementIndex + 1,
             progressionDescriptorRefs: descriptorRefs
           });
@@ -576,7 +597,7 @@ export default function AdminPage() {
           ...strand,
           id: strandId,
           draftId: strand.draftId,
-          schoolId: currentSchool.id,
+          schoolId: schoolIdForFrameworkSave,
           frameworkId,
           displayOrder: strandResult.data.display_order ?? strand.displayOrder ?? strandIndex + 1,
           elements: savedElements
@@ -587,7 +608,7 @@ export default function AdminPage() {
         ...framework,
         id: frameworkId,
         draftId: framework.draftId,
-        schoolId: currentSchool.id,
+        schoolId: schoolIdForFrameworkSave,
         displayOrder: frameworkResult.data.display_order ?? framework.displayOrder ?? frameworkIndex + 1,
         strands: savedStrands
       });
@@ -1311,6 +1332,10 @@ function StatusBadge({ active }: { active: boolean }) {
 
 function normaliseColour(value: string) {
   return /^#[0-9a-fA-F]{6}$/.test(value) ? value : "#741B47";
+}
+
+function looksLikeUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function progressionStepNumber(step: ProgressionStep) {

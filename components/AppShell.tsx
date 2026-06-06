@@ -43,8 +43,8 @@ const navGroups = [
     icon: "RV",
     items: [
       { href: "/reports/slt-improvement", label: "SLT Improvement Dashboard", icon: "SI", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
-      { href: "/recent-mapping", label: "Recent Updates", icon: "RU", theme: areaThemes.overview },
-      { href: "/review-summary", label: "Review Summary", icon: "RS", theme: areaThemes.overview }
+      { href: "/recent-mapping", label: "Recent Updates", icon: "RU", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
+      { href: "/review-summary", label: "Review Summary", icon: "RS", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] }
     ]
   },
   {
@@ -55,7 +55,7 @@ const navGroups = [
       { href: "/admin/import-curriculum", label: "Import Curriculum", icon: "IC", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
       { href: "/user-management", label: "User Management", icon: "UM", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
       { href: "/platform-admin", label: "Platform Admin", icon: "PA", theme: areaThemes.overview, roles: ["platform_admin"] as UserRole[] },
-      { href: "/login", label: "Sign In", icon: "In", theme: areaThemes.overview }
+      { href: "/login", label: "Sign In", icon: "In", theme: areaThemes.overview, guestOnly: true }
     ]
   }
 ];
@@ -71,7 +71,7 @@ export function AppShell({ children, buildTimestamp }: { children: React.ReactNo
   const pathname = usePathname();
   const router = useRouter();
   const { settings } = useSchoolSettings();
-  const { currentUser, realUser, isDemoMode, users, loginAs, canPreviewRoles, previewRole, isRolePreview, setPreviewRole, clearRolePreview, authLoading } = useAuth();
+  const { currentUser, realUser, isDemoMode, users, loginAs, logout, canPreviewRoles, previewRole, isRolePreview, setPreviewRole, clearRolePreview, authLoading } = useAuth();
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [flyoutTop, setFlyoutTop] = useState(0);
   const shortSchoolName = settings.branding.schoolName.replace(" Comprehensive School", "");
@@ -180,6 +180,9 @@ export function AppShell({ children, buildTimestamp }: { children: React.ReactNo
                   ) : (
                     <span className="text-xs font-bold text-gray-600">{currentUser.name}</span>
                   )}
+                  <button className="focus-ring btn btn-muted text-xs" type="button" onClick={logout}>
+                    Sign out
+                  </button>
                 </>
               ) : (
                 <Link className="focus-ring btn btn-primary text-xs" href="/login">
@@ -242,6 +245,7 @@ function isPublicPage(pathname: string) {
 }
 
 function canShowItem(item: NavItem, currentUser: ReturnType<typeof useAuth>["currentUser"]) {
+  if ("guestOnly" in item && item.guestOnly && currentUser) return false;
   return !("roles" in item) || !item.roles || (currentUser && item.roles.includes(currentUser.role));
 }
 

@@ -104,7 +104,7 @@ Bob Jones,jonesb@newportschools.wales,viewer,"",true,TempPass2026!
 Sarah Evans,evanss@newportschools.wales,subject_lead,"History;Geography",true,TempPass2026!
 ```
 
-Assigned subjects are separated with semicolons. Invalid roles are rejected. Non-platform admins cannot create platform admin users.
+The header row is optional when pasting rows into the bulk uploader. Assigned subjects are separated with semicolons. Invalid roles are rejected. Non-platform admins cannot create platform admin users.
 
 ## Next Connection Step
 

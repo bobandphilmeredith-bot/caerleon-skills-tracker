@@ -11,12 +11,13 @@ import { useCurrentSchool } from "@/lib/currentSchool";
 import { useAuth } from "@/lib/auth";
 import { isDemoLoginEnabled, supabase } from "@/lib/supabaseClient";
 
-type AdminFramework = { id?: string; schoolId?: string; name: string; shortName: string; active: boolean; displayOrder?: number; strands: AdminStrand[] };
-type AdminStrand = { id?: string; schoolId?: string; frameworkId?: string; name: string; shortName?: string | null; description?: string | null; active: boolean; displayOrder?: number; elements: AdminElement[] };
-type AdminElement = ElementDefinition & { active: boolean; displayOrder?: number };
+type AdminFramework = { id?: string; draftId: string; schoolId?: string; name: string; shortName: string; active: boolean; displayOrder?: number; strands: AdminStrand[] };
+type AdminStrand = { id?: string; draftId: string; schoolId?: string; frameworkId?: string; name: string; shortName?: string | null; description?: string | null; active: boolean; displayOrder?: number; elements: AdminElement[] };
+type AdminElement = ElementDefinition & { draftId: string; active: boolean; displayOrder?: number; examplesDraft?: string };
 type AdminTab = "School" | "Branding" | "Subjects" | "AoLE" | "Frameworks" | "Records";
 
 const adminTabs: AdminTab[] = ["School", "Branding", "Subjects", "AoLE", "Frameworks", "Records"];
+let draftIdSequence = 0;
 
 export default function AdminPage() {
   const { canManageSchool } = useAuth();
@@ -338,10 +339,11 @@ export default function AdminPage() {
     setFrameworks((current) => [
       ...current,
       {
+        draftId: createDraftId("framework"),
         name: "New framework",
         shortName: "New",
         active: true,
-        strands: [{ name: "New strand", active: true, elements: [newElement()] }]
+        strands: [{ draftId: createDraftId("strand"), name: "New strand", active: true, elements: [newElement()] }]
       }
     ]);
   }
@@ -563,6 +565,7 @@ export default function AdminPage() {
           savedElements.push({
             ...element,
             id: elementId,
+            draftId: element.draftId,
             schoolId: currentSchool.id,
             displayOrder: elementResult.data.display_order ?? element.displayOrder ?? elementIndex + 1,
             progressionDescriptorRefs: descriptorRefs
@@ -572,6 +575,7 @@ export default function AdminPage() {
         savedStrands.push({
           ...strand,
           id: strandId,
+          draftId: strand.draftId,
           schoolId: currentSchool.id,
           frameworkId,
           displayOrder: strandResult.data.display_order ?? strand.displayOrder ?? strandIndex + 1,
@@ -582,6 +586,7 @@ export default function AdminPage() {
       savedFrameworks.push({
         ...framework,
         id: frameworkId,
+        draftId: framework.draftId,
         schoolId: currentSchool.id,
         displayOrder: frameworkResult.data.display_order ?? framework.displayOrder ?? frameworkIndex + 1,
         strands: savedStrands
@@ -597,7 +602,7 @@ export default function AdminPage() {
   function addStrand(frameworkIndex: number) {
     setFrameworks((current) =>
       current.map((framework, currentFrameworkIndex) =>
-        currentFrameworkIndex === frameworkIndex ? { ...framework, strands: [...framework.strands, { name: "New strand", active: true, elements: [newElement()] }] } : framework
+        currentFrameworkIndex === frameworkIndex ? { ...framework, strands: [...framework.strands, { draftId: createDraftId("strand"), name: "New strand", active: true, elements: [newElement()] }] } : framework
       )
     );
   }
@@ -1083,7 +1088,7 @@ export default function AdminPage() {
 
         <div className="mt-5 space-y-5">
           {frameworks.map((framework, frameworkIndex) => (
-            <details key={`${framework.name}-${frameworkIndex}`} className="rounded-lg border border-gray-200 p-4">
+            <details key={framework.id ?? framework.draftId} className="rounded-lg border border-gray-200 p-4">
               <summary className="cursor-pointer font-bold text-gray-900">
                 <span>{framework.name}</span>
                 <StatusBadge active={framework.active} />
@@ -1098,7 +1103,7 @@ export default function AdminPage() {
 
               <div className="mt-4 space-y-4">
                 {framework.strands.map((strand, strandIndex) => (
-                  <div key={`${strand.name}-${strandIndex}`} className="rounded-lg bg-gray-50 p-4">
+                  <div key={strand.id ?? strand.draftId} className="rounded-lg bg-gray-50 p-4">
                     <div className="grid gap-3 sm:grid-cols-[1fr_220px_auto_auto]">
                       <input className="focus-ring rounded-md border border-gray-300 px-3 py-2 font-semibold" value={strand.name} onChange={(event) => updateStrand(frameworkIndex, strandIndex, { name: event.target.value })} />
                       <input className="focus-ring rounded-md border border-gray-300 px-3 py-2" value={strand.shortName ?? ""} onChange={(event) => updateStrand(frameworkIndex, strandIndex, { shortName: event.target.value })} placeholder="Short label" />
@@ -1114,13 +1119,18 @@ export default function AdminPage() {
                     </div>
                     <div className="mt-3 space-y-3">
                       {strand.elements.map((element, elementIndex) => (
-                        <div key={`${element.name}-${elementIndex}`} className="rounded-md border border-gray-200 bg-white p-3">
+                        <div key={element.id ?? element.draftId} className="rounded-md border border-gray-200 bg-white p-3">
                           <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
                             <input className="focus-ring rounded-md border border-gray-300 px-3 py-2 font-semibold" value={element.name} onChange={(event) => updateElement(frameworkIndex, strandIndex, elementIndex, { name: event.target.value })} />
                             <input
                               className="focus-ring rounded-md border border-gray-300 px-3 py-2"
-                              value={element.examples.join(", ")}
-                              onChange={(event) => updateElement(frameworkIndex, strandIndex, elementIndex, { examples: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) })}
+                              value={element.examplesDraft ?? element.examples.join(", ")}
+                              onChange={(event) =>
+                                updateElement(frameworkIndex, strandIndex, elementIndex, {
+                                  examplesDraft: event.target.value,
+                                  examples: splitExamples(event.target.value)
+                                })
+                              }
                               placeholder="Example classroom opportunities"
                             />
                             <button className="focus-ring btn btn-secondary text-xs" type="button" onClick={() => void toggleElementActive(frameworkIndex, strandIndex, elementIndex)}>
@@ -1307,19 +1317,35 @@ function progressionStepNumber(step: ProgressionStep) {
   return Number(step.replace("Step ", ""));
 }
 
-function newElement(): AdminElement {
+function createDraftId(prefix: string) {
+  draftIdSequence += 1;
+  return `${prefix}-draft-${draftIdSequence}`;
+}
+
+function splitExamples(value: string) {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function defaultProgressionDescriptors(): Record<ProgressionStep, string> {
   return {
+    "Step 1": "Add Step 1 descriptor.",
+    "Step 2": "Add Step 2 descriptor.",
+    "Step 3": "Add Step 3 descriptor.",
+    "Step 4": "Add Step 4 descriptor.",
+    "Step 5": "Add Step 5 descriptor."
+  };
+}
+
+function newElement(): AdminElement {
+  const examples = ["Example classroom opportunity"];
+  return {
+    draftId: createDraftId("element"),
     name: "New element",
     officialWording: "New element: represented in planning through purposeful classroom activity.",
     explanation: "Add a teacher-friendly explanation.",
-    examples: ["Example classroom opportunity"],
-    progressionDescriptors: {
-      "Step 1": "Add Step 1 descriptor.",
-      "Step 2": "Add Step 2 descriptor.",
-      "Step 3": "Add Step 3 descriptor.",
-      "Step 4": "Add Step 4 descriptor.",
-      "Step 5": "Add Step 5 descriptor."
-    },
+    examples,
+    examplesDraft: examples.join(", "),
+    progressionDescriptors: defaultProgressionDescriptors(),
     searchKeywords: ["new element"],
     relatedConnections: ["Curriculum connections"],
     active: true
@@ -1389,6 +1415,7 @@ async function loadAdminFrameworksFromSupabase(schoolId: string): Promise<{ ok: 
     ok: true,
     frameworks: frameworks.map((framework, frameworkIndex) => ({
       id: framework.id,
+      draftId: framework.id,
       schoolId: framework.school_id,
       name: framework.name,
       shortName: framework.short_name ?? framework.name,
@@ -1398,6 +1425,7 @@ async function loadAdminFrameworksFromSupabase(schoolId: string): Promise<{ ok: 
         .filter((strand) => strand.framework_id === framework.id)
         .map((strand, strandIndex) => ({
           id: strand.id,
+          draftId: strand.id,
           schoolId: strand.school_id,
           frameworkId: framework.id,
           name: strand.name,
@@ -1418,11 +1446,13 @@ async function loadAdminFrameworksFromSupabase(schoolId: string): Promise<{ ok: 
               ) as Record<ProgressionStep, string>;
               return {
                 id: element.id,
+                draftId: element.id,
                 schoolId: element.school_id,
                 name: element.name,
                 officialWording: element.official_wording ?? element.description ?? element.teacher_friendly_explanation ?? element.name,
                 explanation: element.teacher_friendly_explanation ?? element.description ?? "",
                 examples: [],
+                examplesDraft: "",
                 progressionDescriptors,
                 progressionDescriptorRefs: elementDescriptors.map((descriptor) => {
                   const stepNumber = descriptor.progression_step;
@@ -1447,17 +1477,21 @@ async function loadAdminFrameworksFromSupabase(schoolId: string): Promise<{ ok: 
 function normaliseFrameworks(frameworkLibrary: FrameworkDefinition[]): AdminFramework[] {
   return frameworkLibrary.map((framework, frameworkIndex) => ({
     ...framework,
+    draftId: framework.id ?? createDraftId("framework"),
     displayOrder: (framework as FrameworkDefinition & { displayOrder?: number }).displayOrder ?? frameworkIndex + 1,
     active: (framework as FrameworkDefinition & { active?: boolean }).active ?? true,
     strands: framework.strands.map((strand, strandIndex) => ({
       ...strand,
+      draftId: strand.id ?? createDraftId("strand"),
       displayOrder: (strand as typeof strand & { displayOrder?: number }).displayOrder ?? strandIndex + 1,
       active: (strand as typeof strand & { active?: boolean }).active ?? true,
       elements: strand.elements.map((element, elementIndex) => ({
         ...element,
+        draftId: element.id ?? createDraftId("element"),
         displayOrder: (element as typeof element & { displayOrder?: number }).displayOrder ?? elementIndex + 1,
-        progressionDescriptors: element.progressionDescriptors ?? newElement().progressionDescriptors,
-        active: (element as typeof element & { active?: boolean }).active ?? true
+        progressionDescriptors: element.progressionDescriptors ?? defaultProgressionDescriptors(),
+        active: (element as typeof element & { active?: boolean }).active ?? true,
+        examplesDraft: element.examples?.join(", ") ?? ""
       }))
     }))
   }));

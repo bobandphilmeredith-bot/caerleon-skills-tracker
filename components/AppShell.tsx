@@ -24,7 +24,8 @@ const navGroups = [
     icon: "SU",
     items: [
       { href: "/subjects", label: "Subject View", icon: "SV", theme: areaThemes.overview },
-      { href: "/subject-overview", label: "Subject Detail", icon: "SD", theme: areaThemes.overview }
+      { href: "/subject-overview", label: "Subject Detail", icon: "SD", theme: areaThemes.overview },
+      { href: "/reports/subject-health", label: "Subject Health Report", icon: "SH", theme: areaThemes.overview, roles: ["platform_admin", "school_admin", "teacher", "subject_lead"] as UserRole[] }
     ]
   },
   {
@@ -41,7 +42,6 @@ const navGroups = [
     title: "Review",
     icon: "RV",
     items: [
-      { href: "/reports/subject-health", label: "Subject Health Report", icon: "SH", theme: areaThemes.overview, roles: ["platform_admin", "school_admin", "teacher", "subject_lead"] as UserRole[] },
       { href: "/reports/slt-improvement", label: "SLT Improvement Dashboard", icon: "SI", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
       { href: "/recent-mapping", label: "Recent Updates", icon: "RU", theme: areaThemes.overview },
       { href: "/review-summary", label: "Review Summary", icon: "RS", theme: areaThemes.overview }

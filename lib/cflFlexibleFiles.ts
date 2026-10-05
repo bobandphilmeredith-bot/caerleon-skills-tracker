@@ -367,7 +367,8 @@ function findSig(view:DataView,sig:number,start:number,end:number) {
 function text(bytes:Uint8Array) { return new TextDecoder().decode(bytes); }
 function zipPath(base:string,target:string) {
   const stack:string[]=[];
-  for (const part of (base+"/"+target).split("/")) {
+  const raw = target.startsWith("/") ? target : (base + "/" + target);
+  for (const part of raw.split("/")) {
     if (!part || part===".") continue;
     if (part==="..") stack.pop(); else stack.push(part);
   }

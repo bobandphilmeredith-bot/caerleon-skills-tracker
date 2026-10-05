@@ -280,17 +280,28 @@ function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number,
   const framework = detectFramework(row, refs);
   if (!framework) return { unresolved, link: null };
 
+  const skillCode = value(row, "skill_code");
+  const codeParts = skillCode.match(/^(\d+)(?:\.(\d+))?/);
   const rawElement = stripLeadingCode(value(row, "element_name"));
   const rawStrand = stripFrameworkPrefix(value(row, "strand_name"));
-  let strand = rawStrand
-    ? refs.strands.find((candidate) => candidate.framework_id === framework.id && (same(candidate.name, rawStrand) || same(candidate.short_name ?? "", rawStrand)))
-    : undefined;
 
-  let element = strand
-    ? refs.elements.find((candidate) => candidate.strand_id === strand?.id && same(candidate.name, rawElement))
-    : undefined;
+  let strand =
+    (codeParts
+      ? refs.strands.find((candidate) => candidate.framework_id === framework.id && candidate.display_order === Number(codeParts[1]))
+      : undefined) ??
+    (rawStrand
+      ? refs.strands.find((candidate) => candidate.framework_id === framework.id && (same(candidate.name, rawStrand) || same(candidate.short_name ?? "", rawStrand)))
+      : undefined);
 
-  if (!element && rawElement) {
+  let element =
+    (strand && codeParts?.[2]
+      ? refs.elements.find((candidate) => candidate.strand_id === strand?.id && candidate.display_order === Number(codeParts[2]))
+      : undefined) ??
+    (strand && rawElement
+      ? refs.elements.find((candidate) => candidate.strand_id === strand?.id && same(candidate.name, rawElement))
+      : undefined);
+
+  if (!element && rawElement && !skillCode) {
     const frameworkStrandIds = new Set(refs.strands.filter((candidate) => candidate.framework_id === framework.id).map((candidate) => candidate.id));
     const elementMatches = refs.elements.filter((candidate) => frameworkStrandIds.has(candidate.strand_id) && same(candidate.name, rawElement));
     if (elementMatches.length === 1) {
@@ -302,10 +313,14 @@ function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number,
   }
 
   if (!strand) {
-    return { unresolved: [`Row ${rowNumber}: strand could not be inferred for "${value(row, "element_name") || value(row, "strand_name")}".`], link: null };
+    return { unresolved: [`Row ${rowNumber}: skill code/strand "${skillCode || value(row, "strand_name")}" was not matched.`], link: null };
   }
   if (!element) {
     return { unresolved: [`Row ${rowNumber}: element "${value(row, "element_name")}" was not matched in ${framework.short_name ?? framework.name}.`], link: null };
+  }
+
+  if (skillCode && rawElement && !same(element.name, rawElement)) {
+    unresolved.push(`Row ${rowNumber}: source wording "${rawElement}" maps by code ${skillCode} to tracker element "${element.name}". Please review.`);
   }
 
   const stepText = value(row, "progression_step");

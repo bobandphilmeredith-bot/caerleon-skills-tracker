@@ -33,22 +33,39 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
   const subject =
     heading.match(/School\s+(.+?)\s+Department\s+Context\s+for\s+Learning/i)?.[1]?.trim() ??
     heading.match(/\b([A-Za-z][A-Za-z &/-]+?)\s+Department\s+Context\s+for\s+Learning/i)?.[1]?.trim() ??
+    genericSubject(paragraphs, rows) ??
     "";
 
   const moduleCode = heading.match(/Context\s+for\s+Learning\s*:\s*(.+)$/i)?.[1]?.trim() ?? "";
-  const moduleTitle = valueAfterLabel(rows, ["Module/ Enquiry Question", "Module / Enquiry Question", "Module/Enquiry Question"]);
-  const sequence = valueAfterLabel(rows, ["Position in sequence/Point of Progress", "Position in sequence / Point of Progress"]);
-  const yearGroup = inferYearGroup(moduleCode || moduleTitle);
-  const term = inferTerm(sequence);
-  const curriculumIntent = valueAfterLabel(rows, ["Curriculum Intent"]);
+  const moduleTitle =
+    valueAfterLabel(rows, ["Module/ Enquiry Question", "Module / Enquiry Question", "Module/Enquiry Question", "Module", "Topic"]) ||
+    paragraphLabelValue(paragraphs, ["Module", "Topic"]) ||
+    genericTopicFromParagraphs(paragraphs);
+  const sequence =
+    valueAfterLabel(rows, ["Position in sequence/Point of Progress", "Position in sequence / Point of Progress", "Position", "Term"]) ||
+    paragraphLabelValue(paragraphs, ["Position", "Term"]);
+  const yearGroup =
+    inferYearGroup(moduleCode) ||
+    inferYearGroup(moduleTitle) ||
+    inferYearGroup(paragraphs.join(" ")) ||
+    inferYearGroup(file.name);
+  const term = inferTerm(sequence || paragraphs.join(" "));
+  const curriculumIntent =
+    valueAfterLabel(rows, ["Curriculum Intent"]) ||
+    paragraphLabelValue(paragraphs, ["Curriculum Intent"]) ||
+    paragraphAfterExactHeading(paragraphs, "Curriculum Intent") ||
+    paragraphAfterExactHeading(paragraphs, "What pupils will do") ||
+    moduleTitle;
   const sourceFile = file.name;
-  const explicitProgressionStep = inferExplicitProgressionStep([
-    moduleTitle,
-    sequence,
-    curriculumIntent,
-    valueAfterLabel(rows, ["Subject Content/ Knowledge", "Subject Content/Knowledge"]),
-    valueAfterLabel(rows, ["Subject Concepts/ Skills", "Subject Concepts/Skills"])
-  ]);
+  const explicitProgressionStep =
+    inferExactProgressionStep(paragraphs) ??
+    inferExplicitProgressionStep([
+      moduleTitle,
+      sequence,
+      curriculumIntent,
+      valueAfterLabel(rows, ["Subject Content/ Knowledge", "Subject Content/Knowledge"]),
+      valueAfterLabel(rows, ["Subject Concepts/ Skills", "Subject Concepts/Skills"])
+    ]);
   const progressionStep = explicitProgressionStep ?? defaultProgressionStep(yearGroup);
 
   const warnings: string[] = [];
@@ -85,22 +102,28 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
   ];
 
   let skillsFound = 0;
+  const structuredSkills: Array<{ frameworkType: string; code: string; name: string; evidence: string }> = [];
   for (const section of skillSections) {
-    const text = valueAfterLabel(rows, section.labels);
-    for (const skill of parseSkillLines(text)) {
-      skillsFound += 1;
-      importRows.push({
-        ...common,
-        framework_type: section.frameworkType,
-        strand_name: "",
-        element_name: skill.name,
-        skill_code: skill.code,
-        progression_step: progressionStep ? String(progressionStep) : "",
-        mapping_description: skill.evidence,
-        notes: "",
-        cross_cutting_theme_focus: ""
-      });
+    const sectionText = valueAfterLabel(rows, section.labels);
+    for (const skill of parseSkillLines(sectionText)) {
+      if (skill.code) structuredSkills.push({ frameworkType: section.frameworkType, ...skill });
     }
+  }
+
+  const skills = structuredSkills.length ? structuredSkills : genericSkills(paragraphs, rows);
+  for (const skill of skills) {
+    skillsFound += 1;
+    importRows.push({
+      ...common,
+      framework_type: skill.frameworkType,
+      strand_name: "",
+      element_name: skill.name,
+      skill_code: skill.code,
+      progression_step: progressionStep ? String(progressionStep) : "",
+      mapping_description: skill.evidence,
+      notes: "",
+      cross_cutting_theme_focus: ""
+    });
   }
 
   const themeLabels: { labels: string[]; canonical: string }[] = [
@@ -115,9 +138,12 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
   ];
 
   let themesFound = 0;
-  for (const theme of themeLabels) {
-    const evidence = valueAfterLabel(rows, theme.labels);
-    if (!evidence.trim()) continue;
+  const themeRows = themeLabels
+    .map((theme) => ({ ...theme, evidence: valueAfterLabel(rows, theme.labels) }))
+    .filter((theme) => theme.evidence.trim());
+  const themes = themeRows.length ? themeRows : genericThemes(paragraphs);
+
+  for (const theme of themes) {
     themesFound += 1;
     importRows.push({
       ...common,
@@ -126,8 +152,8 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
       element_name: "",
       skill_code: "",
       progression_step: "",
-      mapping_description: evidence,
-      notes: evidence,
+      mapping_description: theme.evidence,
+      notes: theme.evidence,
       cross_cutting_theme_focus: theme.canonical
     });
   }
@@ -225,8 +251,140 @@ function parseSkillLines(text: string) {
     });
 }
 
+
+function genericSubject(paragraphs: string[], rows: string[][]) {
+  const labelled = paragraphLabelValue(paragraphs, ["Subject"]) || valueAfterLabel(rows, ["Subject"]);
+  if (labelled) return labelled;
+
+  for (const line of paragraphs.slice(0, 5)) {
+    const context = line.match(/Context for Learning\s*[-–—:]\s*(.+)$/i);
+    if (context?.[1]) return cleanText(context[1]);
+
+    const curriculum = line.match(/^(.+?)\s+CURRICULUM\s+MAP$/i);
+    if (curriculum?.[1]) return titleCase(cleanText(curriculum[1]));
+
+    const yearHeading = line.match(/^(.+?)\s*[-–—]\s*Year\s*(?:7|8|9|10|11)\b/i);
+    if (yearHeading?.[1]) return cleanText(yearHeading[1]);
+  }
+  return "";
+}
+
+function genericTopicFromParagraphs(paragraphs: string[]) {
+  for (const line of paragraphs.slice(0, 8)) {
+    const yearLine = line.match(/^Year\s*(?:7|8|9|10|11)\s*[|·]\s*(?:Autumn|Spring|Summer)(?:\s+Term)?\s*[|·]\s*(.+)$/i);
+    if (yearLine?.[1]) return cleanText(yearLine[1]);
+  }
+  return "";
+}
+
+function paragraphLabelValue(paragraphs: string[], labels: string[]) {
+  for (const line of paragraphs) {
+    for (const label of labels) {
+      const match = line.match(new RegExp("^" + escapeRegex(label) + "\\s*[:\\-]\\s*(.+)$", "i"));
+      if (match?.[1]) return cleanText(match[1]);
+    }
+  }
+  return "";
+}
+
+function paragraphAfterExactHeading(paragraphs: string[], heading: string) {
+  const index = paragraphs.findIndex((line) => normalise(line) === normalise(heading));
+  return index >= 0 ? cleanText(paragraphs[index + 1] ?? "") : "";
+}
+
+function inferExactProgressionStep(paragraphs: string[]) {
+  for (const line of paragraphs) {
+    const match = line.match(/^Progression\s*Step\s*[:\-]?\s*([1-5])\s*$/i);
+    if (match) return Number(match[1]);
+  }
+  return null;
+}
+
+function genericSkills(paragraphs: string[], rows: string[][]) {
+  const found: Array<{ frameworkType: string; code: string; name: string; evidence: string }> = [];
+  const add = (frameworkType: string, code: string, evidence: string, name = "") => {
+    if (!code || !frameworkType) return;
+    if (found.some((item) => item.frameworkType === frameworkType && item.code === code && item.evidence === evidence)) return;
+    found.push({ frameworkType, code, name, evidence });
+  };
+
+  // Table layouts: Framework | Code | task
+  for (const row of rows) {
+    if (row.length < 2) continue;
+    const framework = canonicalFramework(row[0] ?? "");
+    const code = (row[1] ?? "").match(/^\s*(\d+(?:\.\d+)*)\s*$/)?.[1];
+    if (framework && code) add(framework, code, cleanText(row.slice(2).filter(Boolean).join(" ")));
+  }
+
+  // Table layouts: Reference | Activity/evidence, e.g. "Literacy 2.4".
+  for (const row of rows) {
+    const ref = (row[0] ?? "").match(/^\s*(Literacy|Numeracy|Digital Competence|DCF)\s+(\d+(?:\.\d+)*)\s*$/i);
+    if (ref) add(canonicalFramework(ref[1]), ref[2], cleanText(row.slice(1).filter(Boolean).join(" ")));
+  }
+
+  let currentFramework = "";
+  for (const line of paragraphs) {
+    const exactFramework = canonicalFramework(line);
+    if (exactFramework) {
+      currentFramework = exactFramework;
+      continue;
+    }
+    if (/cross-cutting themes|curriculum intent|links within|links across/i.test(line)) currentFramework = "";
+
+    const inline = line.match(/^\s*(Literacy|Numeracy|Digital Competence|DCF)\s+(\d+(?:\.\d+)*)\s*[–—-]\s*(.+)$/i);
+    if (inline) {
+      add(canonicalFramework(inline[1]), inline[2], cleanText(inline[3]));
+      continue;
+    }
+
+    const coded = line.match(/^\s*(\d+(?:\.\d+)*)\s*[–—-]\s*(.+)$/);
+    if (currentFramework && coded) add(currentFramework, coded[1], cleanText(coded[2]));
+  }
+  return found;
+}
+
+function genericThemes(paragraphs: string[]) {
+  const found: Array<{ canonical: string; evidence: string }> = [];
+  const aliases = [
+    { names: ["Diversity, Representation and Inclusion", "Diversity"], canonical: "Diversity" },
+    { names: ["Careers and Work Related Experiences", "Careers and work-related experiences"], canonical: "Careers and work-related experiences" },
+    { names: ["Relationships and Sexuality Education (RSE)", "Relationships and sexuality education", "RSE"], canonical: "Relationships and sexuality education" },
+    { names: ["Human Rights and UNCRC/D", "Human rights education"], canonical: "Human rights education" },
+    { names: ["Local, National and International Contexts, Including Wales", "Local, national and international contexts"], canonical: "Local, national and international contexts" }
+  ];
+
+  for (const line of paragraphs) {
+    for (const alias of aliases) {
+      for (const name of alias.names) {
+        const match = line.match(new RegExp("^" + escapeRegex(name) + "\\s*[:–—-]\s*(.+)$", "i"));
+        if (match?.[1]) {
+          found.push({ canonical: alias.canonical, evidence: cleanText(match[1]) });
+          break;
+        }
+      }
+    }
+  }
+  return found;
+}
+
+function canonicalFramework(value: string) {
+  const text = normalise(value);
+  if (text === "literacy") return "Literacy";
+  if (text === "numeracy") return "Numeracy";
+  if (text === "digital competence" || text === "dcf") return "DCF";
+  return "";
+}
+
+function titleCase(value: string) {
+  return value.toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^$()|[\]\\]/g, "\\$&");
+}
+
 function inferYearGroup(value: string) {
-  const match = value.match(/(?:Year\s*)?Y?\s*(7|8|9|10|11)\b/i);
+  const match = value.match(/(?:Year\s*)?Y?\s*(7|8|9|10|11)(?=$|[^0-9])/i);
   return match ? `Year ${match[1]}` : "";
 }
 

@@ -168,7 +168,7 @@ function valueAfterLabel(rows: string[][], labels: string[]) {
     for (let index = 0; index < row.length; index += 1) {
       if (!targets.includes(normalise(row[index] ?? ""))) continue;
       for (let next = index + 1; next < row.length; next += 1) {
-        const candidate = cleanText(row[next] ?? "");
+        const candidate = cleanCell(row[next] ?? "");
         if (candidate) return candidate;
       }
       return "";
@@ -212,7 +212,15 @@ function inferTerm(value: string) {
 }
 
 function cleanText(value: string) {
-  return value.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  return value.replace(/\u00a0/g, " ").replace(/[\t\r\f ]+/g, " ").trim();
+}
+
+function cleanCell(value: string) {
+  return value
+    .split(/\n+/)
+    .map(cleanText)
+    .filter(Boolean)
+    .join("\n");
 }
 
 function normalise(value: string) {

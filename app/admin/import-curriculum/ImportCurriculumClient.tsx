@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
 import { areaThemes } from "@/lib/theme";
 import { CflDocxSummary, convertCflDocxToCsv } from "@/lib/cflDocx";
+import { convertCflPdfToCsv, convertCflXlsxToCsv } from "@/lib/cflFlexibleFiles";
 
 type PreviewGroup = {
   key: string;
@@ -62,7 +63,7 @@ export default function ImportCurriculumClient() {
   const [batches, setBatches] = useState<ImportBatch[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [docxSummaries, setDocxSummaries] = useState<Array<CflDocxSummary & { fileName: string }>>([]);
+  const [fileSummaries, setFileSummaries] = useState<Array<CflDocxSummary & { fileName: string }>>([]);
   const [fileErrors, setFileErrors] = useState<Array<{ fileName: string; message: string }>>([]);
 
   useEffect(() => {
@@ -79,19 +80,19 @@ export default function ImportCurriculumClient() {
 
     setPreview(null);
     setMessage("");
-    setDocxSummaries([]);
+    setFileSummaries([]);
     setFileErrors([]);
     setLoading(true);
 
     try {
       const csvFiles = files.filter((file) => file.name.toLowerCase().endsWith(".csv"));
-      const docxFiles = files.filter((file) => file.name.toLowerCase().endsWith(".docx"));
+      const supportedFiles = files.filter((file) => /\.(docx|xlsx|pdf)$/i.test(file.name));
 
       if (files.length > 1 && csvFiles.length) {
-        throw new Error("Batch upload currently supports Word .docx CfLs only. Upload CSV files one at a time.");
+        throw new Error("CSV remains a single-file import. Select Word, Excel and PDF curriculum files together for batch testing.");
       }
-      if (!csvFiles.length && !docxFiles.length) {
-        throw new Error("Choose a .docx Context for Learning file or a .csv curriculum file.");
+      if (!csvFiles.length && !supportedFiles.length) {
+        throw new Error("Choose a .docx, .xlsx, .pdf or .csv curriculum file.");
       }
 
       if (csvFiles.length === 1) {
@@ -104,21 +105,26 @@ export default function ImportCurriculumClient() {
       const converted: Array<{ file: File; csv: string; summary: CflDocxSummary }> = [];
       const failed: Array<{ fileName: string; message: string }> = [];
 
-      for (const file of docxFiles) {
+      for (const file of supportedFiles) {
         try {
-          const result = await convertCflDocxToCsv(file);
+          const lower = file.name.toLowerCase();
+          const result = lower.endsWith(".docx")
+            ? await convertCflDocxToCsv(file)
+            : lower.endsWith(".xlsx")
+              ? await convertCflXlsxToCsv(file)
+              : await convertCflPdfToCsv(file);
           converted.push({ file, ...result });
         } catch (error) {
           failed.push({
             fileName: file.name,
-            message: error instanceof Error ? error.message : "Could not read this Word document."
+            message: error instanceof Error ? error.message : "Could not read this curriculum file."
           });
         }
       }
 
       if (!converted.length) {
         setFileErrors(failed);
-        throw new Error("None of the selected Word documents could be read. See the file errors below.");
+        throw new Error("None of the selected curriculum files could be read. See the file errors below.");
       }
 
       const combinedCsv = converted
@@ -127,20 +133,23 @@ export default function ImportCurriculumClient() {
         .join("\n");
 
       setCsv(combinedCsv);
-      setFileName(docxFiles.length === 1 ? docxFiles[0].name : `${docxFiles.length} selected · ${converted.length} ready`);
-      setDocxSummaries(converted.map((item) => ({ ...item.summary, fileName: item.file.name })));
+      setFileName(supportedFiles.length === 1 ? supportedFiles[0].name : supportedFiles.length + " selected · " + converted.length + " ready");
+      setFileSummaries(converted.map((item) => ({ ...item.summary, fileName: item.file.name })));
       setFileErrors(failed);
 
       const skills = converted.reduce((sum, item) => sum + item.summary.skillsFound, 0);
       const themes = converted.reduce((sum, item) => sum + item.summary.themesFound, 0);
       const warningCount = converted.reduce((sum, item) => sum + item.summary.warnings.length, 0);
       setMessage(
-        `${converted.length} of ${docxFiles.length} CfL file${docxFiles.length === 1 ? "" : "s"} ready · ${skills} skills · ${themes} populated cross-cutting themes${warningCount ? ` · ${warningCount} file warning${warningCount === 1 ? "" : "s"}` : ""}${failed.length ? ` · ${failed.length} file${failed.length === 1 ? "" : "s"} could not be read` : ""}.`
+        converted.length + " of " + supportedFiles.length + " curriculum file" + (supportedFiles.length === 1 ? "" : "s") +
+        " ready · " + skills + " skills · " + themes + " populated cross-cutting themes" +
+        (warningCount ? " · " + warningCount + " file warning" + (warningCount === 1 ? "" : "s") : "") +
+        (failed.length ? " · " + failed.length + " file" + (failed.length === 1 ? "" : "s") + " could not be read" : "") + "."
       );
     } catch (error) {
       setCsv("");
       setFileName("");
-      setDocxSummaries([]);
+      setFileSummaries([]);
       setMessage(error instanceof Error ? error.message : "Could not read the selected files.");
     } finally {
       setLoading(false);
@@ -219,23 +228,23 @@ export default function ImportCurriculumClient() {
       <PageHeader
         eyebrow="Admin Import"
         title="Import Curriculum Mappings"
-        description="Upload one or many Caerleon Context for Learning Word documents, or a single curriculum CSV, preview the proposed mappings and import them safely."
+        description="Test Word, Excel and PDF curriculum files in the preview environment, or use a single curriculum CSV."
         accent={areaThemes.overview.accent}
       />
 
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-bold text-gray-950">Upload curriculum files</h2>
-        <p className="mt-1 text-sm leading-6 text-gray-600">Select one or many Caerleon Context for Learning .docx files, or a single existing curriculum CSV. Word documents are read locally in your browser and combined into one controlled batch preview before anything is written to Supabase.</p>
+        <p className="mt-1 text-sm leading-6 text-gray-600">Select one or many .docx, .xlsx or digital .pdf curriculum files. They are converted into one controlled preview before anything is written to Supabase. CSV remains single-file.</p>
         <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto]">
-          <input className="focus-ring rounded-md border border-gray-300 bg-white px-3 py-2" type="file" multiple accept=".csv,text/csv,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => readFiles(event.target.files)} />
+          <input className="focus-ring rounded-md border border-gray-300 bg-white px-3 py-2" type="file" multiple accept=".csv,text/csv,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf" onChange={(event) => readFiles(event.target.files)} />
           <button className="focus-ring btn btn-primary" type="button" onClick={previewImport} disabled={loading || !csv.trim()}>
             {loading ? "Working..." : "Preview import"}
           </button>
         </div>
         {fileName ? <p className="mt-3 text-sm font-semibold text-gray-700">Selected: {fileName}</p> : null}
-        {docxSummaries.length ? (
+        {fileSummaries.length ? (
           <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {docxSummaries.map((summary) => (
+            {fileSummaries.map((summary) => (
               <div key={summary.fileName} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
                 <p className="font-bold text-gray-900">{summary.fileName}</p>
                 <p className="mt-1 text-gray-600">{summary.subject || "Subject?"} · {summary.yearGroup || "Year?"} · {summary.term || "Term?"}</p>
@@ -245,9 +254,9 @@ export default function ImportCurriculumClient() {
             ))}
           </div>
         ) : null}
-        {docxSummaries.some((summary) => summary.warnings.length) ? (
+        {fileSummaries.some((summary) => summary.warnings.length) ? (
           <ul className="mt-3 list-disc space-y-1 rounded-md border border-amber-200 bg-amber-50 px-6 py-3 text-sm font-semibold text-amber-900">
-            {docxSummaries.flatMap((summary) => summary.warnings.map((warning) => <li key={`${summary.fileName}-${warning}`}><strong>{summary.fileName}:</strong> {warning}</li>))}
+            {fileSummaries.flatMap((summary) => summary.warnings.map((warning) => <li key={`${summary.fileName}-${warning}`}><strong>{summary.fileName}:</strong> {warning}</li>))}
           </ul>
         ) : null}
         {fileErrors.length ? (

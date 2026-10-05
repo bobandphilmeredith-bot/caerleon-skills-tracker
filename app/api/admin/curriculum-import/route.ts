@@ -102,7 +102,8 @@ function buildPreview(csv: string, refs: ReferenceData) {
     const moduleTitle = value(row, "module_title");
     const curriculumIntent = value(row, "curriculum_intent");
     const groupKey = [normaliseText(subjectName), yearGroup, term, normaliseText(moduleCode), normaliseText(moduleTitle)].join("::");
-    const subject = refs.subjects.find((candidate) => same(candidate.name, subjectName));
+    const resolvedSubjectName = resolveSubjectName(subjectName);
+    const subject = refs.subjects.find((candidate) => same(candidate.name, resolvedSubjectName));
     const group =
       groups.get(groupKey) ??
       {
@@ -571,6 +572,15 @@ function sourceDetails(row: CsvRow) {
 
 function looksLikeUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function resolveSubjectName(value: string) {
+  const key = normaliseText(value);
+  if (key === "mathematics" || key === "math") return "Maths";
+  if (key === "design technology" || key === "design and technology") return "DT";
+  if (key === "physical education") return "PE";
+  if (key === "information and communication technology" || key === "information communication technology") return "ICT";
+  return value.trim();
 }
 
 function canImport(role: string) {

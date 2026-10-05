@@ -117,7 +117,7 @@ export default function ImportCurriculumClient() {
     try {
       const result = await callImportApi("preview");
       setPreview(result.preview);
-      setMessage("Preview ready. CSV rows have been grouped into curriculum activities before import.");
+      setMessage("Preview ready. Source rows have been grouped into curriculum activities before import. Warnings stay visible for review and missing progression steps are never invented.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not preview CSV.");
     } finally {
@@ -184,6 +184,7 @@ export default function ImportCurriculumClient() {
           </button>
         </div>
         {fileName ? <p className="mt-3 text-sm font-semibold text-gray-700">Selected file: {fileName}</p> : null}
+        {docxSummary?.warnings.length ? <ul className="mt-3 list-disc space-y-1 rounded-md border border-amber-200 bg-amber-50 px-6 py-3 text-sm font-semibold text-amber-900">{docxSummary.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
         {docxSummary?.warnings.length ? <ul className="mt-3 list-disc space-y-1 rounded-md border border-amber-200 bg-amber-50 px-6 py-3 text-sm font-semibold text-amber-900">{docxSummary.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
         {message ? <p className="mt-4 rounded-md border px-4 py-3 text-sm font-bold" style={{ borderColor: areaThemes.overview.border, backgroundColor: areaThemes.overview.soft, color: areaThemes.overview.text }}>{message}</p> : null}
       </section>

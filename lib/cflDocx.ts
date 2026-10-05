@@ -97,7 +97,7 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
         skill_code: skill.code,
         progression_step: progressionStep ? String(progressionStep) : "",
         mapping_description: skill.evidence,
-        notes: skill.code ? `Source CfL skill code: ${skill.code}` : "",
+        notes: "",
         cross_cutting_theme_focus: ""
       });
     }

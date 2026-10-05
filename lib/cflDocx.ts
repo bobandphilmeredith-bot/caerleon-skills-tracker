@@ -42,7 +42,13 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
   const term = inferTerm(sequence);
   const curriculumIntent = valueAfterLabel(rows, ["Curriculum Intent"]);
   const sourceFile = file.name;
-  const explicitProgressionStep = inferExplicitProgressionStep(paragraphs);
+  const explicitProgressionStep = inferExplicitProgressionStep([
+    moduleTitle,
+    sequence,
+    curriculumIntent,
+    valueAfterLabel(rows, ["Subject Content/ Knowledge", "Subject Content/Knowledge"]),
+    valueAfterLabel(rows, ["Subject Concepts/ Skills", "Subject Concepts/Skills"])
+  ]);
   const progressionStep = explicitProgressionStep ?? defaultProgressionStep(yearGroup);
 
   const warnings: string[] = [];
@@ -205,8 +211,8 @@ function inferYearGroup(value: string) {
   return match ? `Year ${match[1]}` : "";
 }
 
-function inferExplicitProgressionStep(paragraphs: string[]) {
-  const text = paragraphs.join(" ");
+function inferExplicitProgressionStep(fields: string[]) {
+  const text = fields.filter(Boolean).join(" ");
   const explicit =
     text.match(/\bprogression\s*step\s*[:\-]?\s*([1-5])\b/i) ??
     text.match(/\bPS\s*([1-5])\b/i);

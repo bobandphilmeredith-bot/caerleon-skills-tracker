@@ -63,6 +63,7 @@ export default function ImportCurriculumClient() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [docxSummaries, setDocxSummaries] = useState<Array<CflDocxSummary & { fileName: string }>>([]);
+  const [fileErrors, setFileErrors] = useState<Array<{ fileName: string; message: string }>>([]);
 
   useEffect(() => {
     if (canManageSchool) void loadHistory();
@@ -79,6 +80,7 @@ export default function ImportCurriculumClient() {
     setPreview(null);
     setMessage("");
     setDocxSummaries([]);
+    setFileErrors([]);
     setLoading(true);
 
     try {
@@ -99,10 +101,24 @@ export default function ImportCurriculumClient() {
         return;
       }
 
-      const converted = [];
+      const converted: Array<{ file: File; csv: string; summary: CflDocxSummary }> = [];
+      const failed: Array<{ fileName: string; message: string }> = [];
+
       for (const file of docxFiles) {
-        const result = await convertCflDocxToCsv(file);
-        converted.push({ file, ...result });
+        try {
+          const result = await convertCflDocxToCsv(file);
+          converted.push({ file, ...result });
+        } catch (error) {
+          failed.push({
+            fileName: file.name,
+            message: error instanceof Error ? error.message : "Could not read this Word document."
+          });
+        }
+      }
+
+      if (!converted.length) {
+        setFileErrors(failed);
+        throw new Error("None of the selected Word documents could be read. See the file errors below.");
       }
 
       const combinedCsv = converted
@@ -111,14 +127,15 @@ export default function ImportCurriculumClient() {
         .join("\n");
 
       setCsv(combinedCsv);
-      setFileName(docxFiles.length === 1 ? docxFiles[0].name : `${docxFiles.length} CfL DOCX files`);
+      setFileName(docxFiles.length === 1 ? docxFiles[0].name : `${docxFiles.length} selected · ${converted.length} ready`);
       setDocxSummaries(converted.map((item) => ({ ...item.summary, fileName: item.file.name })));
+      setFileErrors(failed);
 
       const skills = converted.reduce((sum, item) => sum + item.summary.skillsFound, 0);
       const themes = converted.reduce((sum, item) => sum + item.summary.themesFound, 0);
       const warningCount = converted.reduce((sum, item) => sum + item.summary.warnings.length, 0);
       setMessage(
-        `${docxFiles.length} CfL file${docxFiles.length === 1 ? "" : "s"} read · ${skills} skills · ${themes} populated cross-cutting themes${warningCount ? ` · ${warningCount} file warning${warningCount === 1 ? "" : "s"}` : ""}.`
+        `${converted.length} of ${docxFiles.length} CfL file${docxFiles.length === 1 ? "" : "s"} ready · ${skills} skills · ${themes} populated cross-cutting themes${warningCount ? ` · ${warningCount} file warning${warningCount === 1 ? "" : "s"}` : ""}${failed.length ? ` · ${failed.length} file${failed.length === 1 ? "" : "s"} could not be read` : ""}.`
       );
     } catch (error) {
       setCsv("");
@@ -232,6 +249,15 @@ export default function ImportCurriculumClient() {
           <ul className="mt-3 list-disc space-y-1 rounded-md border border-amber-200 bg-amber-50 px-6 py-3 text-sm font-semibold text-amber-900">
             {docxSummaries.flatMap((summary) => summary.warnings.map((warning) => <li key={`${summary.fileName}-${warning}`}><strong>{summary.fileName}:</strong> {warning}</li>))}
           </ul>
+        ) : null}
+        {fileErrors.length ? (
+          <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <p className="font-bold">Files not read</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {fileErrors.map((item) => <li key={item.fileName}><strong>{item.fileName}:</strong> {item.message}</li>)}
+            </ul>
+            <p className="mt-2">The readable files can still be previewed; the failed file is excluded from the batch.</p>
+          </div>
         ) : null}
         {message ? <p className="mt-4 rounded-md border px-4 py-3 text-sm font-bold" style={{ borderColor: areaThemes.overview.border, backgroundColor: areaThemes.overview.soft, color: areaThemes.overview.text }}>{message}</p> : null}
       </section>

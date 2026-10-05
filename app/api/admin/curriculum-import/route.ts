@@ -27,14 +27,14 @@ type FrameworkPreviewLink = {
   frameworkId: string;
   strandId: string;
   elementId: string;
-  progressionDescriptorId: string;
-  progressionStep: number;
+  progressionDescriptorId?: string;
+  progressionStep?: number;
   label: string;
   notes: string;
 };
 type ThemePreviewLink = {
   themeId: string;
-  themeElementId: string;
+  themeElementId?: string;
   label: string;
   notes: string;
 };
@@ -65,8 +65,8 @@ async function loadReferenceData(admin: AdminClient, schoolId: string) {
   const [subjects, frameworks, strands, elements, descriptors, themes, themeElements, existingMappings] = await Promise.all([
     admin.from("subjects").select("id,name").eq("school_id", schoolId).order("name", { ascending: true }),
     admin.from("frameworks").select("id,name,short_name").eq("school_id", schoolId).eq("active", true),
-    admin.from("strands").select("id,framework_id,name,short_name").eq("school_id", schoolId).eq("active", true),
-    admin.from("elements").select("id,strand_id,name").eq("school_id", schoolId).eq("active", true),
+    admin.from("strands").select("id,framework_id,name,short_name,display_order").eq("school_id", schoolId).eq("active", true),
+    admin.from("elements").select("id,strand_id,name,display_order").eq("school_id", schoolId).eq("active", true),
     admin.from("progression_descriptors").select("id,element_id,progression_step,descriptor_text").eq("school_id", schoolId).eq("active", true),
     admin.from("cross_cutting_themes").select("id,name").eq("school_id", schoolId).eq("active", true),
     admin.from("cross_cutting_theme_elements").select("id,theme_id,name").eq("school_id", schoolId).eq("active", true),
@@ -75,8 +75,8 @@ async function loadReferenceData(admin: AdminClient, schoolId: string) {
   return {
     subjects: (subjects.data ?? []) as { id: string; name: string }[],
     frameworks: (frameworks.data ?? []) as { id: string; name: string; short_name: string | null }[],
-    strands: (strands.data ?? []) as { id: string; framework_id: string; name: string; short_name: string | null }[],
-    elements: (elements.data ?? []) as { id: string; strand_id: string; name: string }[],
+    strands: (strands.data ?? []) as { id: string; framework_id: string; name: string; short_name: string | null; display_order: number }[],
+    elements: (elements.data ?? []) as { id: string; strand_id: string; name: string; display_order: number }[],
     descriptors: (descriptors.data ?? []) as { id: string; element_id: string; progression_step: number | string; descriptor_text: string | null }[],
     themes: (themes.data ?? []) as { id: string; name: string }[],
     themeElements: (themeElements.data ?? []) as { id: string; theme_id: string; name: string }[],
@@ -173,7 +173,7 @@ function buildPreview(csv: string, refs: ReferenceData) {
 }
 
 async function runImport(admin: AdminClient, schoolId: string, userId: string, fileName: string, preview: ReturnType<typeof buildPreview>) {
-  const importableGroups = preview.groups.filter((group) => !group.existingMappingId && !group.errors.length);
+  const importableGroups = preview.groups.filter((group) => !group.errors.length);
   const batch = await admin
     .from("curriculum_import_batches")
     .insert({
@@ -191,61 +191,122 @@ async function runImport(admin: AdminClient, schoolId: string, userId: string, f
 
   const items: { batch_id: string; table_name: string; row_id: string; action: string }[] = [];
   let mappingsInserted = 0;
+  let existingMappingsUpdated = 0;
   let frameworkLinksInserted = 0;
   let themeLinksInserted = 0;
 
   for (const group of importableGroups) {
     if (!group.subjectId) continue;
-    const mapping = await admin
-      .from("curriculum_mappings")
-      .insert({
-        school_id: schoolId,
-        subject_id: group.subjectId,
-        year_group: group.yearGroup,
-        term: group.term,
-        scheme_reference: group.moduleCode,
-        activity_title: group.moduleTitle,
-        activity_description: group.curriculumIntent,
-        task_description: "",
-        created_by: userId
-      })
-      .select("id")
-      .single();
-    if (mapping.error || !mapping.data) continue;
-    mappingsInserted += 1;
-    items.push({ batch_id: batch.data.id, table_name: "curriculum_mappings", row_id: mapping.data.id, action: "inserted" });
 
-    if (group.frameworkLinks.length) {
-      const frameworkRows = group.frameworkLinks.map((link) => ({
-        mapping_id: mapping.data.id,
+    let mappingId = group.existingMappingId ?? "";
+
+    if (!mappingId) {
+      const mapping = await admin
+        .from("curriculum_mappings")
+        .insert({
+          school_id: schoolId,
+          subject_id: group.subjectId,
+          year_group: group.yearGroup,
+          term: group.term,
+          scheme_reference: group.moduleCode,
+          activity_title: group.moduleTitle,
+          activity_description: group.curriculumIntent,
+          task_description: "",
+          created_by: userId
+        })
+        .select("id")
+        .single();
+      if (mapping.error || !mapping.data) continue;
+      mappingId = mapping.data.id;
+      mappingsInserted += 1;
+      items.push({ batch_id: batch.data.id, table_name: "curriculum_mappings", row_id: mappingId, action: "inserted" });
+    } else {
+      existingMappingsUpdated += 1;
+    }
+
+    const [existingFrameworkResult, existingThemeResult] = await Promise.all([
+      admin
+        .from("curriculum_mapping_framework_links")
+        .select("id,framework_id,strand_id,element_id,progression_descriptor_id")
+        .eq("mapping_id", mappingId),
+      admin
+        .from("curriculum_mapping_theme_links")
+        .select("id,theme_id,theme_element_id")
+        .eq("mapping_id", mappingId)
+    ]);
+
+    const existingFrameworkLinks = (existingFrameworkResult.data ?? []) as {
+      id: string;
+      framework_id: string;
+      strand_id: string;
+      element_id: string;
+      progression_descriptor_id: string | null;
+    }[];
+
+    const existingThemeLinks = (existingThemeResult.data ?? []) as {
+      id: string;
+      theme_id: string;
+      theme_element_id: string | null;
+    }[];
+
+    const frameworkRows = group.frameworkLinks
+      .filter((link) => !existingFrameworkLinks.some((existing) =>
+        existing.framework_id === link.frameworkId &&
+        existing.strand_id === link.strandId &&
+        existing.element_id === link.elementId &&
+        (existing.progression_descriptor_id ?? "") === (link.progressionDescriptorId ?? "")
+      ))
+      .map((link) => ({
+        mapping_id: mappingId,
         framework_id: link.frameworkId,
         strand_id: link.strandId,
         element_id: link.elementId,
-        progression_descriptor_id: link.progressionDescriptorId,
-        progression_step: link.progressionStep,
+        progression_descriptor_id: link.progressionDescriptorId ?? null,
+        progression_step: link.progressionStep ?? null,
         notes: link.notes || null
       }));
+
+    if (frameworkRows.length) {
       const inserted = await admin.from("curriculum_mapping_framework_links").insert(frameworkRows).select("id");
-      for (const row of inserted.data ?? []) items.push({ batch_id: batch.data.id, table_name: "curriculum_mapping_framework_links", row_id: row.id, action: "inserted" });
+      for (const row of inserted.data ?? []) {
+        items.push({ batch_id: batch.data.id, table_name: "curriculum_mapping_framework_links", row_id: row.id, action: "inserted" });
+      }
       frameworkLinksInserted += inserted.data?.length ?? 0;
     }
 
-    if (group.themeLinks.length) {
-      const themeRows = group.themeLinks.map((link) => ({
-        mapping_id: mapping.data.id,
+    const themeRows = group.themeLinks
+      .filter((link) => !existingThemeLinks.some((existing) =>
+        existing.theme_id === link.themeId &&
+        (existing.theme_element_id ?? "") === (link.themeElementId ?? "")
+      ))
+      .map((link) => ({
+        mapping_id: mappingId,
         theme_id: link.themeId,
-        theme_element_id: link.themeElementId,
+        theme_element_id: link.themeElementId ?? null,
         notes: link.notes || null,
         created_by: userId
       }));
+
+    if (themeRows.length) {
       const inserted = await admin.from("curriculum_mapping_theme_links").insert(themeRows).select("id");
-      for (const row of inserted.data ?? []) items.push({ batch_id: batch.data.id, table_name: "curriculum_mapping_theme_links", row_id: row.id, action: "inserted" });
+      for (const row of inserted.data ?? []) {
+        items.push({ batch_id: batch.data.id, table_name: "curriculum_mapping_theme_links", row_id: row.id, action: "inserted" });
+      }
       themeLinksInserted += inserted.data?.length ?? 0;
     }
   }
 
   if (items.length) await admin.from("curriculum_import_batch_items").insert(items);
-  return { ok: true, batchId: batch.data.id, mappingsInserted, frameworkLinksInserted, themeLinksInserted, skippedExisting: preview.summary.existingMappingsSkipped };
+
+  return {
+    ok: true,
+    batchId: batch.data.id,
+    mappingsInserted,
+    existingMappingsUpdated,
+    frameworkLinksInserted,
+    themeLinksInserted,
+    skippedExisting: 0
+  };
 }
 
 async function listBatches(admin: AdminClient, schoolId: string) {
@@ -279,15 +340,87 @@ function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number,
   const unresolved: string[] = [];
   const framework = detectFramework(row, refs);
   if (!framework) return { unresolved, link: null };
-  const rawStrand = stripFrameworkPrefix(value(row, "strand_name"));
-  const strand = refs.strands.find((candidate) => candidate.framework_id === framework.id && (same(candidate.name, rawStrand) || same(candidate.short_name ?? "", rawStrand)));
-  if (!strand) return { unresolved: [`Row ${rowNumber}: strand "${value(row, "strand_name")}" was not matched.`], link: null };
+
+  const skillCode = value(row, "skill_code");
+  const codeParts = skillCode.match(/^(\d+)(?:\.(\d+))?/);
   const rawElement = stripLeadingCode(value(row, "element_name"));
-  const element = refs.elements.find((candidate) => candidate.strand_id === strand.id && same(candidate.name, rawElement));
-  if (!element) return { unresolved: [`Row ${rowNumber}: element "${value(row, "element_name")}" was not matched.`], link: null };
-  const step = Number(String(value(row, "progression_step")).match(/[1-5]/)?.[0]);
+  const rawStrand = stripFrameworkPrefix(value(row, "strand_name"));
+
+  let strand =
+    (codeParts
+      ? refs.strands.find((candidate) => candidate.framework_id === framework.id && candidate.display_order === Number(codeParts[1]))
+      : undefined) ??
+    (rawStrand
+      ? refs.strands.find((candidate) => candidate.framework_id === framework.id && (same(candidate.name, rawStrand) || same(candidate.short_name ?? "", rawStrand)))
+      : undefined);
+
+  let element =
+    (strand && codeParts?.[2]
+      ? refs.elements.find((candidate) => candidate.strand_id === strand?.id && candidate.display_order === Number(codeParts[2]))
+      : undefined) ??
+    (strand && rawElement
+      ? refs.elements.find((candidate) => candidate.strand_id === strand?.id && same(candidate.name, rawElement))
+      : undefined);
+
+  if (!element && rawElement && !skillCode) {
+    const frameworkStrandIds = new Set(refs.strands.filter((candidate) => candidate.framework_id === framework.id).map((candidate) => candidate.id));
+    const elementMatches = refs.elements.filter((candidate) => frameworkStrandIds.has(candidate.strand_id) && same(candidate.name, rawElement));
+    if (elementMatches.length === 1) {
+      element = elementMatches[0];
+      strand = refs.strands.find((candidate) => candidate.id === element?.strand_id);
+    } else if (elementMatches.length > 1) {
+      return { unresolved: [`Row ${rowNumber}: element "${value(row, "element_name")}" matched more than one strand; choose the strand manually.`], link: null };
+    }
+  }
+
+  if (!strand) {
+    return { unresolved: [`Row ${rowNumber}: skill code/strand "${skillCode || value(row, "strand_name")}" was not matched.`], link: null };
+  }
+  if (!element) {
+    return { unresolved: [`Row ${rowNumber}: element "${value(row, "element_name")}" was not matched in ${framework.short_name ?? framework.name}.`], link: null };
+  }
+
+  const elementDisplayName = stripLeadingCode(element.name);
+  // When a valid framework code is present, treat the code as authoritative.
+  // Staff may use local wording instead of the exact framework element name.
+  // Do not clutter the saved note with code/matching diagnostics; keep it focused
+  // on the actual activity/task evidence from the CfL.
+
+  const stepText = value(row, "progression_step");
+  const explicitStep = Number(String(stepText).match(/[1-5]/)?.[0]);
+  const year = Number(value(row, "year_group").match(/\d+/)?.[0]);
+  const defaultStep = year >= 7 && year <= 9 ? 4 : year >= 10 ? 5 : NaN;
+  const step = Number.isFinite(explicitStep) && explicitStep >= 1 && explicitStep <= 5 ? explicitStep : defaultStep;
+
+  if (!Number.isFinite(step) || step < 1 || step > 5) {
+    unresolved.push(`Row ${rowNumber}: ${framework.short_name ?? framework.name} → ${elementDisplayName} matched at element level; progression could not be determined from the source or year group.`);
+    return {
+      unresolved,
+      link: {
+        frameworkId: framework.id,
+        strandId: strand.id,
+        elementId: element.id,
+        label: `${framework.short_name ?? framework.name}: ${strand.short_name ?? strand.name} → ${elementDisplayName} → progression not specified`,
+        notes
+      }
+    };
+  }
+
   const descriptor = refs.descriptors.find((candidate) => candidate.element_id === element.id && Number(candidate.progression_step) === step && candidate.descriptor_text?.trim());
-  if (!descriptor) return { unresolved: [`Row ${rowNumber}: progression step "${value(row, "progression_step")}" was not matched for ${element.name}.`], link: null };
+  if (!descriptor) {
+    return {
+      unresolved,
+      link: {
+        frameworkId: framework.id,
+        strandId: strand.id,
+        elementId: element.id,
+        progressionStep: step,
+        label: `${framework.short_name ?? framework.name}: ${strand.short_name ?? strand.name} → ${elementDisplayName} → Step ${step}`,
+        notes
+      }
+    };
+  }
+
   return {
     unresolved,
     link: {
@@ -296,7 +429,7 @@ function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number,
       elementId: element.id,
       progressionDescriptorId: descriptor.id,
       progressionStep: step,
-      label: `${framework.short_name ?? framework.name}: ${strand.short_name ?? strand.name} → ${element.name} → Step ${step}`,
+      label: `${framework.short_name ?? framework.name}: ${strand.short_name ?? strand.name} → ${elementDisplayName} → Step ${step}`,
       notes
     }
   };
@@ -310,6 +443,11 @@ function matchThemeLink(row: CsvRow, refs: ReferenceData, rowNumber: number, not
   if (!shouldTry) return { unresolved: [], link: null };
   const theme = refs.themes.find((candidate) => same(candidate.name, themeFocus));
   if (!theme) return { unresolved: [`Row ${rowNumber}: CCT theme "${themeFocus}" was not matched.`], link: null };
+
+  if (!elementText) {
+    return { unresolved: [], link: { themeId: theme.id, label: theme.name, notes } };
+  }
+
   const element = refs.themeElements.find((candidate) => candidate.theme_id === theme.id && same(candidate.name, elementText));
   if (!element) return { unresolved: [`Row ${rowNumber}: CCT element "${value(row, "element_name")}" was not matched.`], link: null };
   return { unresolved: [], link: { themeId: theme.id, themeElementId: element.id, label: `${theme.name}: ${element.name}`, notes } };
@@ -329,14 +467,19 @@ function detectFramework(row: CsvRow, refs: ReferenceData) {
 }
 
 function mergeFrameworkLink(links: FrameworkPreviewLink[], link: FrameworkPreviewLink) {
-  const existing = links.find((item) => item.frameworkId === link.frameworkId && item.strandId === link.strandId && item.elementId === link.elementId && item.progressionDescriptorId === link.progressionDescriptorId);
+  const existing = links.find((item) =>
+    item.frameworkId === link.frameworkId &&
+    item.strandId === link.strandId &&
+    item.elementId === link.elementId &&
+    (item.progressionDescriptorId ?? "") === (link.progressionDescriptorId ?? "")
+  );
   if (!existing) return [...links, link];
   existing.notes = combineNotes(existing.notes, link.notes);
   return links;
 }
 
 function mergeThemeLink(links: ThemePreviewLink[], link: ThemePreviewLink) {
-  const existing = links.find((item) => item.themeId === link.themeId && item.themeElementId === link.themeElementId);
+  const existing = links.find((item) => item.themeId === link.themeId && (item.themeElementId ?? "") === (link.themeElementId ?? ""));
   if (!existing) return [...links, link];
   existing.notes = combineNotes(existing.notes, link.notes);
   return links;
@@ -389,7 +532,7 @@ function same(a: string, b: string) {
 
 function normaliseYearGroup(value: string) {
   const number = value.match(/\d+/)?.[0];
-  return number ? `Y${number}` : value.trim();
+  return number ? `Year ${number}` : value.trim();
 }
 
 function normaliseTerm(value: string) {
@@ -405,7 +548,10 @@ function stripFrameworkPrefix(value: string) {
 }
 
 function stripLeadingCode(value: string) {
-  return value.replace(/^\s*\d+(?:\.\d+)*\s*/, "").trim();
+  return value
+    .replace(/^\s*[.\s]*\d+(?:\s*[.]\s*\d+)*\s*/, "")
+    .replace(/^\s*[.\-:]+\s*/, "")
+    .trim();
 }
 
 function combineNotes(...notes: string[]) {
@@ -417,7 +563,7 @@ function unique(values: string[]) {
 }
 
 function sourceDetails(row: CsvRow) {
-  return ["key_stage", "links_within_aole", "links_across_aoles", "source_file"].map((column) => {
+  return ["key_stage", "subject_content_knowledge", "subject_concepts_skills", "learning_outcomes", "links_within_aole", "links_across_aoles", "source_file"].map((column) => {
     const cell = value(row, column);
     return cell ? `${column.replace(/_/g, " ")}: ${cell}` : "";
   }).filter(Boolean);

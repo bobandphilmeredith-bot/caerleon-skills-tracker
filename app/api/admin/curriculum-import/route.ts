@@ -319,21 +319,22 @@ function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number,
     return { unresolved: [`Row ${rowNumber}: element "${value(row, "element_name")}" was not matched in ${framework.short_name ?? framework.name}.`], link: null };
   }
 
-  if (skillCode && rawElement && !same(element.name, rawElement)) {
-    unresolved.push(`Row ${rowNumber}: source wording "${rawElement}" maps by code ${skillCode} to tracker element "${element.name}". Please review.`);
+  const elementDisplayName = stripLeadingCode(element.name);
+  if (skillCode && rawElement && !same(elementDisplayName, rawElement)) {
+    unresolved.push(`Row ${rowNumber}: source wording "${rawElement}" maps by code ${skillCode} to tracker element "${elementDisplayName}". Please review.`);
   }
 
   const stepText = value(row, "progression_step");
   const step = Number(String(stepText).match(/[1-5]/)?.[0]);
   if (!stepText || !Number.isFinite(step) || step < 1 || step > 5) {
-    unresolved.push(`Row ${rowNumber}: ${framework.short_name ?? framework.name} → ${element.name} matched at element level; no progression step was supplied, so none will be invented.`);
+    unresolved.push(`Row ${rowNumber}: ${framework.short_name ?? framework.name} → ${elementDisplayName} matched at element level; no progression step was supplied, so none will be invented.`);
     return {
       unresolved,
       link: {
         frameworkId: framework.id,
         strandId: strand.id,
         elementId: element.id,
-        label: `${framework.short_name ?? framework.name}: ${strand.short_name ?? strand.name} → ${element.name} → progression not specified`,
+        label: `${framework.short_name ?? framework.name}: ${strand.short_name ?? strand.name} → ${elementDisplayName} → progression not specified`,
         notes
       }
     };
@@ -341,7 +342,7 @@ function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number,
 
   const descriptor = refs.descriptors.find((candidate) => candidate.element_id === element.id && Number(candidate.progression_step) === step && candidate.descriptor_text?.trim());
   if (!descriptor) {
-    unresolved.push(`Row ${rowNumber}: progression step "${stepText}" was not matched for ${element.name}; the element will be imported without inventing a descriptor.`);
+    unresolved.push(`Row ${rowNumber}: progression step "${stepText}" was not matched for ${elementDisplayName}; the element will be imported without inventing a descriptor.`);
     return {
       unresolved,
       link: {
@@ -362,7 +363,7 @@ function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number,
       elementId: element.id,
       progressionDescriptorId: descriptor.id,
       progressionStep: step,
-      label: `${framework.short_name ?? framework.name}: ${strand.short_name ?? strand.name} → ${element.name} → Step ${step}`,
+      label: `${framework.short_name ?? framework.name}: ${strand.short_name ?? strand.name} → ${elementDisplayName} → Step ${step}`,
       notes
     }
   };
@@ -378,10 +379,7 @@ function matchThemeLink(row: CsvRow, refs: ReferenceData, rowNumber: number, not
   if (!theme) return { unresolved: [`Row ${rowNumber}: CCT theme "${themeFocus}" was not matched.`], link: null };
 
   if (!elementText) {
-    return {
-      unresolved: [`Row ${rowNumber}: ${theme.name} matched as a populated cross-cutting theme; no more specific theme element was supplied.`],
-      link: { themeId: theme.id, label: theme.name, notes }
-    };
+    return { unresolved: [], link: { themeId: theme.id, label: theme.name, notes } };
   }
 
   const element = refs.themeElements.find((candidate) => candidate.theme_id === theme.id && same(candidate.name, elementText));

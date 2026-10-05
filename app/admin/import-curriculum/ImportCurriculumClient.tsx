@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
 import { areaThemes } from "@/lib/theme";
+import { CflDocxSummary, convertCflDocxToCsv } from "@/lib/cflDocx";
 
 type PreviewGroup = {
   key: string;
@@ -61,6 +62,7 @@ export default function ImportCurriculumClient() {
   const [batches, setBatches] = useState<ImportBatch[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [docxSummary, setDocxSummary] = useState<CflDocxSummary | null>(null);
 
   useEffect(() => {
     if (canManageSchool) void loadHistory();
@@ -75,7 +77,25 @@ export default function ImportCurriculumClient() {
     setFileName(file.name);
     setPreview(null);
     setMessage("");
-    setCsv(await file.text());
+    setDocxSummary(null);
+    setLoading(true);
+    try {
+      if (file.name.toLowerCase().endsWith(".docx")) {
+        const result = await convertCflDocxToCsv(file);
+        setCsv(result.csv);
+        setDocxSummary(result.summary);
+        setMessage(
+          `CfL read: ${result.summary.subject || "subject not identified"} · ${result.summary.yearGroup || "year not identified"} · ${result.summary.term || "term not identified"} · ${result.summary.skillsFound} skills · ${result.summary.themesFound} populated cross-cutting themes.`
+        );
+      } else {
+        setCsv(await file.text());
+      }
+    } catch (error) {
+      setCsv("");
+      setMessage(error instanceof Error ? error.message : "Could not read this file.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function callImportApi(action: "preview" | "import" | "history" | "undo", extra: Record<string, unknown> = {}) {
@@ -150,20 +170,21 @@ export default function ImportCurriculumClient() {
       <PageHeader
         eyebrow="Admin Import"
         title="Import Curriculum Mappings"
-        description="Upload a CSV, preview the mapped curriculum entries and import them safely."
+        description="Upload an existing curriculum CSV or a Caerleon Context for Learning Word document, preview the proposed mappings and import them safely."
         accent={areaThemes.overview.accent}
       />
 
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-bold text-gray-950">Upload CSV</h2>
-        <p className="mt-1 text-sm leading-6 text-gray-600">Required columns: subject, year_group, term, module_code, module_title, curriculum_intent. The half_term column is ignored.</p>
+        <h2 className="text-lg font-bold text-gray-950">Upload curriculum file</h2>
+        <p className="mt-1 text-sm leading-6 text-gray-600">Use a Caerleon Context for Learning .docx file, or an existing curriculum CSV. Word documents are read locally in your browser and converted into the same controlled preview format before anything is written to Supabase.</p>
         <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto]">
-          <input className="focus-ring rounded-md border border-gray-300 bg-white px-3 py-2" type="file" accept=".csv,text/csv" onChange={(event) => readFile(event.target.files?.[0])} />
+          <input className="focus-ring rounded-md border border-gray-300 bg-white px-3 py-2" type="file" accept=".csv,text/csv,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => readFile(event.target.files?.[0])} />
           <button className="focus-ring btn btn-primary" type="button" onClick={previewImport} disabled={loading || !csv.trim()}>
             {loading ? "Working..." : "Preview import"}
           </button>
         </div>
         {fileName ? <p className="mt-3 text-sm font-semibold text-gray-700">Selected file: {fileName}</p> : null}
+        {docxSummary?.warnings.length ? <ul className="mt-3 list-disc space-y-1 rounded-md border border-amber-200 bg-amber-50 px-6 py-3 text-sm font-semibold text-amber-900">{docxSummary.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
         {message ? <p className="mt-4 rounded-md border px-4 py-3 text-sm font-bold" style={{ borderColor: areaThemes.overview.border, backgroundColor: areaThemes.overview.soft, color: areaThemes.overview.text }}>{message}</p> : null}
       </section>
 
@@ -172,14 +193,14 @@ export default function ImportCurriculumClient() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h2 className="text-lg font-bold text-gray-950">Preview</h2>
-              <p className="mt-1 text-sm font-semibold text-gray-600">CSV rows have been grouped into curriculum activities before import.</p>
+              <p className="mt-1 text-sm font-semibold text-gray-600">Source rows have been grouped into curriculum activities before import. Warnings remain visible for review but do not silently invent missing progression steps.</p>
             </div>
             <button className="focus-ring btn btn-primary" type="button" onClick={confirmImport} disabled={loading || !canImport}>
               Confirm import
             </button>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Summary label="CSV rows read" value={preview.summary.rowsRead} />
+            <Summary label="Source rows read" value={preview.summary.rowsRead} />
             <Summary label="Grouped mappings" value={preview.summary.groupedMappings} />
             <Summary label="Framework links" value={preview.summary.frameworkLinksToCreate} />
             <Summary label="CCT element links" value={preview.summary.cctElementLinksToCreate} />

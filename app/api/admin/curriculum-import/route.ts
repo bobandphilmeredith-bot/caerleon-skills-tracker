@@ -320,9 +320,15 @@ function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number,
   }
 
   const elementDisplayName = stripLeadingCode(element.name);
-  if (skillCode && rawElement && !same(elementDisplayName, rawElement)) {
-    unresolved.push(`Row ${rowNumber}: source wording "${rawElement}" maps by code ${skillCode} to tracker element "${elementDisplayName}". Please review.`);
-  }
+  // When a valid framework code is present, treat the code as authoritative.
+  // Staff may enter a strand-level label (for example "Computational thinking")
+  // rather than the exact element wording. Keep the source wording in the notes,
+  // but do not flag a false unresolved warning when the code itself matches.
+  const wordingNote =
+    skillCode && rawElement && !same(elementDisplayName, rawElement)
+      ? `Source wording: "${rawElement}" (matched by code ${skillCode} to "${elementDisplayName}")`
+      : "";
+  notes = combineNotes(notes, wordingNote);
 
   const stepText = value(row, "progression_step");
   const explicitStep = Number(String(stepText).match(/[1-5]/)?.[0]);

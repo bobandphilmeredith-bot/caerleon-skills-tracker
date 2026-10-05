@@ -106,7 +106,7 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
   for (const section of skillSections) {
     const sectionText = valueAfterLabel(rows, section.labels);
     for (const skill of parseSkillLines(sectionText)) {
-      structuredSkills.push({ frameworkType: section.frameworkType, ...skill });
+      if (skill.code) structuredSkills.push({ frameworkType: section.frameworkType, ...skill });
     }
   }
 

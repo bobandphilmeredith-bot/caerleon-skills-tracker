@@ -42,6 +42,8 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
   const term = inferTerm(sequence);
   const curriculumIntent = valueAfterLabel(rows, ["Curriculum Intent"]);
   const sourceFile = file.name;
+  const explicitProgressionStep = inferExplicitProgressionStep(paragraphs);
+  const progressionStep = explicitProgressionStep ?? defaultProgressionStep(yearGroup);
 
   const warnings: string[] = [];
   if (!subject) warnings.push("Subject could not be read from the document heading.");
@@ -49,6 +51,9 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
   if (!term) warnings.push("Term could not be inferred from the position-in-sequence field.");
   if (!moduleTitle) warnings.push("Module / enquiry question could not be read.");
   if (!curriculumIntent) warnings.push("Curriculum intent could not be read.");
+  if (explicitProgressionStep) {
+    warnings.push(`Progression Step ${explicitProgressionStep} was explicitly stated in the CfL and will override the year-group default.`);
+  }
 
   const common: CsvRow = {
     subject,
@@ -84,7 +89,7 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
         strand_name: "",
         element_name: skill.name,
         skill_code: skill.code,
-        progression_step: "",
+        progression_step: progressionStep ? String(progressionStep) : "",
         mapping_description: skill.evidence,
         notes: skill.code ? `Source CfL skill code: ${skill.code}` : "",
         cross_cutting_theme_focus: ""
@@ -144,14 +149,18 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
 
 function extractTableRows(xml: Document) {
   return Array.from(xml.getElementsByTagNameNS("*", "tr")).map((row) =>
-    Array.from(row.getElementsByTagNameNS("*", "tc")).map((cell) => {
-      const paragraphs = Array.from(cell.getElementsByTagNameNS("*", "p"))
+    directChildren(row, "tc").map((cell) => {
+      const paragraphs = directChildren(cell, "p")
         .map(paragraphText)
         .map(cleanText)
         .filter(Boolean);
       return paragraphs.join("\n");
     })
   );
+}
+
+function directChildren(element: Element, localName: string) {
+  return Array.from(element.children).filter((child) => child.localName === localName);
 }
 
 function extractParagraphs(xml: Document) {
@@ -194,6 +203,21 @@ function parseSkillLines(text: string) {
 function inferYearGroup(value: string) {
   const match = value.match(/(?:Year\s*)?Y?\s*(7|8|9|10|11)\b/i);
   return match ? `Year ${match[1]}` : "";
+}
+
+function inferExplicitProgressionStep(paragraphs: string[]) {
+  const text = paragraphs.join(" ");
+  const explicit =
+    text.match(/\bprogression\s*step\s*[:\-]?\s*([1-5])\b/i) ??
+    text.match(/\bPS\s*([1-5])\b/i);
+  return explicit ? Number(explicit[1]) : null;
+}
+
+function defaultProgressionStep(yearGroup: string) {
+  const year = Number(yearGroup.match(/\d+/)?.[0]);
+  if (year >= 7 && year <= 9) return 4;
+  if (year >= 10) return 5;
+  return null;
 }
 
 function inferKeyStage(yearGroup: string) {

@@ -62,7 +62,7 @@ export default function ImportCurriculumClient() {
   const [batches, setBatches] = useState<ImportBatch[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [docxSummary, setDocxSummary] = useState<CflDocxSummary | null>(null);
+  const [docxSummaries, setDocxSummaries] = useState<Array<CflDocxSummary & { fileName: string }>>([]);
 
   useEffect(() => {
     if (canManageSchool) void loadHistory();
@@ -72,27 +72,59 @@ export default function ImportCurriculumClient() {
     return <AccessDenied title="Import restricted" message="Only school admins and platform admins can import curriculum mappings." />;
   }
 
-  async function readFile(file?: File) {
-    if (!file) return;
-    setFileName(file.name);
+  async function readFiles(fileList?: FileList | null) {
+    const files = Array.from(fileList ?? []);
+    if (!files.length) return;
+
     setPreview(null);
     setMessage("");
-    setDocxSummary(null);
+    setDocxSummaries([]);
     setLoading(true);
+
     try {
-      if (file.name.toLowerCase().endsWith(".docx")) {
-        const result = await convertCflDocxToCsv(file);
-        setCsv(result.csv);
-        setDocxSummary(result.summary);
-        setMessage(
-          `CfL read: ${result.summary.subject || "subject not identified"} · ${result.summary.yearGroup || "year not identified"} · ${result.summary.term || "term not identified"} · ${result.summary.skillsFound} skills · ${result.summary.themesFound} populated cross-cutting themes.`
-        );
-      } else {
-        setCsv(await file.text());
+      const csvFiles = files.filter((file) => file.name.toLowerCase().endsWith(".csv"));
+      const docxFiles = files.filter((file) => file.name.toLowerCase().endsWith(".docx"));
+
+      if (files.length > 1 && csvFiles.length) {
+        throw new Error("Batch upload currently supports Word .docx CfLs only. Upload CSV files one at a time.");
       }
+      if (!csvFiles.length && !docxFiles.length) {
+        throw new Error("Choose a .docx Context for Learning file or a .csv curriculum file.");
+      }
+
+      if (csvFiles.length === 1) {
+        const file = csvFiles[0];
+        setFileName(file.name);
+        setCsv(await file.text());
+        return;
+      }
+
+      const converted = [];
+      for (const file of docxFiles) {
+        const result = await convertCflDocxToCsv(file);
+        converted.push({ file, ...result });
+      }
+
+      const combinedCsv = converted
+        .map((item, index) => index === 0 ? item.csv : withoutCsvHeader(item.csv))
+        .filter(Boolean)
+        .join("\n");
+
+      setCsv(combinedCsv);
+      setFileName(docxFiles.length === 1 ? docxFiles[0].name : `${docxFiles.length} CfL DOCX files`);
+      setDocxSummaries(converted.map((item) => ({ ...item.summary, fileName: item.file.name })));
+
+      const skills = converted.reduce((sum, item) => sum + item.summary.skillsFound, 0);
+      const themes = converted.reduce((sum, item) => sum + item.summary.themesFound, 0);
+      const warningCount = converted.reduce((sum, item) => sum + item.summary.warnings.length, 0);
+      setMessage(
+        `${docxFiles.length} CfL file${docxFiles.length === 1 ? "" : "s"} read · ${skills} skills · ${themes} populated cross-cutting themes${warningCount ? ` · ${warningCount} file warning${warningCount === 1 ? "" : "s"}` : ""}.`
+      );
     } catch (error) {
       setCsv("");
-      setMessage(error instanceof Error ? error.message : "Could not read this file.");
+      setFileName("");
+      setDocxSummaries([]);
+      setMessage(error instanceof Error ? error.message : "Could not read the selected files.");
     } finally {
       setLoading(false);
     }
@@ -134,7 +166,7 @@ export default function ImportCurriculumClient() {
       setMessage(result.result?.ok ? `Import complete. ${result.result.mappingsInserted} new curriculum mapping${result.result.mappingsInserted === 1 ? "" : "s"} created; ${result.result.existingMappingsUpdated ?? 0} existing mapping${(result.result.existingMappingsUpdated ?? 0) === 1 ? "" : "s"} updated with ${result.result.frameworkLinksInserted ?? 0} framework link${(result.result.frameworkLinksInserted ?? 0) === 1 ? "" : "s"} and ${result.result.themeLinksInserted ?? 0} cross-cutting link${(result.result.themeLinksInserted ?? 0) === 1 ? "" : "s"}.` : result.result?.message ?? "Import failed.");
       await loadHistory();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not import CSV.");
+      setMessage(error instanceof Error ? error.message : "Could not import this batch.");
     } finally {
       setLoading(false);
     }
@@ -170,21 +202,37 @@ export default function ImportCurriculumClient() {
       <PageHeader
         eyebrow="Admin Import"
         title="Import Curriculum Mappings"
-        description="Upload an existing curriculum CSV or a Caerleon Context for Learning Word document, preview the proposed mappings and import them safely."
+        description="Upload one or many Caerleon Context for Learning Word documents, or a single curriculum CSV, preview the proposed mappings and import them safely."
         accent={areaThemes.overview.accent}
       />
 
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-bold text-gray-950">Upload curriculum file</h2>
-        <p className="mt-1 text-sm leading-6 text-gray-600">Use a Caerleon Context for Learning .docx file, or an existing curriculum CSV. Word documents are read locally in your browser and converted into the same controlled preview format before anything is written to Supabase.</p>
+        <h2 className="text-lg font-bold text-gray-950">Upload curriculum files</h2>
+        <p className="mt-1 text-sm leading-6 text-gray-600">Select one or many Caerleon Context for Learning .docx files, or a single existing curriculum CSV. Word documents are read locally in your browser and combined into one controlled batch preview before anything is written to Supabase.</p>
         <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto]">
-          <input className="focus-ring rounded-md border border-gray-300 bg-white px-3 py-2" type="file" accept=".csv,text/csv,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => readFile(event.target.files?.[0])} />
+          <input className="focus-ring rounded-md border border-gray-300 bg-white px-3 py-2" type="file" multiple accept=".csv,text/csv,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => readFiles(event.target.files)} />
           <button className="focus-ring btn btn-primary" type="button" onClick={previewImport} disabled={loading || !csv.trim()}>
             {loading ? "Working..." : "Preview import"}
           </button>
         </div>
-        {fileName ? <p className="mt-3 text-sm font-semibold text-gray-700">Selected file: {fileName}</p> : null}
-        {docxSummary?.warnings.length ? <ul className="mt-3 list-disc space-y-1 rounded-md border border-amber-200 bg-amber-50 px-6 py-3 text-sm font-semibold text-amber-900">{docxSummary.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
+        {fileName ? <p className="mt-3 text-sm font-semibold text-gray-700">Selected: {fileName}</p> : null}
+        {docxSummaries.length ? (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {docxSummaries.map((summary) => (
+              <div key={summary.fileName} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                <p className="font-bold text-gray-900">{summary.fileName}</p>
+                <p className="mt-1 text-gray-600">{summary.subject || "Subject?"} · {summary.yearGroup || "Year?"} · {summary.term || "Term?"}</p>
+                <p className="mt-1 text-gray-600">{summary.skillsFound} skills · {summary.themesFound} cross-cutting themes</p>
+                {summary.warnings.length ? <p className="mt-1 font-semibold text-amber-800">{summary.warnings.length} warning{summary.warnings.length === 1 ? "" : "s"}</p> : <p className="mt-1 font-semibold text-green-700">Ready</p>}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {docxSummaries.some((summary) => summary.warnings.length) ? (
+          <ul className="mt-3 list-disc space-y-1 rounded-md border border-amber-200 bg-amber-50 px-6 py-3 text-sm font-semibold text-amber-900">
+            {docxSummaries.flatMap((summary) => summary.warnings.map((warning) => <li key={`${summary.fileName}-${warning}`}><strong>{summary.fileName}:</strong> {warning}</li>))}
+          </ul>
+        ) : null}
         {message ? <p className="mt-4 rounded-md border px-4 py-3 text-sm font-bold" style={{ borderColor: areaThemes.overview.border, backgroundColor: areaThemes.overview.soft, color: areaThemes.overview.text }}>{message}</p> : null}
       </section>
 
@@ -219,7 +267,7 @@ export default function ImportCurriculumClient() {
                     <h3 className="mt-1 font-bold text-gray-950">{group.moduleCode} · {group.moduleTitle}</h3>
                     <p className="mt-1 text-sm text-gray-600">{group.subject} · {group.yearGroup} · {group.term}</p>
                   </div>
-                  {group.existingMappingId ? <span className="h-fit rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-700">Existing mapping skipped</span> : null}
+                  {group.existingMappingId ? <span className="h-fit rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-700">Existing mapping — add missing links</span> : null}
                 </div>
                 <p className="mt-3 line-clamp-2 text-sm leading-6 text-gray-600">{group.curriculumIntent}</p>
                 <PreviewList title="Framework links" items={group.frameworkLinks.map((link) => link.label)} empty="No framework links matched." />
@@ -308,4 +356,10 @@ async function getAccessToken() {
   if (!supabase) return "";
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token ?? "";
+}
+
+
+function withoutCsvHeader(csv: string) {
+  const newline = csv.indexOf("\n");
+  return newline >= 0 ? csv.slice(newline + 1) : "";
 }

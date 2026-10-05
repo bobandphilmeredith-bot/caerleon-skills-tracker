@@ -44,7 +44,11 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
   const sequence =
     valueAfterLabel(rows, ["Position in sequence/Point of Progress", "Position in sequence / Point of Progress", "Position", "Term"]) ||
     paragraphLabelValue(paragraphs, ["Position", "Term"]);
-  const yearGroup = inferYearGroup(moduleCode || moduleTitle || paragraphs.join(" ") || file.name) || inferYearGroup(file.name);
+  const yearGroup =
+    inferYearGroup(moduleCode) ||
+    inferYearGroup(moduleTitle) ||
+    inferYearGroup(paragraphs.join(" ")) ||
+    inferYearGroup(file.name);
   const term = inferTerm(sequence || paragraphs.join(" "));
   const curriculumIntent =
     valueAfterLabel(rows, ["Curriculum Intent"]) ||
@@ -380,7 +384,7 @@ function escapeRegex(value: string) {
 }
 
 function inferYearGroup(value: string) {
-  const match = value.match(/(?:Year\s*)?Y?\s*(7|8|9|10|11)\b/i);
+  const match = value.match(/(?:Year\s*)?Y?\s*(7|8|9|10|11)(?=$|[^0-9])/i);
   return match ? `Year ${match[1]}` : "";
 }
 

@@ -325,9 +325,13 @@ function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number,
   }
 
   const stepText = value(row, "progression_step");
-  const step = Number(String(stepText).match(/[1-5]/)?.[0]);
-  if (!stepText || !Number.isFinite(step) || step < 1 || step > 5) {
-    unresolved.push(`Row ${rowNumber}: ${framework.short_name ?? framework.name} → ${elementDisplayName} matched at element level; no progression step was supplied, so none will be invented.`);
+  const explicitStep = Number(String(stepText).match(/[1-5]/)?.[0]);
+  const year = Number(value(row, "year_group").match(/\d+/)?.[0]);
+  const defaultStep = year >= 7 && year <= 9 ? 4 : year >= 10 ? 5 : NaN;
+  const step = Number.isFinite(explicitStep) && explicitStep >= 1 && explicitStep <= 5 ? explicitStep : defaultStep;
+
+  if (!Number.isFinite(step) || step < 1 || step > 5) {
+    unresolved.push(`Row ${rowNumber}: ${framework.short_name ?? framework.name} → ${elementDisplayName} matched at element level; progression could not be determined from the source or year group.`);
     return {
       unresolved,
       link: {
@@ -482,7 +486,10 @@ function stripFrameworkPrefix(value: string) {
 }
 
 function stripLeadingCode(value: string) {
-  return value.replace(/^\s*\d+(?:\.\d+)*\s*/, "").trim();
+  return value
+    .replace(/^\s*[.\s]*\d+(?:\s*[.]\s*\d+)*\s*/, "")
+    .replace(/^\s*[.\-:]+\s*/, "")
+    .trim();
 }
 
 function combineNotes(...notes: string[]) {

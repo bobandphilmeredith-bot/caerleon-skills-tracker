@@ -1,7 +1,5 @@
 "use client";
 
-import { strFromU8, unzipSync } from "fflate";
-
 type CsvRow = Record<string, string>;
 
 export type CflDocxSummary = {
@@ -17,18 +15,15 @@ export type CflDocxSummary = {
 
 export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; summary: CflDocxSummary }> {
   const bytes = new Uint8Array(await file.arrayBuffer());
-  let archive: ReturnType<typeof unzipSync>;
+  let documentXml: Uint8Array;
   try {
-    archive = unzipSync(bytes);
+    documentXml = await readZipEntry(bytes, "word/document.xml");
   } catch {
     throw new Error("This file could not be opened as a Word .docx document.");
   }
 
-  const documentXml = archive["word/document.xml"];
-  if (!documentXml) throw new Error("The Word document does not contain word/document.xml.");
-
   const parser = new DOMParser();
-  const xml = parser.parseFromString(strFromU8(documentXml), "application/xml");
+  const xml = parser.parseFromString(new TextDecoder().decode(documentXml), "application/xml");
   if (xml.getElementsByTagName("parsererror").length) throw new Error("The Word document XML could not be read.");
 
   const rows = extractTableRows(xml);
@@ -87,7 +82,8 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
         ...common,
         framework_type: section.frameworkType,
         strand_name: "",
-        element_name: `${skill.code} ${skill.name}`.trim(),
+        element_name: skill.name,
+        skill_code: skill.code,
         progression_step: "",
         mapping_description: skill.evidence,
         notes: skill.code ? `Source CfL skill code: ${skill.code}` : "",
@@ -117,6 +113,7 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
       framework_type: "CCT",
       strand_name: theme.canonical,
       element_name: "",
+      skill_code: "",
       progression_step: "",
       mapping_description: evidence,
       notes: evidence,
@@ -131,6 +128,7 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
       framework_type: "",
       strand_name: "",
       element_name: "",
+      skill_code: "",
       progression_step: "",
       mapping_description: "",
       notes: "",
@@ -232,6 +230,7 @@ function toCsv(rows: CsvRow[]) {
     "framework_type",
     "strand_name",
     "element_name",
+    "skill_code",
     "progression_step",
     "mapping_description",
     "notes",
@@ -252,4 +251,49 @@ function toCsv(rows: CsvRow[]) {
 function csvCell(value: string) {
   const escaped = String(value ?? "").replace(/"/g, '""');
   return /[",\n\r]/.test(escaped) ? `"${escaped}"` : escaped;
+}
+
+
+async function readZipEntry(bytes: Uint8Array, wantedName: string) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const eocd = findSignature(view, 0x06054b50, Math.max(0, bytes.byteLength - 65557), bytes.byteLength - 22);
+  if (eocd < 0) throw new Error("ZIP end record not found.");
+  const centralOffset = view.getUint32(eocd + 16, true);
+  const entryCount = view.getUint16(eocd + 10, true);
+  let cursor = centralOffset;
+
+  for (let index = 0; index < entryCount; index += 1) {
+    if (view.getUint32(cursor, true) !== 0x02014b50) throw new Error("Invalid ZIP central directory.");
+    const compression = view.getUint16(cursor + 10, true);
+    const compressedSize = view.getUint32(cursor + 20, true);
+    const fileNameLength = view.getUint16(cursor + 28, true);
+    const extraLength = view.getUint16(cursor + 30, true);
+    const commentLength = view.getUint16(cursor + 32, true);
+    const localOffset = view.getUint32(cursor + 42, true);
+    const name = new TextDecoder().decode(bytes.subarray(cursor + 46, cursor + 46 + fileNameLength));
+
+    if (name === wantedName) {
+      if (view.getUint32(localOffset, true) !== 0x04034b50) throw new Error("Invalid ZIP local header.");
+      const localNameLength = view.getUint16(localOffset + 26, true);
+      const localExtraLength = view.getUint16(localOffset + 28, true);
+      const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+      const compressed = bytes.slice(dataStart, dataStart + compressedSize);
+      if (compression === 0) return compressed;
+      if (compression !== 8) throw new Error("Unsupported DOCX compression method.");
+      if (typeof DecompressionStream === "undefined") throw new Error("This browser cannot decompress DOCX files.");
+      const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+
+    cursor += 46 + fileNameLength + extraLength + commentLength;
+  }
+
+  throw new Error(`ZIP entry not found: ${wantedName}`);
+}
+
+function findSignature(view: DataView, signature: number, start: number, end: number) {
+  for (let offset = end; offset >= start; offset -= 1) {
+    if (view.getUint32(offset, true) === signature) return offset;
+  }
+  return -1;
 }

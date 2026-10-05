@@ -27,14 +27,14 @@ type FrameworkPreviewLink = {
   frameworkId: string;
   strandId: string;
   elementId: string;
-  progressionDescriptorId: string;
-  progressionStep: number;
+  progressionDescriptorId?: string;
+  progressionStep?: number;
   label: string;
   notes: string;
 };
 type ThemePreviewLink = {
   themeId: string;
-  themeElementId: string;
+  themeElementId?: string;
   label: string;
   notes: string;
 };
@@ -221,8 +221,8 @@ async function runImport(admin: AdminClient, schoolId: string, userId: string, f
         framework_id: link.frameworkId,
         strand_id: link.strandId,
         element_id: link.elementId,
-        progression_descriptor_id: link.progressionDescriptorId,
-        progression_step: link.progressionStep,
+        progression_descriptor_id: link.progressionDescriptorId ?? null,
+        progression_step: link.progressionStep ?? null,
         notes: link.notes || null
       }));
       const inserted = await admin.from("curriculum_mapping_framework_links").insert(frameworkRows).select("id");
@@ -234,7 +234,7 @@ async function runImport(admin: AdminClient, schoolId: string, userId: string, f
       const themeRows = group.themeLinks.map((link) => ({
         mapping_id: mapping.data.id,
         theme_id: link.themeId,
-        theme_element_id: link.themeElementId,
+        theme_element_id: link.themeElementId ?? null,
         notes: link.notes || null,
         created_by: userId
       }));
@@ -279,15 +279,66 @@ function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number,
   const unresolved: string[] = [];
   const framework = detectFramework(row, refs);
   if (!framework) return { unresolved, link: null };
-  const rawStrand = stripFrameworkPrefix(value(row, "strand_name"));
-  const strand = refs.strands.find((candidate) => candidate.framework_id === framework.id && (same(candidate.name, rawStrand) || same(candidate.short_name ?? "", rawStrand)));
-  if (!strand) return { unresolved: [`Row ${rowNumber}: strand "${value(row, "strand_name")}" was not matched.`], link: null };
+
   const rawElement = stripLeadingCode(value(row, "element_name"));
-  const element = refs.elements.find((candidate) => candidate.strand_id === strand.id && same(candidate.name, rawElement));
-  if (!element) return { unresolved: [`Row ${rowNumber}: element "${value(row, "element_name")}" was not matched.`], link: null };
-  const step = Number(String(value(row, "progression_step")).match(/[1-5]/)?.[0]);
+  const rawStrand = stripFrameworkPrefix(value(row, "strand_name"));
+  let strand = rawStrand
+    ? refs.strands.find((candidate) => candidate.framework_id === framework.id && (same(candidate.name, rawStrand) || same(candidate.short_name ?? "", rawStrand)))
+    : undefined;
+
+  let element = strand
+    ? refs.elements.find((candidate) => candidate.strand_id === strand?.id && same(candidate.name, rawElement))
+    : undefined;
+
+  if (!element && rawElement) {
+    const frameworkStrandIds = new Set(refs.strands.filter((candidate) => candidate.framework_id === framework.id).map((candidate) => candidate.id));
+    const elementMatches = refs.elements.filter((candidate) => frameworkStrandIds.has(candidate.strand_id) && same(candidate.name, rawElement));
+    if (elementMatches.length === 1) {
+      element = elementMatches[0];
+      strand = refs.strands.find((candidate) => candidate.id === element?.strand_id);
+    } else if (elementMatches.length > 1) {
+      return { unresolved: [`Row ${rowNumber}: element "${value(row, "element_name")}" matched more than one strand; choose the strand manually.`], link: null };
+    }
+  }
+
+  if (!strand) {
+    return { unresolved: [`Row ${rowNumber}: strand could not be inferred for "${value(row, "element_name") || value(row, "strand_name")}".`], link: null };
+  }
+  if (!element) {
+    return { unresolved: [`Row ${rowNumber}: element "${value(row, "element_name")}" was not matched in ${framework.short_name ?? framework.name}.`], link: null };
+  }
+
+  const stepText = value(row, "progression_step");
+  const step = Number(String(stepText).match(/[1-5]/)?.[0]);
+  if (!stepText || !Number.isFinite(step) || step < 1 || step > 5) {
+    unresolved.push(`Row ${rowNumber}: ${framework.short_name ?? framework.name} → ${element.name} matched at element level; no progression step was supplied, so none will be invented.`);
+    return {
+      unresolved,
+      link: {
+        frameworkId: framework.id,
+        strandId: strand.id,
+        elementId: element.id,
+        label: `${framework.short_name ?? framework.name}: ${strand.short_name ?? strand.name} → ${element.name} → progression not specified`,
+        notes
+      }
+    };
+  }
+
   const descriptor = refs.descriptors.find((candidate) => candidate.element_id === element.id && Number(candidate.progression_step) === step && candidate.descriptor_text?.trim());
-  if (!descriptor) return { unresolved: [`Row ${rowNumber}: progression step "${value(row, "progression_step")}" was not matched for ${element.name}.`], link: null };
+  if (!descriptor) {
+    unresolved.push(`Row ${rowNumber}: progression step "${stepText}" was not matched for ${element.name}; the element will be imported without inventing a descriptor.`);
+    return {
+      unresolved,
+      link: {
+        frameworkId: framework.id,
+        strandId: strand.id,
+        elementId: element.id,
+        label: `${framework.short_name ?? framework.name}: ${strand.short_name ?? strand.name} → ${element.name} → progression not specified`,
+        notes
+      }
+    };
+  }
+
   return {
     unresolved,
     link: {
@@ -310,6 +361,14 @@ function matchThemeLink(row: CsvRow, refs: ReferenceData, rowNumber: number, not
   if (!shouldTry) return { unresolved: [], link: null };
   const theme = refs.themes.find((candidate) => same(candidate.name, themeFocus));
   if (!theme) return { unresolved: [`Row ${rowNumber}: CCT theme "${themeFocus}" was not matched.`], link: null };
+
+  if (!elementText) {
+    return {
+      unresolved: [`Row ${rowNumber}: ${theme.name} matched as a populated cross-cutting theme; no more specific theme element was supplied.`],
+      link: { themeId: theme.id, label: theme.name, notes }
+    };
+  }
+
   const element = refs.themeElements.find((candidate) => candidate.theme_id === theme.id && same(candidate.name, elementText));
   if (!element) return { unresolved: [`Row ${rowNumber}: CCT element "${value(row, "element_name")}" was not matched.`], link: null };
   return { unresolved: [], link: { themeId: theme.id, themeElementId: element.id, label: `${theme.name}: ${element.name}`, notes } };
@@ -329,14 +388,19 @@ function detectFramework(row: CsvRow, refs: ReferenceData) {
 }
 
 function mergeFrameworkLink(links: FrameworkPreviewLink[], link: FrameworkPreviewLink) {
-  const existing = links.find((item) => item.frameworkId === link.frameworkId && item.strandId === link.strandId && item.elementId === link.elementId && item.progressionDescriptorId === link.progressionDescriptorId);
+  const existing = links.find((item) =>
+    item.frameworkId === link.frameworkId &&
+    item.strandId === link.strandId &&
+    item.elementId === link.elementId &&
+    (item.progressionDescriptorId ?? "") === (link.progressionDescriptorId ?? "")
+  );
   if (!existing) return [...links, link];
   existing.notes = combineNotes(existing.notes, link.notes);
   return links;
 }
 
 function mergeThemeLink(links: ThemePreviewLink[], link: ThemePreviewLink) {
-  const existing = links.find((item) => item.themeId === link.themeId && item.themeElementId === link.themeElementId);
+  const existing = links.find((item) => item.themeId === link.themeId && (item.themeElementId ?? "") === (link.themeElementId ?? ""));
   if (!existing) return [...links, link];
   existing.notes = combineNotes(existing.notes, link.notes);
   return links;
@@ -389,7 +453,7 @@ function same(a: string, b: string) {
 
 function normaliseYearGroup(value: string) {
   const number = value.match(/\d+/)?.[0];
-  return number ? `Y${number}` : value.trim();
+  return number ? `Year ${number}` : value.trim();
 }
 
 function normaliseTerm(value: string) {
@@ -417,7 +481,7 @@ function unique(values: string[]) {
 }
 
 function sourceDetails(row: CsvRow) {
-  return ["key_stage", "links_within_aole", "links_across_aoles", "source_file"].map((column) => {
+  return ["key_stage", "subject_content_knowledge", "subject_concepts_skills", "learning_outcomes", "links_within_aole", "links_across_aoles", "source_file"].map((column) => {
     const cell = value(row, column);
     return cell ? `${column.replace(/_/g, " ")}: ${cell}` : "";
   }).filter(Boolean);

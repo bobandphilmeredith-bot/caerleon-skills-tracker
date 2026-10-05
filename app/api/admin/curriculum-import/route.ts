@@ -173,7 +173,7 @@ function buildPreview(csv: string, refs: ReferenceData) {
 }
 
 async function runImport(admin: AdminClient, schoolId: string, userId: string, fileName: string, preview: ReturnType<typeof buildPreview>) {
-  const importableGroups = preview.groups.filter((group) => !group.existingMappingId && !group.errors.length);
+  const importableGroups = preview.groups.filter((group) => !group.errors.length);
   const batch = await admin
     .from("curriculum_import_batches")
     .insert({
@@ -191,33 +191,73 @@ async function runImport(admin: AdminClient, schoolId: string, userId: string, f
 
   const items: { batch_id: string; table_name: string; row_id: string; action: string }[] = [];
   let mappingsInserted = 0;
+  let existingMappingsUpdated = 0;
   let frameworkLinksInserted = 0;
   let themeLinksInserted = 0;
 
   for (const group of importableGroups) {
     if (!group.subjectId) continue;
-    const mapping = await admin
-      .from("curriculum_mappings")
-      .insert({
-        school_id: schoolId,
-        subject_id: group.subjectId,
-        year_group: group.yearGroup,
-        term: group.term,
-        scheme_reference: group.moduleCode,
-        activity_title: group.moduleTitle,
-        activity_description: group.curriculumIntent,
-        task_description: "",
-        created_by: userId
-      })
-      .select("id")
-      .single();
-    if (mapping.error || !mapping.data) continue;
-    mappingsInserted += 1;
-    items.push({ batch_id: batch.data.id, table_name: "curriculum_mappings", row_id: mapping.data.id, action: "inserted" });
 
-    if (group.frameworkLinks.length) {
-      const frameworkRows = group.frameworkLinks.map((link) => ({
-        mapping_id: mapping.data.id,
+    let mappingId = group.existingMappingId ?? "";
+
+    if (!mappingId) {
+      const mapping = await admin
+        .from("curriculum_mappings")
+        .insert({
+          school_id: schoolId,
+          subject_id: group.subjectId,
+          year_group: group.yearGroup,
+          term: group.term,
+          scheme_reference: group.moduleCode,
+          activity_title: group.moduleTitle,
+          activity_description: group.curriculumIntent,
+          task_description: "",
+          created_by: userId
+        })
+        .select("id")
+        .single();
+      if (mapping.error || !mapping.data) continue;
+      mappingId = mapping.data.id;
+      mappingsInserted += 1;
+      items.push({ batch_id: batch.data.id, table_name: "curriculum_mappings", row_id: mappingId, action: "inserted" });
+    } else {
+      existingMappingsUpdated += 1;
+    }
+
+    const [existingFrameworkResult, existingThemeResult] = await Promise.all([
+      admin
+        .from("curriculum_mapping_framework_links")
+        .select("id,framework_id,strand_id,element_id,progression_descriptor_id")
+        .eq("mapping_id", mappingId),
+      admin
+        .from("curriculum_mapping_theme_links")
+        .select("id,theme_id,theme_element_id")
+        .eq("mapping_id", mappingId)
+    ]);
+
+    const existingFrameworkLinks = (existingFrameworkResult.data ?? []) as {
+      id: string;
+      framework_id: string;
+      strand_id: string;
+      element_id: string;
+      progression_descriptor_id: string | null;
+    }[];
+
+    const existingThemeLinks = (existingThemeResult.data ?? []) as {
+      id: string;
+      theme_id: string;
+      theme_element_id: string | null;
+    }[];
+
+    const frameworkRows = group.frameworkLinks
+      .filter((link) => !existingFrameworkLinks.some((existing) =>
+        existing.framework_id === link.frameworkId &&
+        existing.strand_id === link.strandId &&
+        existing.element_id === link.elementId &&
+        (existing.progression_descriptor_id ?? "") === (link.progressionDescriptorId ?? "")
+      ))
+      .map((link) => ({
+        mapping_id: mappingId,
         framework_id: link.frameworkId,
         strand_id: link.strandId,
         element_id: link.elementId,
@@ -225,27 +265,48 @@ async function runImport(admin: AdminClient, schoolId: string, userId: string, f
         progression_step: link.progressionStep ?? null,
         notes: link.notes || null
       }));
+
+    if (frameworkRows.length) {
       const inserted = await admin.from("curriculum_mapping_framework_links").insert(frameworkRows).select("id");
-      for (const row of inserted.data ?? []) items.push({ batch_id: batch.data.id, table_name: "curriculum_mapping_framework_links", row_id: row.id, action: "inserted" });
+      for (const row of inserted.data ?? []) {
+        items.push({ batch_id: batch.data.id, table_name: "curriculum_mapping_framework_links", row_id: row.id, action: "inserted" });
+      }
       frameworkLinksInserted += inserted.data?.length ?? 0;
     }
 
-    if (group.themeLinks.length) {
-      const themeRows = group.themeLinks.map((link) => ({
-        mapping_id: mapping.data.id,
+    const themeRows = group.themeLinks
+      .filter((link) => !existingThemeLinks.some((existing) =>
+        existing.theme_id === link.themeId &&
+        (existing.theme_element_id ?? "") === (link.themeElementId ?? "")
+      ))
+      .map((link) => ({
+        mapping_id: mappingId,
         theme_id: link.themeId,
         theme_element_id: link.themeElementId ?? null,
         notes: link.notes || null,
         created_by: userId
       }));
+
+    if (themeRows.length) {
       const inserted = await admin.from("curriculum_mapping_theme_links").insert(themeRows).select("id");
-      for (const row of inserted.data ?? []) items.push({ batch_id: batch.data.id, table_name: "curriculum_mapping_theme_links", row_id: row.id, action: "inserted" });
+      for (const row of inserted.data ?? []) {
+        items.push({ batch_id: batch.data.id, table_name: "curriculum_mapping_theme_links", row_id: row.id, action: "inserted" });
+      }
       themeLinksInserted += inserted.data?.length ?? 0;
     }
   }
 
   if (items.length) await admin.from("curriculum_import_batch_items").insert(items);
-  return { ok: true, batchId: batch.data.id, mappingsInserted, frameworkLinksInserted, themeLinksInserted, skippedExisting: preview.summary.existingMappingsSkipped };
+
+  return {
+    ok: true,
+    batchId: batch.data.id,
+    mappingsInserted,
+    existingMappingsUpdated,
+    frameworkLinksInserted,
+    themeLinksInserted,
+    skippedExisting: 0
+  };
 }
 
 async function listBatches(admin: AdminClient, schoolId: string) {

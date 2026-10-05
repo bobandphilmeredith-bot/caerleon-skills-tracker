@@ -131,7 +131,7 @@ export default function ImportCurriculumClient() {
     try {
       const result = await callImportApi("import");
       setPreview(result.preview);
-      setMessage(result.result?.ok ? `Import complete. ${result.result.mappingsInserted} mappings imported.` : result.result?.message ?? "Import failed.");
+      setMessage(result.result?.ok ? `Import complete. ${result.result.mappingsInserted} new curriculum mapping${result.result.mappingsInserted === 1 ? "" : "s"} created; ${result.result.existingMappingsUpdated ?? 0} existing mapping${(result.result.existingMappingsUpdated ?? 0) === 1 ? "" : "s"} updated with ${result.result.frameworkLinksInserted ?? 0} framework link${(result.result.frameworkLinksInserted ?? 0) === 1 ? "" : "s"} and ${result.result.themeLinksInserted ?? 0} cross-cutting link${(result.result.themeLinksInserted ?? 0) === 1 ? "" : "s"}.` : result.result?.message ?? "Import failed.");
       await loadHistory();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not import CSV.");

@@ -170,6 +170,9 @@ function spreadsheetMeta(sheets: Sheet[], fileName: string) {
 
   for (const sheet of sheets) {
     for (const row of sheet.rows) {
+      const joined = norm(row.join(" "));
+      const looksLikeRowHeader = joined.includes("subject") && joined.includes("year") && (joined.includes("framework") || joined.includes("topic"));
+      if (looksLikeRowHeader) continue;
       subject ||= beside(row,["Subject"]);
       yearGroup ||= normaliseYear(beside(row,["Year","Year Group"]));
       term ||= normaliseTerm(beside(row,["Term"]));

@@ -65,8 +65,8 @@ async function loadReferenceData(admin: AdminClient, schoolId: string) {
   const [subjects, frameworks, strands, elements, descriptors, themes, themeElements, existingMappings] = await Promise.all([
     admin.from("subjects").select("id,name").eq("school_id", schoolId).order("name", { ascending: true }),
     admin.from("frameworks").select("id,name,short_name").eq("school_id", schoolId).eq("active", true),
-    admin.from("strands").select("id,framework_id,name,short_name").eq("school_id", schoolId).eq("active", true),
-    admin.from("elements").select("id,strand_id,name").eq("school_id", schoolId).eq("active", true),
+    admin.from("strands").select("id,framework_id,name,short_name,display_order").eq("school_id", schoolId).eq("active", true),
+    admin.from("elements").select("id,strand_id,name,display_order").eq("school_id", schoolId).eq("active", true),
     admin.from("progression_descriptors").select("id,element_id,progression_step,descriptor_text").eq("school_id", schoolId).eq("active", true),
     admin.from("cross_cutting_themes").select("id,name").eq("school_id", schoolId).eq("active", true),
     admin.from("cross_cutting_theme_elements").select("id,theme_id,name").eq("school_id", schoolId).eq("active", true),
@@ -75,8 +75,8 @@ async function loadReferenceData(admin: AdminClient, schoolId: string) {
   return {
     subjects: (subjects.data ?? []) as { id: string; name: string }[],
     frameworks: (frameworks.data ?? []) as { id: string; name: string; short_name: string | null }[],
-    strands: (strands.data ?? []) as { id: string; framework_id: string; name: string; short_name: string | null }[],
-    elements: (elements.data ?? []) as { id: string; strand_id: string; name: string }[],
+    strands: (strands.data ?? []) as { id: string; framework_id: string; name: string; short_name: string | null; display_order: number }[],
+    elements: (elements.data ?? []) as { id: string; strand_id: string; name: string; display_order: number }[],
     descriptors: (descriptors.data ?? []) as { id: string; element_id: string; progression_step: number | string; descriptor_text: string | null }[],
     themes: (themes.data ?? []) as { id: string; name: string }[],
     themeElements: (themeElements.data ?? []) as { id: string; theme_id: string; name: string }[],

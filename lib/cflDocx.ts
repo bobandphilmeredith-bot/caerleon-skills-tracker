@@ -49,7 +49,9 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
   const curriculumIntent =
     valueAfterLabel(rows, ["Curriculum Intent"]) ||
     paragraphLabelValue(paragraphs, ["Curriculum Intent"]) ||
-    paragraphAfterExactHeading(paragraphs, "Curriculum Intent");
+    paragraphAfterExactHeading(paragraphs, "Curriculum Intent") ||
+    paragraphAfterExactHeading(paragraphs, "What pupils will do") ||
+    moduleTitle;
   const sourceFile = file.name;
   const explicitProgressionStep =
     inferExactProgressionStep(paragraphs) ??

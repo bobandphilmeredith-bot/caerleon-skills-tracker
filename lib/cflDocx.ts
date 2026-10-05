@@ -35,7 +35,7 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
     heading.match(/\b([A-Za-z][A-Za-z &/-]+?)\s+Department\s+Context\s+for\s+Learning/i)?.[1]?.trim() ??
     "";
 
-  const moduleCode = heading.match(/Context\s+for\s+Learning\s*:\s*([A-Za-z0-9.-]+)/i)?.[1]?.trim() ?? "";
+  const moduleCode = heading.match(/Context\s+for\s+Learning\s*:\s*(.+)$/i)?.[1]?.trim() ?? "";
   const moduleTitle = valueAfterLabel(rows, ["Module/ Enquiry Question", "Module / Enquiry Question", "Module/Enquiry Question"]);
   const sequence = valueAfterLabel(rows, ["Position in sequence/Point of Progress", "Position in sequence / Point of Progress"]);
   const yearGroup = inferYearGroup(moduleCode || moduleTitle);

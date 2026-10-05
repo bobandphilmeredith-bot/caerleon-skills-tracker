@@ -382,14 +382,9 @@ function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number,
 
   const elementDisplayName = stripLeadingCode(element.name);
   // When a valid framework code is present, treat the code as authoritative.
-  // Staff may enter a strand-level label (for example "Computational thinking")
-  // rather than the exact element wording. Keep the source wording in the notes,
-  // but do not flag a false unresolved warning when the code itself matches.
-  const wordingNote =
-    skillCode && rawElement && !same(elementDisplayName, rawElement)
-      ? `Source wording: "${rawElement}" (matched by code ${skillCode} to "${elementDisplayName}")`
-      : "";
-  notes = combineNotes(notes, wordingNote);
+  // Staff may use local wording instead of the exact framework element name.
+  // Do not clutter the saved note with code/matching diagnostics; keep it focused
+  // on the actual activity/task evidence from the CfL.
 
   const stepText = value(row, "progression_step");
   const explicitStep = Number(String(stepText).match(/[1-5]/)?.[0]);

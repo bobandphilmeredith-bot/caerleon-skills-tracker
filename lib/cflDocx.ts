@@ -1,0 +1,255 @@
+"use client";
+
+import { strFromU8, unzipSync } from "fflate";
+
+type CsvRow = Record<string, string>;
+
+export type CflDocxSummary = {
+  subject: string;
+  yearGroup: string;
+  term: string;
+  moduleCode: string;
+  moduleTitle: string;
+  skillsFound: number;
+  themesFound: number;
+  warnings: string[];
+};
+
+export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; summary: CflDocxSummary }> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let archive: ReturnType<typeof unzipSync>;
+  try {
+    archive = unzipSync(bytes);
+  } catch {
+    throw new Error("This file could not be opened as a Word .docx document.");
+  }
+
+  const documentXml = archive["word/document.xml"];
+  if (!documentXml) throw new Error("The Word document does not contain word/document.xml.");
+
+  const parser = new DOMParser();
+  const xml = parser.parseFromString(strFromU8(documentXml), "application/xml");
+  if (xml.getElementsByTagName("parsererror").length) throw new Error("The Word document XML could not be read.");
+
+  const rows = extractTableRows(xml);
+  const paragraphs = extractParagraphs(xml);
+  const heading = paragraphs.find((text) => /department\s+context\s+for\s+learning/i.test(text)) ?? "";
+
+  const subject =
+    heading.match(/School\s+(.+?)\s+Department\s+Context\s+for\s+Learning/i)?.[1]?.trim() ??
+    heading.match(/\b([A-Za-z][A-Za-z &/-]+?)\s+Department\s+Context\s+for\s+Learning/i)?.[1]?.trim() ??
+    "";
+
+  const moduleCode = heading.match(/Context\s+for\s+Learning\s*:\s*([A-Za-z0-9.-]+)/i)?.[1]?.trim() ?? "";
+  const moduleTitle = valueAfterLabel(rows, ["Module/ Enquiry Question", "Module / Enquiry Question", "Module/Enquiry Question"]);
+  const sequence = valueAfterLabel(rows, ["Position in sequence/Point of Progress", "Position in sequence / Point of Progress"]);
+  const yearGroup = inferYearGroup(moduleCode || moduleTitle);
+  const term = inferTerm(sequence);
+  const curriculumIntent = valueAfterLabel(rows, ["Curriculum Intent"]);
+  const sourceFile = file.name;
+
+  const warnings: string[] = [];
+  if (!subject) warnings.push("Subject could not be read from the document heading.");
+  if (!yearGroup) warnings.push("Year group could not be inferred from the module code or title.");
+  if (!term) warnings.push("Term could not be inferred from the position-in-sequence field.");
+  if (!moduleTitle) warnings.push("Module / enquiry question could not be read.");
+  if (!curriculumIntent) warnings.push("Curriculum intent could not be read.");
+
+  const common: CsvRow = {
+    subject,
+    year_group: yearGroup,
+    term,
+    module_code: moduleCode || moduleTitle,
+    module_title: moduleTitle || moduleCode,
+    curriculum_intent: curriculumIntent,
+    key_stage: inferKeyStage(yearGroup),
+    source_file: sourceFile,
+    links_within_aole: valueAfterLabel(rows, ["Links Within AoLE"]),
+    links_across_aoles: valueAfterLabel(rows, ["Links Across AoLEs"]),
+    subject_content_knowledge: valueAfterLabel(rows, ["Subject Content/ Knowledge", "Subject Content/Knowledge"]),
+    subject_concepts_skills: valueAfterLabel(rows, ["Subject Concepts/ Skills", "Subject Concepts/Skills"]),
+    learning_outcomes: valueAfterLabel(rows, ["Learning Outcomes Linked to Progression Steps"])
+  };
+
+  const importRows: CsvRow[] = [];
+  const skillSections = [
+    { labels: ["Literacy"], frameworkType: "Literacy" },
+    { labels: ["Numeracy"], frameworkType: "Numeracy" },
+    { labels: ["Digital Competence"], frameworkType: "DCF" }
+  ];
+
+  let skillsFound = 0;
+  for (const section of skillSections) {
+    const text = valueAfterLabel(rows, section.labels);
+    for (const skill of parseSkillLines(text)) {
+      skillsFound += 1;
+      importRows.push({
+        ...common,
+        framework_type: section.frameworkType,
+        strand_name: "",
+        element_name: `${skill.code} ${skill.name}`.trim(),
+        progression_step: "",
+        mapping_description: skill.evidence,
+        notes: skill.code ? `Source CfL skill code: ${skill.code}` : "",
+        cross_cutting_theme_focus: ""
+      });
+    }
+  }
+
+  const themeLabels: { labels: string[]; canonical: string }[] = [
+    { labels: ["Diversity, Representation and Inclusion", "Diversity"], canonical: "Diversity" },
+    { labels: ["Careers and Work Related Experiences", "Careers and work-related experiences"], canonical: "Careers and work-related experiences" },
+    { labels: ["Relationships and Sexuality Education (RSE)", "Relationships and sexuality education"], canonical: "Relationships and sexuality education" },
+    { labels: ["Human Rights and UNCRC/D", "Human rights education"], canonical: "Human rights education" },
+    {
+      labels: ["Local, National and International Contexts, Including Wales", "Local, national and international contexts"],
+      canonical: "Local, national and international contexts"
+    }
+  ];
+
+  let themesFound = 0;
+  for (const theme of themeLabels) {
+    const evidence = valueAfterLabel(rows, theme.labels);
+    if (!evidence.trim()) continue;
+    themesFound += 1;
+    importRows.push({
+      ...common,
+      framework_type: "CCT",
+      strand_name: theme.canonical,
+      element_name: "",
+      progression_step: "",
+      mapping_description: evidence,
+      notes: evidence,
+      cross_cutting_theme_focus: theme.canonical
+    });
+  }
+
+  if (!importRows.length) {
+    warnings.push("No Literacy, Numeracy, DCF or populated cross-cutting theme mappings were found.");
+    importRows.push({
+      ...common,
+      framework_type: "",
+      strand_name: "",
+      element_name: "",
+      progression_step: "",
+      mapping_description: "",
+      notes: "",
+      cross_cutting_theme_focus: ""
+    });
+  }
+
+  return {
+    csv: toCsv(importRows),
+    summary: { subject, yearGroup, term, moduleCode: moduleCode || moduleTitle, moduleTitle: moduleTitle || moduleCode, skillsFound, themesFound, warnings }
+  };
+}
+
+function extractTableRows(xml: Document) {
+  return Array.from(xml.getElementsByTagNameNS("*", "tr")).map((row) =>
+    Array.from(row.getElementsByTagNameNS("*", "tc")).map((cell) => {
+      const paragraphs = Array.from(cell.getElementsByTagNameNS("*", "p"))
+        .map(paragraphText)
+        .map(cleanText)
+        .filter(Boolean);
+      return paragraphs.join("\n");
+    })
+  );
+}
+
+function extractParagraphs(xml: Document) {
+  return Array.from(xml.getElementsByTagNameNS("*", "p")).map(paragraphText).map(cleanText).filter(Boolean);
+}
+
+function paragraphText(paragraph: Element) {
+  return Array.from(paragraph.getElementsByTagNameNS("*", "t")).map((node) => node.textContent ?? "").join("");
+}
+
+function valueAfterLabel(rows: string[][], labels: string[]) {
+  const targets = labels.map(normalise);
+  for (const row of rows) {
+    for (let index = 0; index < row.length; index += 1) {
+      if (!targets.includes(normalise(row[index] ?? ""))) continue;
+      for (let next = index + 1; next < row.length; next += 1) {
+        const candidate = cleanText(row[next] ?? "");
+        if (candidate) return candidate;
+      }
+      return "";
+    }
+  }
+  return "";
+}
+
+function parseSkillLines(text: string) {
+  return text
+    .split(/\n+/)
+    .map(cleanText)
+    .filter(Boolean)
+    .map((line) => {
+      const full = line.match(/^(\d+(?:\.\d+)*)\s+(.+?)\s+[–—-]\s+(.+)$/);
+      if (full) return { code: full[1], name: cleanText(full[2]), evidence: cleanText(full[3]) };
+      const short = line.match(/^(\d+(?:\.\d+)*)\s+(.+)$/);
+      if (short) return { code: short[1], name: cleanText(short[2]), evidence: "" };
+      return { code: "", name: line, evidence: "" };
+    });
+}
+
+function inferYearGroup(value: string) {
+  const match = value.match(/(?:Year\s*)?Y?\s*(7|8|9|10|11)\b/i);
+  return match ? `Year ${match[1]}` : "";
+}
+
+function inferKeyStage(yearGroup: string) {
+  const year = Number(yearGroup.match(/\d+/)?.[0]);
+  if (year >= 7 && year <= 9) return "Key Stage 3";
+  if (year >= 10 && year <= 11) return "Key Stage 4";
+  return "";
+}
+
+function inferTerm(value: string) {
+  const text = value.toLowerCase();
+  if (text.includes("autumn")) return "Autumn";
+  if (text.includes("spring")) return "Spring";
+  if (text.includes("summer")) return "Summer";
+  return "";
+}
+
+function cleanText(value: string) {
+  return value.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalise(value: string) {
+  return cleanText(value).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function toCsv(rows: CsvRow[]) {
+  const headers = [
+    "subject",
+    "year_group",
+    "term",
+    "module_code",
+    "module_title",
+    "curriculum_intent",
+    "framework_type",
+    "strand_name",
+    "element_name",
+    "progression_step",
+    "mapping_description",
+    "notes",
+    "cross_cutting_theme_focus",
+    "key_stage",
+    "links_within_aole",
+    "links_across_aoles",
+    "subject_content_knowledge",
+    "subject_concepts_skills",
+    "learning_outcomes",
+    "source_file"
+  ];
+  return [headers, ...rows.map((row) => headers.map((header) => row[header] ?? ""))]
+    .map((row) => row.map(csvCell).join(","))
+    .join("\n");
+}
+
+function csvCell(value: string) {
+  const escaped = String(value ?? "").replace(/"/g, '""');
+  return /[",\n\r]/.test(escaped) ? `"${escaped}"` : escaped;
+}

@@ -408,14 +408,14 @@ function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number,
 
   const descriptor = refs.descriptors.find((candidate) => candidate.element_id === element.id && Number(candidate.progression_step) === step && candidate.descriptor_text?.trim());
   if (!descriptor) {
-    unresolved.push(`Row ${rowNumber}: progression step "${stepText}" was not matched for ${elementDisplayName}; the element will be imported without inventing a descriptor.`);
     return {
       unresolved,
       link: {
         frameworkId: framework.id,
         strandId: strand.id,
         elementId: element.id,
-        label: `${framework.short_name ?? framework.name}: ${strand.short_name ?? strand.name} → ${element.name} → progression not specified`,
+        progressionStep: step,
+        label: `${framework.short_name ?? framework.name}: ${strand.short_name ?? strand.name} → ${elementDisplayName} → Step ${step}`,
         notes
       }
     };

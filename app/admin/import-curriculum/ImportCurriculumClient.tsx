@@ -119,7 +119,7 @@ export default function ImportCurriculumClient() {
       setPreview(result.preview);
       setMessage("Preview ready. Source rows have been grouped into curriculum activities before import. Warnings stay visible for review and missing progression steps are never invented.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not preview CSV.");
+      setMessage(error instanceof Error ? error.message : "Could not preview this file.");
     } finally {
       setLoading(false);
     }
@@ -185,7 +185,6 @@ export default function ImportCurriculumClient() {
         </div>
         {fileName ? <p className="mt-3 text-sm font-semibold text-gray-700">Selected file: {fileName}</p> : null}
         {docxSummary?.warnings.length ? <ul className="mt-3 list-disc space-y-1 rounded-md border border-amber-200 bg-amber-50 px-6 py-3 text-sm font-semibold text-amber-900">{docxSummary.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
-        {docxSummary?.warnings.length ? <ul className="mt-3 list-disc space-y-1 rounded-md border border-amber-200 bg-amber-50 px-6 py-3 text-sm font-semibold text-amber-900">{docxSummary.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
         {message ? <p className="mt-4 rounded-md border px-4 py-3 text-sm font-bold" style={{ borderColor: areaThemes.overview.border, backgroundColor: areaThemes.overview.soft, color: areaThemes.overview.text }}>{message}</p> : null}
       </section>
 
@@ -204,7 +203,7 @@ export default function ImportCurriculumClient() {
             <Summary label="Source rows read" value={preview.summary.rowsRead} />
             <Summary label="Grouped mappings" value={preview.summary.groupedMappings} />
             <Summary label="Framework links" value={preview.summary.frameworkLinksToCreate} />
-            <Summary label="CCT element links" value={preview.summary.cctElementLinksToCreate} />
+            <Summary label="Cross-cutting links" value={preview.summary.cctElementLinksToCreate} />
             <Summary label="Duplicates skipped" value={preview.summary.duplicateLinksSkipped} />
             <Summary label="Existing skipped" value={preview.summary.existingMappingsSkipped} />
             <Summary label="Warnings" value={preview.summary.warnings} />

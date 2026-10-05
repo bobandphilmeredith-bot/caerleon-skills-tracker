@@ -198,10 +198,29 @@ function parseSkillLines(text: string) {
     .map(cleanText)
     .filter(Boolean)
     .map((line) => {
-      const full = line.match(/^(\d+(?:\.\d+)*)\s+(.+?)\s+[–—-]\s+(.+)$/);
-      if (full) return { code: full[1], name: cleanText(full[2]), evidence: cleanText(full[3]) };
-      const short = line.match(/^(\d+(?:\.\d+)*)\s+(.+)$/);
-      if (short) return { code: short[1], name: cleanText(short[2]), evidence: "" };
+      // CfLs often use "3.1 - Magnification calculations": the code identifies
+      // the official tracker element and the text after the dash describes the task.
+      const codeThenTask = line.match(/^(\d+(?:\.\d+)*)\s*[–—-]\s*(.+)$/);
+      if (codeThenTask) {
+        return { code: codeThenTask[1], name: "", evidence: cleanText(codeThenTask[2]) };
+      }
+
+      // Other CfLs use "4.1 Collecting data - planning a fair test...":
+      // preserve the element wording and the activity-specific evidence separately.
+      const elementThenTask = line.match(/^(\d+(?:\.\d+)*)\s+(.+?)\s+[–—-]\s+(.+)$/);
+      if (elementThenTask) {
+        return {
+          code: elementThenTask[1],
+          name: cleanText(elementThenTask[2]),
+          evidence: cleanText(elementThenTask[3])
+        };
+      }
+
+      const codeAndElement = line.match(/^(\d+(?:\.\d+)*)\s+(.+)$/);
+      if (codeAndElement) {
+        return { code: codeAndElement[1], name: cleanText(codeAndElement[2]), evidence: "" };
+      }
+
       return { code: "", name: line, evidence: "" };
     });
 }

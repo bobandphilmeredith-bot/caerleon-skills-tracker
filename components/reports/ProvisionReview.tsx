@@ -100,7 +100,32 @@ function Review({ mode, subjects }: { mode: "school" | "subject"; subjects: stri
     {view === "Activities" && <section className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-lg font-bold">{selection?.label ?? "All activities"}</h2><p className="text-sm text-gray-600">{evidence.length} activities{query && ` matching "${query}"`}</p></div><div className="flex flex-wrap gap-2 print:hidden">{selection && <button className="btn btn-muted" onClick={() => setSelection(null)}>All activities</button>}<button className="btn btn-secondary" onClick={() => download("activities")}>Download activities</button></div></div>
       <label className="block text-sm font-bold print:hidden">Search activities<input className="mt-1 block w-full rounded-md border border-gray-300 p-2" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-      <div className="overflow-x-auto"><table className="review-table"><thead><tr><th>Subject / timing</th><th>Planned work</th><th>Skills and themes</th><th className="print:hidden">Action</th></tr></thead><tbody>{evidence.map((entry) => <tr key={entry.mapping.id}><td>{entry.mapping.subject}<br />{entry.mapping.year} · {entry.mapping.term || "Term not recorded"}<p className="mt-2 text-xs text-gray-500">{entry.mapping.schemeReference}</p></td><td><strong>{formatMappingTitle(entry.mapping)}</strong><p className="mt-2 whitespace-pre-wrap">{formatMappingDescription(entry.mapping) || "No work description recorded"}</p>{entry.mapping.crossCuttingThemeNotes && <p className="mt-2 whitespace-pre-wrap">{entry.mapping.crossCuttingThemeNotes}</p>}</td><td>{entry.frameworkRefs.map((ref, index) => <p className="mb-2" key={index}>{frameworkDetailText(ref)}{ref.notes && <span className="block text-gray-500">{ref.notes}</span>}</p>)}{entry.themeItems.map((item) => <p key={item.label} className="mb-2">{item.label}{!item.element && " (theme only)"}</p>)}</td><td className="print:hidden">{canEditSubject(entry.mapping.subject) && <Link className="review-link" href={`/edit-curriculum/${encodeURIComponent(entry.mapping.id)}`}>Edit plan</Link>}</td></tr>)}</tbody></table></div>{!evidence.length && <p className="py-4">No recorded activities match this selection.</p>}
+      <div className="activity-table-scroll" role="region" aria-label="Planned activities" tabIndex={0}>
+        <table className="review-table activity-table">
+          <colgroup>
+            <col className="activity-subject-column" />
+            <col className="activity-work-column" />
+            <col />
+            <col className="activity-action-column" />
+          </colgroup>
+          <thead><tr><th scope="col">Subject / timing</th><th scope="col">Planned work</th><th scope="col">Skills and themes</th><th scope="col" className="activity-action print:hidden">Action</th></tr></thead>
+          <tbody>{evidence.map((entry) => <tr key={entry.mapping.id}>
+            <th scope="row">
+              <p className="activity-subject">{entry.mapping.subject}</p>
+              <div className="activity-timing"><p>{entry.mapping.year}</p><p>{entry.mapping.term || "Term not recorded"}</p></div>
+              {entry.mapping.schemeReference && <p className="activity-scheme">{entry.mapping.schemeReference}</p>}
+            </th>
+            <td><strong>{formatMappingTitle(entry.mapping)}</strong><p className="mt-2 whitespace-pre-wrap">{formatMappingDescription(entry.mapping) || "No work description recorded"}</p>{entry.mapping.crossCuttingThemeNotes && <p className="mt-2 whitespace-pre-wrap">{entry.mapping.crossCuttingThemeNotes}</p>}</td>
+            <td>
+              <ul className="activity-evidence">
+                {entry.frameworkRefs.map((ref, index) => <li key={index}>{frameworkDetailText(ref)}{ref.notes && <span className="activity-evidence-note">{ref.notes}</span>}</li>)}
+                {entry.themeItems.map((item) => <li key={item.label}>{item.label}{!item.element && " (theme only)"}</li>)}
+              </ul>
+            </td>
+            <td className="activity-action print:hidden">{canEditSubject(entry.mapping.subject) && <Link className="review-link" aria-label={`Edit plan: ${formatMappingTitle(entry.mapping)}`} href={`/edit-curriculum/${encodeURIComponent(entry.mapping.id)}`}>Edit plan</Link>}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>{!evidence.length && <p className="py-4">No recorded activities match this selection.</p>}
     </section>}
     <footer className="border-t border-gray-200 pt-4 text-sm text-gray-500">Review basis: saved curriculum plans and current framework definitions. Counts represent distinct activities or distinct elements as labelled. Dates are plan updates, not verified reviews. Full quality evaluation also requires pupil work, delivery evidence and professional discussion.</footer>
   </section>;

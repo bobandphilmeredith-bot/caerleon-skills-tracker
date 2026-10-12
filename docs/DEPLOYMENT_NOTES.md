@@ -2,6 +2,8 @@
 
 ## Front End
 
+Delivery requirement: updates must be committed and pushed to GitHub and the corresponding Vercel production deployment verified. Local previews are for testing only, not completion. Do not report a release as live until its deployment succeeds.
+
 The app is ready to deploy as a Next.js project on Vercel.
 
 Required environment variables:

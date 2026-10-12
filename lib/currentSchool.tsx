@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { readAllRows } from "@/lib/readAllRows";
 import { useAuth } from "@/lib/auth";
 import { type FrameworkThemeSetting, useSchoolSettings } from "@/lib/schoolSettings";
 import { buildBundle, createEmptySchoolData, defaultSchoolId, sampleSchools, schoolDataById, type SchoolDataBundle } from "@/lib/multiSchoolData";
@@ -34,6 +35,9 @@ type CurrentSchoolContextValue = {
   currentSchoolId: string;
   data: SchoolDataBundle;
   liveDiagnostics?: LiveDataDiagnostics | null;
+  dataLoading: boolean;
+  dataError: string | null;
+  refreshData: () => Promise<void>;
   switchSchool: (schoolId: string) => void;
   addSchool: () => School;
   updateSchool: (schoolId: string, patch: Partial<School>) => void;
@@ -59,6 +63,9 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   const [liveReferenceMaps, setLiveReferenceMaps] = useState<LiveReferenceMaps | null>(null);
   const [liveSchool, setLiveSchool] = useState<School | null>(null);
   const [liveDiagnostics, setLiveDiagnostics] = useState<LiveDataDiagnostics | null>(null);
+  const [dataLoading, setDataLoading] = useState(!isDemoLoginEnabled);
+  const [dataError, setDataError] = useState<string | null>(null);
+  const loadSequence = useRef(0);
 
   useEffect(() => {
     if (!isDemoLoginEnabled) return;
@@ -111,23 +118,31 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
   }, [currentSchool.id]);
 
   const loadLiveMappings = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     if (isDemoLoginEnabled || !supabase || !liveSchoolId) {
       if (!isDemoLoginEnabled) setLiveMappings([]);
+      setDataLoading(false);
       return;
     }
-
+    setDataLoading(true);
+    setDataError(null);
+    try {
     const client = supabase;
     const refs = await loadLiveReferenceMaps(client, liveSchoolId, localCurrentSchool);
+    if (sequence !== loadSequence.current) return;
     if (refs.school) setLiveSchool(refs.school);
     Object.entries(refs.frameworkColourThemes).forEach(([framework, theme]) => updateFrameworkTheme(framework, theme));
     setLiveDiagnostics(refs.diagnostics);
-    const { data: rows, error } = await client
+    const { data: rows, error } = await readAllRows(client
       .from("curriculum_mappings")
       .select("id,school_id,subject_id,year_group,term,scheme_reference,activity_title,activity_description,task_description,created_at,updated_at")
       .eq("school_id", refs.diagnostics.schoolId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false }).order("id"));
+
+    if (sequence !== loadSequence.current) return;
 
     if (error) {
+      setDataError(error.message);
       setLiveMappings([]);
       setLiveReferenceMaps(refs);
       return;
@@ -135,6 +150,13 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
 
     setLiveReferenceMaps(refs);
     setLiveMappings(((rows ?? []) as CurriculumMappingRow[]).map((row) => curriculumRowToMapping(row, refs)));
+    } catch (error) {
+      if (sequence !== loadSequence.current) return;
+      setDataError(error instanceof Error ? error.message : "Could not load curriculum data.");
+      setLiveMappings([]);
+    } finally {
+      if (sequence === loadSequence.current) setDataLoading(false);
+    }
   }, [liveSchoolId, localCurrentSchool, updateFrameworkTheme]);
 
   useEffect(() => {
@@ -171,6 +193,9 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
       currentSchoolId: currentSchool.id,
       data,
       liveDiagnostics,
+      dataLoading,
+      dataError,
+      refreshData: loadLiveMappings,
       switchSchool: (schoolId) => {
         const next = schools.find((school) => school.id === schoolId && school.active);
         if (next) setCurrentSchoolId(next.id);
@@ -430,7 +455,7 @@ export function CurrentSchoolProvider({ children }: { children: React.ReactNode 
         return { ok: true };
       }
     }),
-    [currentSchool, currentUser?.id, data, liveDiagnostics, liveMappings, liveReferenceMaps, liveSchool?.id, liveSchoolId, loadLiveMappings, localCurrentSchool, schools]
+    [currentSchool, currentUser?.id, data, dataLoading, dataError, liveDiagnostics, liveMappings, liveReferenceMaps, liveSchool?.id, liveSchoolId, loadLiveMappings, localCurrentSchool, schools]
   );
 
   return <CurrentSchoolContext.Provider value={value}>{children}</CurrentSchoolContext.Provider>;
@@ -594,12 +619,12 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
   const elementQuerySelect = "id, school_id, strand_id, name, description, official_wording, teacher_friendly_explanation, display_order, active";
   const descriptorQuerySelect = "id, school_id, element_id, progression_step, descriptor_text, display_order, active";
   const [subjectsResult, aolesResult, frameworksResult, strandsResult, elementsResult, descriptorsResult, frameworkColourThemesResult] = await Promise.all([
-    client
+    readAllRows(client
       .from("subjects")
       .select(subjectQuerySelect)
       .eq("school_id", querySchoolId)
       .order("display_order", { ascending: true })
-      .order("name", { ascending: true }),
+      .order("name", { ascending: true }).order("id")),
     client
       .from("aoles")
       .select(aoleQuerySelect)
@@ -607,36 +632,39 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
       .eq("active", true)
       .order("display_order", { ascending: true })
       .order("name", { ascending: true }),
-    client
+    readAllRows(client
       .from("frameworks")
       .select(frameworkQuerySelect)
       .eq("school_id", querySchoolId)
       .eq("active", true)
-      .order("display_order", { ascending: true }),
-    client
+      .order("display_order", { ascending: true }).order("id")),
+    readAllRows(client
       .from("strands")
       .select(strandQuerySelect)
       .eq("school_id", querySchoolId)
       .eq("active", true)
-      .order("display_order", { ascending: true }),
-    client
+      .order("display_order", { ascending: true }).order("id")),
+    readAllRows(client
       .from("elements")
       .select(elementQuerySelect)
       .eq("school_id", querySchoolId)
       .eq("active", true)
-      .order("display_order", { ascending: true }),
-    client
+      .order("display_order", { ascending: true }).order("id")),
+    readAllRows(client
       .from("progression_descriptors")
       .select(descriptorQuerySelect)
       .eq("school_id", querySchoolId)
       .eq("active", true)
-      .order("progression_step", { ascending: true }),
+      .order("progression_step", { ascending: true }).order("id")),
     client
       .from("framework_colour_themes")
       .select("framework_id,primary_colour,pale_colour,badge_colour,chart_colour")
       .eq("school_id", querySchoolId)
   ]);
   const { themes: themeRows, elements: themeElementRows } = await loadThemeRows(client, querySchoolId);
+  for (const result of [subjectsResult, aolesResult, frameworksResult, strandsResult, elementsResult, descriptorsResult]) {
+    if (result.error) throw new Error(result.error.message);
+  }
 
   const subjects = ((subjectsResult.data ?? []) as SubjectReferenceRow[]).map(normaliseReferenceName);
   const aoles = ((aolesResult.data ?? []) as AoleReferenceRow[]).map(normaliseReferenceName);
@@ -662,17 +690,22 @@ async function loadLiveReferenceMaps(client: SupabaseClient, schoolId: string, f
     displayOrder: aole.display_order ?? index + 1
   }));
   const aolesById = new Map(aoles.map((aole) => [aole.id, aole]));
-  const { data: mappingRows } = await client.from("curriculum_mappings").select("id").eq("school_id", querySchoolId);
+  const { data: mappingRows, error: mappingError } = await readAllRows(client.from("curriculum_mappings").select("id").eq("school_id", querySchoolId).order("id"));
+  if (mappingError) throw new Error(mappingError.message);
   const mappingIds = ((mappingRows ?? []) as { id: string }[]).map((row) => row.id);
-  const { data: frameworkLinkRows } = mappingIds.length
-    ? await client.from("curriculum_mapping_framework_links").select("id,mapping_id,framework_id,strand_id,element_id,progression_descriptor_id,progression_step,notes").in("mapping_id", mappingIds)
-    : { data: [] as FrameworkLinkRow[] };
-  const { data: linkRows } = mappingIds.length
-    ? await client
-    .from("curriculum_mapping_theme_links")
-    .select("id,mapping_id,theme_id,theme_element_id,notes")
-        .in("mapping_id", mappingIds)
-    : { data: [] as ThemeLinkRow[] };
+  const frameworkLinkRows: FrameworkLinkRow[] = [];
+  const linkRows: ThemeLinkRow[] = [];
+  for (let offset = 0; offset < mappingIds.length; offset += 100) {
+    const ids = mappingIds.slice(offset, offset + 100);
+    const [skills, themes] = await Promise.all([
+      readAllRows(client.from("curriculum_mapping_framework_links").select("id,mapping_id,framework_id,strand_id,element_id,progression_descriptor_id,progression_step,notes").in("mapping_id", ids).order("id")),
+      readAllRows(client.from("curriculum_mapping_theme_links").select("id,mapping_id,theme_id,theme_element_id,notes").in("mapping_id", ids).order("id"))
+    ]);
+    if (skills.error) throw new Error(skills.error.message);
+    if (themes.error) throw new Error(themes.error.message);
+    frameworkLinkRows.push(...(skills.data ?? []) as FrameworkLinkRow[]);
+    linkRows.push(...(themes.data ?? []) as ThemeLinkRow[]);
+  }
 
   const frameworksById = new Map(frameworks.map((row) => [row.id, row]));
   const frameworkColourThemes = buildFrameworkColourThemeSettings((frameworkColourThemesResult.data ?? []) as FrameworkColourThemeRow[], frameworksById);
@@ -806,20 +839,22 @@ type ThemeLinkRow = {
 
 async function loadThemeRows(client: SupabaseClient, schoolId: string): Promise<{ themes: ThemeReferenceRow[]; elements: ThemeElementReferenceRow[] }> {
   const [crossCuttingRows, elementRows] = await Promise.all([
-    client
+    readAllRows(client
     .from("cross_cutting_themes")
     .select("id,school_id,name,description,active")
     .eq("school_id", schoolId)
     .eq("active", true)
-    .order("name", { ascending: true }),
-    client
+    .order("name", { ascending: true }).order("id")),
+    readAllRows(client
       .from("cross_cutting_theme_elements")
       .select("id,school_id,theme_id,name,description,display_order,active")
       .eq("school_id", schoolId)
       .eq("active", true)
       .order("display_order", { ascending: true })
-      .order("name", { ascending: true })
+      .order("name", { ascending: true }).order("id"))
   ]);
+  if (crossCuttingRows.error) throw new Error(crossCuttingRows.error.message);
+  if (elementRows.error) throw new Error(elementRows.error.message);
   return { themes: (crossCuttingRows.data ?? []) as ThemeReferenceRow[], elements: (elementRows.data ?? []) as ThemeElementReferenceRow[] };
 }
 
@@ -1045,8 +1080,8 @@ function curriculumRowToMapping(row: CurriculumMappingRow, refs: LiveReferenceMa
     strand: primaryReference?.strand ?? "No strand reference",
     element: primaryReference?.element ?? "No element reference",
     context: activityTitle,
-    year: row.year_group ?? "Year 7",
-    term: row.term ?? "Autumn",
+    year: row.year_group ?? "",
+    term: row.term ?? "",
     unit: activityTitle,
     activityDescription,
     taskDescription: row.task_description ?? activityDescription,

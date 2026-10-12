@@ -101,15 +101,14 @@ function buildPreview(csv: string, refs: ReferenceData) {
     const moduleCode = value(row, "module_code");
     const moduleTitle = value(row, "module_title");
     const curriculumIntent = value(row, "curriculum_intent");
-    const groupKey = [normaliseText(subjectName), yearGroup, term, normaliseText(moduleCode), normaliseText(moduleTitle)].join("::");
-    const resolvedSubjectName = resolveSubjectName(subjectName);
-    const subject = refs.subjects.find((candidate) => same(candidate.name, resolvedSubjectName));
+    const subject = matchSubject(subjectName, refs.subjects);
+    const groupKey = [subject?.id ?? normaliseText(subjectName), yearGroup, term, normaliseText(moduleCode), normaliseText(moduleTitle)].join("::");
     const group =
       groups.get(groupKey) ??
       {
         key: groupKey,
         rows: [],
-        subject: subjectName,
+        subject: subject?.name ?? subjectName,
         subjectId: subject?.id,
         yearGroup,
         term,
@@ -529,6 +528,16 @@ function normaliseText(text: string) {
 
 function same(a: string, b: string) {
   return Boolean(a && b && normaliseText(a) === normaliseText(b));
+}
+
+function matchSubject(name: string, subjects: { id: string; name: string }[]) {
+  const exact = subjects.find((subject) => same(subject.name, name));
+  if (exact) return exact;
+  const aliases = new Set(["d and t", "dt", "st", "design technology", "design and technology"]);
+  if (!aliases.has(normaliseText(name))) return subjects.find((subject) => same(subject.name, resolveSubjectName(name)));
+  const matches = subjects.filter((subject) => aliases.has(normaliseText(subject.name)));
+  // Ambiguous school subjects must still be selected by their exact name.
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 function normaliseYearGroup(value: string) {

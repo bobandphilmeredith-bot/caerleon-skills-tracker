@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { areaThemes, themeForFramework } from "@/lib/theme";
 import { useSchoolSettings } from "@/lib/schoolSettings";
+import { useCurrentSchool } from "@/lib/currentSchool";
 import { roleBadgeClass, roleLabels, type UserRole, useAuth } from "@/lib/auth";
 
 const navGroups = [
@@ -25,7 +26,7 @@ const navGroups = [
     items: [
       { href: "/subjects", label: "Subject View", icon: "SV", theme: areaThemes.overview },
       { href: "/subject-overview", label: "Subject Detail", icon: "SD", theme: areaThemes.overview },
-      { href: "/reports/subject-health", label: "Subject Health Report", icon: "SH", theme: areaThemes.overview, roles: ["platform_admin", "school_admin", "teacher", "subject_lead"] as UserRole[] }
+      { href: "/reports/subject-health", label: "Department Review", icon: "DR", theme: areaThemes.overview, roles: ["platform_admin", "school_admin", "teacher", "subject_lead"] as UserRole[] }
     ]
   },
   {
@@ -42,7 +43,7 @@ const navGroups = [
     title: "Review",
     icon: "RV",
     items: [
-      { href: "/reports/slt-improvement", label: "SLT Improvement Dashboard", icon: "SI", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
+      { href: "/reports/slt-improvement", label: "Leadership Review", icon: "LR", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
       { href: "/recent-mapping", label: "Recent Updates", icon: "RU", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
       { href: "/review-summary", label: "Review Summary", icon: "RS", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] }
     ]
@@ -61,6 +62,9 @@ const navGroups = [
 ];
 
 const primaryActions = [
+  { href: "/reports/slt-improvement", label: "Leadership Review", icon: "LR", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
+  { href: "/reports/subject-health", label: "Department Review", icon: "DR", theme: areaThemes.overview, roles: ["teacher", "subject_lead"] as UserRole[] },
+  { href: "/reports/cynefin", label: "Cynefin Plan", icon: "Cy", theme: areaThemes.overview },
   { href: "/add-entry", label: "Add Curriculum", icon: "+", theme: areaThemes.overview, roles: ["platform_admin", "school_admin", "teacher", "subject_lead"] as UserRole[] },
   { href: "/edit-curriculum", label: "Edit Curriculum", icon: "EC", theme: areaThemes.overview, roles: ["platform_admin", "school_admin", "teacher", "subject_lead"] as UserRole[] }
 ];
@@ -71,6 +75,7 @@ export function AppShell({ children, buildTimestamp }: { children: React.ReactNo
   const pathname = usePathname();
   const router = useRouter();
   const { settings } = useSchoolSettings();
+  const { dataLoading, dataError, refreshData } = useCurrentSchool();
   const { currentUser, realUser, isDemoMode, users, loginAs, logout, canPreviewRoles, previewRole, isRolePreview, setPreviewRole, clearRolePreview, authLoading } = useAuth();
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [flyoutTop, setFlyoutTop] = useState(0);
@@ -214,7 +219,7 @@ export function AppShell({ children, buildTimestamp }: { children: React.ReactNo
         <div className="mx-auto max-w-[1800px] px-5 py-6">
           {!isDemoMode && !publicPage && authLoading ? <SessionGate title="Checking sign-in" message="Checking your secure session before loading school data." /> : null}
           {!isDemoMode && !publicPage && !authLoading && !currentUser ? <SessionGate title="Sign in required" message="This area is protected. Sign in to view curriculum data." showAction /> : null}
-          {isDemoMode || publicPage || currentUser ? children : null}
+          {(isDemoMode || publicPage || currentUser) && (publicPage ? children : dataLoading ? <p role="status" className="py-12">Loading curriculum data...</p> : dataError ? <div role="alert" className="border-l-4 border-red-600 p-5"><h2 className="text-xl font-bold">Curriculum data unavailable</h2><p className="my-3">The school data could not be loaded completely. Reports are unavailable until the connection recovers.</p><button className="btn btn-secondary" onClick={() => void refreshData()}>Retry</button></div> : children)}
         </div>
       </main>
     </div>

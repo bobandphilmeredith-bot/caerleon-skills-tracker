@@ -64,7 +64,7 @@ export function summariseThemeCounts(entry: MappingEvidence) {
 }
 
 export function groupEntriesByYear(entries: MappingEvidence[]) {
-  return reportYearGroups
+  return unique(entries.map((entry) => normaliseYear(entry.mapping.year))).sort(compareYear)
     .map((year) => ({
       year,
       entries: entries.filter((entry) => normaliseYear(entry.mapping.year) === year).sort(compareMappingEvidence)
@@ -85,6 +85,11 @@ export function compareTerms(a: string, b: string) {
   return (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 99 : order.indexOf(b)) || a.localeCompare(b);
 }
 
+export function normalisePlanningTerm(value: string) {
+  const term = value.trim();
+  return ["Autumn", "Spring", "Summer"].find((name) => name.toLowerCase() === term.toLowerCase()) ?? term;
+}
+
 export function compareSchemeReference(a: string, b: string) {
   const left = schemeParts(a);
   const right = schemeParts(b);
@@ -100,9 +105,10 @@ export function compareSchemeReference(a: string, b: string) {
 }
 
 export function progressionStep(reference: MappingFrameworkReference) {
+  if (/Step [1-5]\s*[-\u2013]\s*[1-5]/.test(reference.progressionReference ?? "")) return null;
   const direct = reference.progressionStep;
   if (direct && reportSteps.includes(direct)) return direct;
-  const match = reference.progressionReference?.match(/Step ([3-5])/);
+  const match = reference.progressionReference?.match(/^Step ([3-5])$/);
   return match ? Number(match[1]) : null;
 }
 
@@ -178,8 +184,13 @@ export function searchableMappingText(entry: MappingEvidence) {
 function themeItemsForEntry(entry: MappingEntry, themes: CrossCuttingTheme[]): ThemeEvidenceItem[] {
   const themeById = new Map(themes.map((theme) => [theme.id, theme]));
   const elementById = new Map(themes.flatMap((theme) => (theme.elements ?? []).map((element) => [element.id, { theme, element }] as const)));
+  const links = entry.crossCuttingThemeElementLinks?.length ? entry.crossCuttingThemeElementLinks :
+    (entry.crossCuttingThemeElementIds ?? []).flatMap((id) => {
+      const resolved = elementById.get(id);
+      return resolved ? [{ themeId: resolved.theme.id, elementId: id }] : [];
+    });
   const byElementLink =
-    entry.crossCuttingThemeElementLinks?.map((link) => {
+    links.map((link) => {
       const resolved = elementById.get(link.elementId);
       const theme = themeById.get(link.themeId) ?? resolved?.theme;
       const element = resolved?.element;
@@ -192,12 +203,11 @@ function themeItemsForEntry(entry: MappingEntry, themes: CrossCuttingTheme[]): T
         legacy: !element
       };
     }) ?? [];
-  if (byElementLink.length) return byElementLink;
-
-  return (entry.crossCuttingThemes ?? []).map((label, index) => {
+  const legacy = (entry.crossCuttingThemes ?? []).map((label) => {
     const [themePart, elementPart] = label.split(":").map((part) => part.trim());
-    const themeId = entry.crossCuttingThemeIds?.[index];
-    const elementId = entry.crossCuttingThemeElementIds?.[index];
+    const resolvedTheme = themes.find((theme) => theme.name === themePart);
+    const themeId = resolvedTheme?.id;
+    const elementId = resolvedTheme?.elements?.find((element) => element.name === elementPart)?.id;
     return {
       themeId,
       elementId,
@@ -207,6 +217,13 @@ function themeItemsForEntry(entry: MappingEntry, themes: CrossCuttingTheme[]): T
       legacy: !elementPart
     };
   });
+  const broad: ThemeEvidenceItem[] = (entry.crossCuttingThemeIds ?? []).flatMap((id) => {
+    const theme = themeById.get(id);
+    return theme ? [{ themeId: id, theme: theme.name, element: null, label: theme.name, legacy: true }] : [];
+  });
+  const items = [...byElementLink, ...legacy, ...broad];
+  return Array.from(new Map(items.filter((item) => item.element || !items.some((other) => other.element && other.theme === item.theme))
+    .map((item) => [`${item.theme}::${item.element ?? ""}`, item])).values());
 }
 
 function schemeParts(value: string) {

@@ -1,4 +1,5 @@
 import * as base from "@/lib/fakeData";
+import { normalisePlanningTerm, normaliseYear } from "@/lib/reporting";
 import { defaultCrossCuttingThemes } from "@/lib/crossCuttingThemes";
 import type { AoleConfig, Card, CrossCuttingTheme, Dashboard, ElementCoverageRow, FrameworkCoverage, FrameworkDefinition, HeatmapCell, MappingEntry, MappingFrameworkReference, School, SubjectConfig, SubjectDetail, SubjectOverview } from "@/lib/types";
 
@@ -101,6 +102,7 @@ export function createEmptySchoolData(schoolId: string, subjectConfigs: SubjectC
 }
 
 export function buildBundle(input: { schoolId: string; subjectConfigs: SubjectConfig[]; aoleConfigs: AoleConfig[]; frameworkLibrary: FrameworkDefinition[]; crossCuttingThemes?: CrossCuttingTheme[]; mappings: MappingEntry[] }): SchoolDataBundle {
+  input = { ...input, mappings: input.mappings.map((mapping) => ({ ...mapping, year: normaliseYear(mapping.year), term: normalisePlanningTerm(mapping.term) })) };
   const subjects = input.subjectConfigs
     .filter((subjectItem) => subjectItem.active && subjectItem.appearsInMappingDropdowns)
     .map((subjectItem) => subjectItem.name)
@@ -158,9 +160,9 @@ function makeWholeSchoolDashboard(schoolId: string, subjects: string[], mappings
     description: "A single curriculum map showing where Literacy, Numeracy, DCF and cross-cutting themes are planned across subjects and year groups.",
     cards: [
       { label: "Mapped opportunities", value: String(mappings.length), note: "Curriculum mapping entries for the current school." },
-      { label: "Frameworks visible", value: "4", note: "Literacy, Numeracy, DCF and cross-cutting themes." },
+      { label: "Skills frameworks represented", value: String(new Set(frameworkReferences.map((reference) => reference.framework)).size), note: "Distinct skills frameworks linked to recorded plans; themes are shown separately." },
       { label: "Subjects included", value: String(subjects.length), note: "Subject-first curriculum list configured in admin." },
-      { label: "Recent updates", value: String(mappings.filter((entryItem) => entryItem.lastMappedDate >= "2026-04-01").length), note: "Curriculum entries updated this term." }
+      { label: "Latest recorded update", value: [...mappings].map((entry) => entry.lastMappedDate).filter(Boolean).sort().at(-1) ?? "None", note: "Date a curriculum entry was last changed; not a review date." }
     ],
     heatmapTitle: "Mapped Evidence by Year Group",
     heatmapDescription: "Shows the proportion of mapped curriculum entries in each year group that include at least one reference to each framework or theme area.",

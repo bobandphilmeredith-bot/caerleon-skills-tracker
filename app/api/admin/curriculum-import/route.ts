@@ -370,6 +370,20 @@ function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number,
       ? refs.elements.find((candidate) => candidate.strand_id === strand?.id && same(candidate.name, rawElement))
       : undefined);
 
+  // Translanguaging is unambiguous: its name takes precedence over a mistyped code.
+  const isTranslanguaging =
+    (same(framework.name, "Literacy Framework") || same(framework.short_name ?? "", "Literacy")) &&
+    [rawElement, stripLeadingCode(rawStrand)].some((name) => same(name, "Translanguaging"));
+  if (isTranslanguaging) {
+    const literacyStrandIds = new Set(refs.strands.filter((candidate) => candidate.framework_id === framework.id).map((candidate) => candidate.id));
+    const matches = refs.elements.filter((candidate) => literacyStrandIds.has(candidate.strand_id) && same(stripLeadingCode(candidate.name), "Translanguaging"));
+    if (matches.length !== 1) {
+      return { unresolved: [`Row ${rowNumber}: Translanguaging could not be uniquely matched in Literacy; check the school's framework configuration.`], link: null };
+    }
+    element = matches[0];
+    strand = refs.strands.find((candidate) => candidate.id === element?.strand_id);
+  }
+
   if (!element && rawElement && !skillCode) {
     const frameworkStrandIds = new Set(refs.strands.filter((candidate) => candidate.framework_id === framework.id).map((candidate) => candidate.id));
     const elementMatches = refs.elements.filter((candidate) => frameworkStrandIds.has(candidate.strand_id) && same(candidate.name, rawElement));
@@ -389,7 +403,7 @@ function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number,
   }
 
   const elementDisplayName = stripLeadingCode(element.name);
-  // When a valid framework code is present, treat the code as authoritative.
+  // Except for Translanguaging above, a valid framework code is authoritative.
   // Staff may use local wording instead of the exact framework element name.
   // Do not clutter the saved note with code/matching diagnostics; keep it focused
   // on the actual activity/task evidence from the CfL.

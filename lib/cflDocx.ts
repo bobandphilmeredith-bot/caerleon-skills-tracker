@@ -11,6 +11,7 @@ export type CflDocxSummary = {
   moduleCode: string;
   moduleTitle: string;
   skillsFound: number;
+  textSectionsFound?: number;
   themesFound: number;
   warnings: string[];
 };
@@ -115,9 +116,18 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
   }
 
   const skills = structuredSkills.length ? structuredSkills : genericSkills(paragraphs, rows);
+  let textSectionsFound = 0;
   for (const section of skillSections) {
-    if (valueAfterLabel(rows, section.labels).trim() && !skills.some((skill) => skill.frameworkType === section.frameworkType)) {
-      warnings.push(`${section.frameworkType} contains text but no recognised skill codes. Review and map this section manually.`);
+    const sectionText = valueAfterLabel(rows, section.labels).trim();
+    if (sectionText && !skills.some((skill) => skill.frameworkType === section.frameworkType)) {
+      textSectionsFound += 1;
+      importRows.push({
+        ...common,
+        framework_type: section.frameworkType,
+        framework_text: sectionText,
+        progression_step: progressionStep ? String(progressionStep) : "",
+        mapping_description: sectionText
+      });
     }
   }
   for (const skill of skills) {
@@ -184,7 +194,7 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
 
   return {
     csv: toCsv(importRows),
-    summary: { subject, yearGroup, term, moduleCode: moduleCode || moduleTitle, moduleTitle: moduleTitle || moduleCode, skillsFound, themesFound, warnings }
+    summary: { subject, yearGroup, term, moduleCode: moduleCode || moduleTitle, moduleTitle: moduleTitle || moduleCode, skillsFound, textSectionsFound, themesFound, warnings }
   };
 }
 
@@ -234,7 +244,7 @@ function parseSkillLines(text: string) {
     .filter(Boolean)
     .flatMap((line) => {
       // Accept explicit strand/code lists, but not prose listing exceptions.
-      const codeList = line.match(/^(?:(Reading|Writing|Listening|Speaking|Translanguaging)\s*:\s*)?(\d+\.\d+(?:\s*(?:,|&|and)\s*\d+\.\d+)*)\.?$/i);
+      const codeList = line.match(/^(?:(Reading|Writing|Listening|Speaking|Translanguaging)\s*:\s*)?(\d+\.\d+(?:\s*(?:,|&|and)\s*\d+\.\d+)*)\s*[,;.]?$/i);
       if (codeList) {
         return [...codeList[2].matchAll(/\d+\.\d+/g)].map(([code]) => ({ code, name: "", evidence: line }));
       }
@@ -462,7 +472,8 @@ function toCsv(rows: CsvRow[]) {
     "subject_content_knowledge",
     "subject_concepts_skills",
     "learning_outcomes",
-    "source_file"
+    "source_file",
+    "framework_text"
   ];
   return [headers, ...rows.map((row) => headers.map((header) => row[header] ?? ""))]
     .map((row) => row.map(csvCell).join(","))

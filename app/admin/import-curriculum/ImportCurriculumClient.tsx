@@ -275,6 +275,7 @@ export default function ImportCurriculumClient() {
                   </label>
                 </div>
                 <p className="mt-1 text-gray-600">{summary.skillsFound} skills · {summary.themesFound} cross-cutting themes</p>
+                {Boolean(summary.textSectionsFound) && <p className="mt-1 text-gray-600">{summary.textSectionsFound} framework text section{summary.textSectionsFound === 1 ? "" : "s"} for wording matching</p>}
                 {summary.warnings.length ? <p className="mt-1 font-semibold text-amber-800">{summary.warnings.length} warning{summary.warnings.length === 1 ? "" : "s"}</p> : <p className="mt-1 font-semibold text-green-700">Ready</p>}
               </div>
             ))}

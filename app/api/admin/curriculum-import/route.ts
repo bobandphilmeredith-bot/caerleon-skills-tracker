@@ -140,13 +140,16 @@ function buildPreview(csv: string, refs: ReferenceData, fileOverrides: Record<st
     if (existing) group.existingMappingId = existing.id;
 
     const notes = combineNotes(value(row, "mapping_description"), value(row, "notes"));
-    const frameworkLink = matchFrameworkLink(row, refs, rowNumber, notes);
-    if (frameworkLink.link) {
+    const singleMatch = value(row, "framework_text") ? null : matchFrameworkLink(row, refs, rowNumber, notes);
+    const frameworkMatch = singleMatch
+      ? { links: singleMatch.link ? [singleMatch.link] : [], unresolved: singleMatch.unresolved }
+      : matchFrameworkTextLinks(row, refs, rowNumber, notes);
+    for (const link of frameworkMatch.links) {
       const before = group.frameworkLinks.length;
-      group.frameworkLinks = mergeFrameworkLink(group.frameworkLinks, frameworkLink.link);
+      group.frameworkLinks = mergeFrameworkLink(group.frameworkLinks, link);
       if (group.frameworkLinks.length === before) duplicateFrameworkLinks += 1;
     }
-    group.unresolved.push(...frameworkLink.unresolved);
+    group.unresolved.push(...frameworkMatch.unresolved);
 
     const themeLink = matchThemeLink(row, refs, rowNumber, notes);
     if (themeLink.link) {
@@ -342,6 +345,64 @@ async function undoImport(admin: AdminClient, userId: string, schoolId: string, 
   }
   await admin.from("curriculum_import_batches").update({ status: "undone", undone_at: new Date().toISOString(), undone_by: userId }).eq("id", batchId);
   return NextResponse.json({ ok: true });
+}
+
+function matchFrameworkTextLinks(row: CsvRow, refs: ReferenceData, rowNumber: number, notes: string) {
+  const links: FrameworkPreviewLink[] = [];
+  const unresolved: string[] = [];
+  const framework = detectFramework(row, refs);
+  if (!framework) return { links, unresolved: [`Row ${rowNumber}: framework for the supplied wording was not found.`] };
+  const text = value(row, "framework_text");
+  const source = ` ${normaliseText(text)} `;
+  const strands = refs.strands.filter((strand) => strand.framework_id === framework.id);
+  const elements = refs.elements.filter((element) => strands.some((strand) => strand.id === element.strand_id));
+  const candidates = refs.descriptors.filter((descriptor) => elements.some((element) => element.id === descriptor.element_id));
+  const preferredStep = Number(value(row, "progression_step").match(/[1-5]/)?.[0]);
+  const phraseMatches = new Map<string, typeof candidates>();
+
+  // Match complete stored statements, tolerating only punctuation and whitespace.
+  // A descriptor can contain several "I can" statements; a document may quote one.
+  for (const descriptor of candidates) {
+    for (const statement of (descriptor.descriptor_text ?? "").split(/(?=\bI can\b)/i)) {
+      const phrase = normaliseText(statement);
+      if (phrase.split(" ").length < 8 || !source.includes(` ${phrase} `)) continue;
+      phraseMatches.set(phrase, [...phraseMatches.get(phrase) ?? [], descriptor]);
+    }
+  }
+
+  const matchedPhrases: string[] = [];
+  for (const [phrase, matches] of phraseMatches) {
+    // Progression context may disambiguate repeated wording, never a different element.
+    const elementIds = new Set(matches.map((match) => match.element_id));
+    const atStep = matches.filter((match) => Number(match.progression_step) === preferredStep);
+    const choices = elementIds.size === 1 && atStep.length ? atStep : matches;
+    const identities = new Set(choices.map((match) => `${match.element_id}:${match.progression_step}`));
+    if (identities.size !== 1) {
+      unresolved.push(`Row ${rowNumber}: ${framework.short_name ?? framework.name} wording matches more than one element or progression step: "${phrase.slice(0,140)}". Review this wording.`);
+      continue;
+    }
+    const descriptor = choices[0];
+    const element = elements.find((candidate) => candidate.id === descriptor.element_id)!;
+    const strand = strands.find((candidate) => candidate.id === element.strand_id)!;
+    matchedPhrases.push(phrase);
+    if (links.some((link) => link.elementId === element.id && link.progressionStep === Number(descriptor.progression_step))) continue;
+    links.push({
+      frameworkId: framework.id,
+      strandId: strand.id,
+      elementId: element.id,
+      progressionDescriptorId: descriptor.id,
+      progressionStep: Number(descriptor.progression_step),
+      label: `${framework.short_name ?? framework.name}: ${strand.display_order}.${element.display_order} ${stripLeadingCode(element.name)} → Step ${descriptor.progression_step} (matched by wording)`,
+      notes
+    });
+  }
+  if (!links.length && !unresolved.length) {
+    unresolved.push(`Row ${rowNumber}: ${framework.short_name ?? framework.name} text did not match a stored descriptor. No coverage was assumed: "${text.slice(0,180)}".`);
+  } else if (links.length) {
+    const unmatched = text.split(/(?=\bI can\b)/i).filter((statement) => /^I can\b/i.test(statement.trim()) && !matchedPhrases.some((phrase) => ` ${normaliseText(statement)} `.includes(` ${phrase} `)));
+    for (const statement of unmatched) unresolved.push(`Row ${rowNumber}: unmatched ${framework.short_name ?? framework.name} wording: "${statement.trim().slice(0,180)}".`);
+  }
+  return { links, unresolved };
 }
 
 function matchFrameworkLink(row: CsvRow, refs: ReferenceData, rowNumber: number, notes: string) {
@@ -595,7 +656,7 @@ function unique(values: string[]) {
 }
 
 function sourceDetails(row: CsvRow) {
-  return ["key_stage", "subject_content_knowledge", "subject_concepts_skills", "learning_outcomes", "links_within_aole", "links_across_aoles", "source_file"].map((column) => {
+  return ["key_stage", "subject_content_knowledge", "subject_concepts_skills", "learning_outcomes", "links_within_aole", "links_across_aoles", "framework_text", "source_file"].map((column) => {
     const cell = value(row, column);
     return cell ? `${column.replace(/_/g, " ")}: ${cell}` : "";
   }).filter(Boolean);

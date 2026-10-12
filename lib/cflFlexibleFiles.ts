@@ -10,7 +10,7 @@ const HEADERS = [
   "framework_type","strand_name","element_name","skill_code","progression_step",
   "mapping_description","notes","cross_cutting_theme_focus","key_stage",
   "links_within_aole","links_across_aoles","subject_content_knowledge",
-  "subject_concepts_skills","learning_outcomes","source_file"
+  "subject_concepts_skills","learning_outcomes","source_file","framework_text"
 ];
 
 export async function convertCflXlsxToCsv(file: File): Promise<{ csv: string; summary: CflDocxSummary }> {

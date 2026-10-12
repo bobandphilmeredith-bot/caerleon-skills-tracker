@@ -28,7 +28,7 @@ assert.equal(explicitCflTerm("Autumn and Spring"), "");
 const exports = {};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync("app/api/admin/curriculum-import/route.ts", "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
-}).outputText + "\nexports.preview = buildPreview; exports.match = matchFrameworkLink;", {
+}).outputText + "\nexports.preview = buildPreview; exports.match = matchFrameworkLink; exports.matchText = matchFrameworkTextLinks;", {
   exports, require(name) {
     if (name === "next/server") return {};
     if (name.endsWith("_helpers")) return {};
@@ -98,7 +98,7 @@ console.log("Passed: Translanguaging name overrides incorrect codes, preserves e
 const docxExports = {};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync("lib/cflDocx.ts", "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
-}).outputText + "\nexports.parseSkills = parseSkillLines;", {
+}).outputText + "\nexports.parseSkills = parseSkillLines; exports.toCsv = toCsv;", {
   exports: docxExports, require() { return metadata; }
 });
 const listedSkills = docxExports.parseSkills("We cover the whole of the literacy framework with two exceptions (2.4,5.4).\nReading: 3.2, 3.3\nWriting: 5.1, 5.2, 5.3, 5.5").filter(skill => skill.code);
@@ -109,3 +109,42 @@ assert.equal(docxExports.parseSkills("3.1 - Magnification calculations")[0].evid
 assert.equal(docxExports.parseSkills("5.1 Translanguaging")[0].name, "Translanguaging");
 assert.equal(docxExports.parseSkills("Reading: except 3.2, 3.3").filter(skill => skill.code).length, 0);
 console.log("Passed: explicit strand/code lists are extracted without mapping excluded skills or inventing coverage from prose.");
+
+assert.equal(docxExports.parseSkills("2.1, 2.2, 2.3, 3.1, 3.2, ").filter(skill => skill.code).map(skill => skill.code).join(","), "2.1,2.2,2.3,3.1,3.2");
+const dcfNames = ["Collaboration", "Sourcing, searching and planning digital content", "Creating digital content"];
+const seed = fs.readFileSync("supabase/reset_and_seed_curriculum_frameworks.sql", "utf8");
+const descriptors = [...seed.matchAll(/\('([^']+)', (\d), \$dcf\$([\s\S]*?)\$dcf\$\)/g)]
+  .filter(([,name,step]) => dcfNames.includes(name) && step === "4")
+  .map(([,name,step,text]) => ({id:`${name}-step4`,element_id:name,progression_step:Number(step),descriptor_text:text}));
+assert.equal(descriptors.length, 3);
+const dcfRefs = { ...refs,
+  frameworks: [{id:"dcf",name:"Digital Competence Framework",short_name:"DCF"}],
+  strands: [{id:"collaborating",framework_id:"dcf",name:"Interacting and collaborating",display_order:2},{id:"producing",framework_id:"dcf",name:"Producing",display_order:3}],
+  elements: dcfNames.map((name,i) => ({id:name,name,strand_id:i===0?"collaborating":"producing",display_order:i===0?2:i})),
+  descriptors
+};
+const quoted = descriptors.map(d => d.descriptor_text.split(" I can explore and develop")[0]).join("\n\n");
+const textRow = {framework_type:"DCF",framework_text:quoted,progression_step:"4"};
+const match = exports.matchText(textRow,dcfRefs,2,quoted);
+assert.equal(match.links.length,3);
+assert.equal(match.unresolved.length,0);
+assert.ok(match.links.every(link=>link.progressionStep===4 && link.notes===quoted));
+assert.ok(match.links.some(link=>link.label.includes("2.2 Collaboration")));
+assert.equal(exports.matchText({...textRow,framework_text:quoted.replaceAll(".",". \n").replaceAll(" ","  ")},dcfRefs,2,"").links.length,3);
+assert.equal(exports.matchText({...textRow,framework_text:"In Summer Term - Group DCF project"},dcfRefs,2,"").links.length,0);
+assert.equal(exports.matchText({...textRow,framework_text:"In Summer Term - Group DCF project"},dcfRefs,2,"").unresolved.length,1);
+assert.equal(exports.matchText({...textRow,framework_text:quoted+"\nI can do something not described in the framework."},dcfRefs,2,"").unresolved.length,1);
+const ambiguousRefs={...dcfRefs,descriptors:[...descriptors,{...descriptors[0],id:"ambiguous",element_id:dcfNames[1]}]};
+assert.ok(exports.matchText({...textRow,framework_text:descriptors[0].descriptor_text},ambiguousRefs,2,"").unresolved.length>0);
+assert.equal(exports.matchText({...textRow,framework_text:descriptors[0].descriptor_text},ambiguousRefs,2,"").links.length,0);
+const otherStepRefs={...dcfRefs,descriptors:[...descriptors,{...descriptors[0],id:"step5",progression_step:5}]};
+assert.equal(exports.matchText({...textRow,framework_text:descriptors[0].descriptor_text},otherStepRefs,2,"").links[0].progressionStep,4);
+assert.equal(exports.matchText({...textRow,framework_text:descriptors[0].descriptor_text,progression_step:""},otherStepRefs,2,"").links.length,0);
+const fullCsv=docxExports.toCsv([{subject:"German",year_group:"Year 8",term:"Spring",module_code:"8.3 & 8.4",module_title:"School life",curriculum_intent:"Research project",...textRow}]);
+const preview=exports.preview(fullCsv,dcfRefs);
+assert.equal(preview.summary.errors,0);
+assert.equal(preview.summary.frameworkLinksToCreate,3,"Word conversion must pass wording through to server preview");
+const flexibleExports={};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync("lib/cflFlexibleFiles.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText+"\nexports.headers=HEADERS;",{exports:flexibleExports});
+assert.equal(fullCsv.split("\n")[0],flexibleExports.headers.join(","),"Mixed-format batches must retain identical column order");
+console.log("Passed: stored DCF descriptor wording, multi-element matching, punctuation tolerance, progression disambiguation, partial/unmatched warnings and mixed-format CSV transport.");

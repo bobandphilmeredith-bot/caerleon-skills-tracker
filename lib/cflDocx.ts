@@ -115,6 +115,11 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
   }
 
   const skills = structuredSkills.length ? structuredSkills : genericSkills(paragraphs, rows);
+  for (const section of skillSections) {
+    if (valueAfterLabel(rows, section.labels).trim() && !skills.some((skill) => skill.frameworkType === section.frameworkType)) {
+      warnings.push(`${section.frameworkType} contains text but no recognised skill codes. Review and map this section manually.`);
+    }
+  }
   for (const skill of skills) {
     skillsFound += 1;
     importRows.push({
@@ -227,31 +232,36 @@ function parseSkillLines(text: string) {
     .split(/\n+/)
     .map(cleanText)
     .filter(Boolean)
-    .map((line) => {
+    .flatMap((line) => {
+      // Accept explicit strand/code lists, but not prose listing exceptions.
+      const codeList = line.match(/^(?:(Reading|Writing|Listening|Speaking|Translanguaging)\s*:\s*)?(\d+\.\d+(?:\s*(?:,|&|and)\s*\d+\.\d+)*)\.?$/i);
+      if (codeList) {
+        return [...codeList[2].matchAll(/\d+\.\d+/g)].map(([code]) => ({ code, name: "", evidence: line }));
+      }
       // CfLs often use "3.1 - Magnification calculations": the code identifies
       // the official tracker element and the text after the dash describes the task.
       const codeThenTask = line.match(/^(\d+(?:\.\d+)*)\s*[–—-]\s*(.+)$/);
       if (codeThenTask) {
-        return { code: codeThenTask[1], name: "", evidence: cleanText(codeThenTask[2]) };
+        return [{ code: codeThenTask[1], name: "", evidence: cleanText(codeThenTask[2]) }];
       }
 
       // Other CfLs use "4.1 Collecting data - planning a fair test...":
       // preserve the element wording and the activity-specific evidence separately.
       const elementThenTask = line.match(/^(\d+(?:\.\d+)*)\s+(.+?)\s+[–—-]\s+(.+)$/);
       if (elementThenTask) {
-        return {
+        return [{
           code: elementThenTask[1],
           name: cleanText(elementThenTask[2]),
           evidence: cleanText(elementThenTask[3])
-        };
+        }];
       }
 
       const codeAndElement = line.match(/^(\d+(?:\.\d+)*)\s+(.+)$/);
       if (codeAndElement) {
-        return { code: codeAndElement[1], name: cleanText(codeAndElement[2]), evidence: "" };
+        return [{ code: codeAndElement[1], name: cleanText(codeAndElement[2]), evidence: "" }];
       }
 
-      return { code: "", name: line, evidence: "" };
+      return [{ code: "", name: line, evidence: "" }];
     });
 }
 

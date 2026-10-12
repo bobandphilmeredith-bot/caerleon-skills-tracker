@@ -94,3 +94,18 @@ for (const elements of [literacyRefs.elements.slice(1), [...literacyRefs.element
   assert.equal(result.unresolved.length, 1);
 }
 console.log("Passed: Translanguaging name overrides incorrect codes, preserves evidence/progression, and leaves other skill matching unchanged.");
+
+const docxExports = {};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync("lib/cflDocx.ts", "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
+}).outputText + "\nexports.parseSkills = parseSkillLines;", {
+  exports: docxExports, require() { return metadata; }
+});
+const listedSkills = docxExports.parseSkills("We cover the whole of the literacy framework with two exceptions (2.4,5.4).\nReading: 3.2, 3.3\nWriting: 5.1, 5.2, 5.3, 5.5").filter(skill => skill.code);
+assert.equal(listedSkills.map(skill => skill.code).join(","), "3.2,3.3,5.1,5.2,5.3,5.5");
+assert.equal(listedSkills[0].evidence, "Reading: 3.2, 3.3");
+assert.equal(docxExports.parseSkills("Reading:\n3.2, 3.3\nWriting:\n5.1, 5.2, 5.3, 5.5").filter(skill => skill.code).map(skill => skill.code).join(","), "3.2,3.3,5.1,5.2,5.3,5.5");
+assert.equal(docxExports.parseSkills("3.1 - Magnification calculations")[0].evidence, "Magnification calculations");
+assert.equal(docxExports.parseSkills("5.1 Translanguaging")[0].name, "Translanguaging");
+assert.equal(docxExports.parseSkills("Reading: except 3.2, 3.3").filter(skill => skill.code).length, 0);
+console.log("Passed: explicit strand/code lists are extracted without mapping excluded skills or inventing coverage from prose.");

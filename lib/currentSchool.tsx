@@ -838,24 +838,18 @@ type ThemeLinkRow = {
 };
 
 async function loadThemeRows(client: SupabaseClient, schoolId: string): Promise<{ themes: ThemeReferenceRow[]; elements: ThemeElementReferenceRow[] }> {
-  const [crossCuttingRows, elementRows] = await Promise.all([
-    readAllRows(client
-    .from("cross_cutting_themes")
-    .select("id,school_id,name,description,active")
-    .eq("school_id", schoolId)
-    .eq("active", true)
-    .order("name", { ascending: true }).order("id")),
-    readAllRows(client
-      .from("cross_cutting_theme_elements")
-      .select("id,school_id,theme_id,name,description,display_order,active")
-      .eq("school_id", schoolId)
-      .eq("active", true)
-      .order("display_order", { ascending: true })
-      .order("name", { ascending: true }).order("id"))
-  ]);
-  if (crossCuttingRows.error) throw new Error(crossCuttingRows.error.message);
-  if (elementRows.error) throw new Error(elementRows.error.message);
-  return { themes: (crossCuttingRows.data ?? []) as ThemeReferenceRow[], elements: (elementRows.data ?? []) as ThemeElementReferenceRow[] };
+  // Theme elements are served through the school-authorised API, not direct table grants.
+  const { data: { session } } = await client.auth.getSession();
+  if (!session) throw new Error("Sign in again to load school themes.");
+  const response = await fetch(`/api/themes?schoolId=${encodeURIComponent(schoolId)}`, {
+    headers: { Authorization: `Bearer ${session.access_token}` },
+    cache: "no-store"
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !Array.isArray(result?.themes) || !Array.isArray(result?.elements)) {
+    throw new Error(result?.error || "The school theme catalogue could not be loaded completely.");
+  }
+  return { themes: result.themes, elements: result.elements };
 }
 
 function buildFrameworkLinkMap(rows: FrameworkLinkRow[]) {

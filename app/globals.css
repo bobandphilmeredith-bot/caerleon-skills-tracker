@@ -108,7 +108,7 @@ textarea {
 }
 .activity-table-scroll { max-width: 100%; overflow-x: auto; }
 .activity-table-scroll:focus-visible { outline: 2px solid #741b47; outline-offset: 3px; }
-.review-table.activity-table { min-width: 64rem; table-layout: fixed; line-height: 1.6; }
+.review-table.activity-table { min-width: 60rem; table-layout: fixed; line-height: 1.6; }
 .activity-table .activity-subject-column { width: 11rem; }
 .activity-table .activity-work-column { width: 44%; }
 .activity-table .activity-action-column { width: 7rem; }

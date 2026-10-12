@@ -148,3 +148,24 @@ const flexibleExports={};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync("lib/cflFlexibleFiles.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText+"\nexports.headers=HEADERS;",{exports:flexibleExports});
 assert.equal(fullCsv.split("\n")[0],flexibleExports.headers.join(","),"Mixed-format batches must retain identical column order");
 console.log("Passed: stored DCF descriptor wording, multi-element matching, punctuation tolerance, progression disambiguation, partial/unmatched warnings and mixed-format CSV transport.");
+
+const collage="Creating digital content - Pupils can use a variety of tools to add multi media components to enhance their collage of Wales, such as text, images, themes and colours.";
+for (const source of [collage,collage.replace(" - ",": "),collage.replace(" - "," \u2013 "),"CREATING DIGITAL CONTENT",`3.2 ${collage}`]) {
+  const result=exports.matchText({...textRow,framework_text:source},dcfRefs,22,source);
+  assert.equal(result.links.length,1);
+  assert.equal(result.links[0].elementId,"Creating digital content");
+  assert.ok(result.links[0].label.includes("3.2 Creating digital content"));
+  assert.equal(result.links[0].notes,source);
+  assert.equal(result.unresolved.length,0);
+}
+assert.equal(exports.matchText({...textRow,framework_text:"Creating digital content - I can create a collage of Wales."},dcfRefs,22,"").unresolved.length,0);
+assert.equal(exports.matchText({...textRow,framework_text:`Creating digital content\n${descriptors[2].descriptor_text}`},dcfRefs,22,"").links.length,1,"Descriptor and heading must not create duplicate links");
+assert.equal(exports.matchText({...textRow,framework_text:"We are not creating digital content this term."},dcfRefs,22,"").links.length,0,"Incidental mentions are not element headings");
+const duplicateNameRefs={...dcfRefs,elements:[...dcfRefs.elements,{...dcfRefs.elements[2],id:"another-creating"}]};
+assert.equal(exports.matchText({...textRow,framework_text:collage},duplicateNameRefs,22,"").links.length,0,"Ambiguous element headings must not guess");
+const noStep=exports.matchText({...textRow,framework_text:collage,progression_step:""},dcfRefs,22,"");
+assert.equal(noStep.links[0].progressionStep,undefined);
+assert.equal(noStep.unresolved.length,1);
+assert.equal(exports.matchText({...textRow,framework_text:collage,progression_step:"",year_group:"Year 8"},dcfRefs,22,"").links[0].progressionStep,4);
+assert.equal(exports.matchText({...textRow,framework_text:`${collage}\nCollaboration - A shared class presentation.`},dcfRefs,22,"").links.length,2);
+console.log("Passed: exact element headings with custom teaching evidence, code labels, ambiguity protection, progression and descriptor deduplication.");

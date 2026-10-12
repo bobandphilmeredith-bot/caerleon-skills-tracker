@@ -396,8 +396,36 @@ function matchFrameworkTextLinks(row: CsvRow, refs: ReferenceData, rowNumber: nu
       notes
     });
   }
+
+  // Exact element headings can introduce local activity wording, not a descriptor quote.
+  for (const line of text.split(/\n+/).map((line) => line.trim()).filter(Boolean)) {
+    const heading = stripLeadingCode(line.split(/\s+[-\u2013\u2014]\s+|:\s*/)[0]);
+    const namedElements = elements.filter((element) => same(stripLeadingCode(element.name), heading));
+    if (!namedElements.length) continue;
+    if (namedElements.length > 1) {
+      unresolved.push(`Row ${rowNumber}: ${framework.short_name ?? framework.name} element name "${heading}" is ambiguous; choose its strand or code.`);
+      continue;
+    }
+    const element = namedElements[0];
+    for (const part of line.split(/(?=\bI can\b)/i)) matchedPhrases.push(normaliseText(part));
+    if (links.some((link) => link.elementId === element.id)) continue;
+    const strand = strands.find((candidate) => candidate.id === element.strand_id)!;
+    const year = Number(value(row, "year_group").match(/\d+/)?.[0]);
+    const step = preferredStep || (year >= 7 && year <= 9 ? 4 : year >= 10 ? 5 : undefined);
+    const descriptor = candidates.find((candidate) => candidate.element_id === element.id && Number(candidate.progression_step) === step);
+    links.push({
+      frameworkId: framework.id,
+      strandId: strand.id,
+      elementId: element.id,
+      progressionDescriptorId: descriptor?.id,
+      progressionStep: step,
+      label: `${framework.short_name ?? framework.name}: ${strand.display_order}.${element.display_order} ${stripLeadingCode(element.name)} → ${step ? `Step ${step}` : "progression not specified"} (matched by element name)`,
+      notes
+    });
+    if (!step) unresolved.push(`Row ${rowNumber}: ${heading} matched by element name; progression could not be determined.`);
+  }
   if (!links.length && !unresolved.length) {
-    unresolved.push(`Row ${rowNumber}: ${framework.short_name ?? framework.name} text did not match a stored descriptor. No coverage was assumed: "${text.slice(0,180)}".`);
+    unresolved.push(`Row ${rowNumber}: ${framework.short_name ?? framework.name} text did not match a stored element name or descriptor. No coverage was assumed: "${text.slice(0,180)}".`);
   } else if (links.length) {
     const unmatched = text.split(/(?=\bI can\b)/i).filter((statement) => /^I can\b/i.test(statement.trim()) && !matchedPhrases.some((phrase) => ` ${normaliseText(statement)} `.includes(` ${phrase} `)));
     for (const statement of unmatched) unresolved.push(`Row ${rowNumber}: unmatched ${framework.short_name ?? framework.name} wording: "${statement.trim().slice(0,180)}".`);

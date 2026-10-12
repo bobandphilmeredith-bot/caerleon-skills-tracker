@@ -5,6 +5,13 @@ import ts from "typescript";
 import * as metadata from "../lib/cflMetadata.ts";
 
 const { resolveCflSubject, explicitCflTerm } = metadata;
+for (const [sequence, term] of [["8.1 & 8.2", "Autumn"], ["GERMAN Y8.3 & Y8.4", "Spring"], ["8.5 & 8.6", "Summer"], ["Year 7.2", "Autumn"], ["9.4", "Spring"]]) {
+  assert.equal(metadata.sequenceCflTerm(sequence), term);
+}
+assert.equal(metadata.sequenceCflTerm("", "German 8.5 & 8.6.docx"), "Summer");
+for (const sequence of ["8.2 & 8.3", "8.1 - 8.6", "8.7", "8.12", "Year 8", "Step 4", "2026.1"]) {
+  assert.equal(metadata.sequenceCflTerm(sequence), "", `Do not guess ambiguous or invalid sequence ${sequence}`);
+}
 assert.equal(resolveCflSubject("International Languages", "Context for Learning German 8.5 & 8.6.docx"), "German");
 assert.equal(resolveCflSubject("International Languages", "Context for Learning French 7.1.docx"), "French");
 assert.equal(resolveCflSubject("International Languages - German", "Unit.docx"), "German");
@@ -46,6 +53,17 @@ assert.equal(corrected.groups[0].subjectId, "de");
 assert.ok(exports.preview(ambiguousCsv, refs, { "Other.docx": { subject: "German", term: "Summer" } }).summary.errors > 0);
 assert.ok(exports.preview(ambiguousCsv, refs, { "Languages.docx": { subject: "Unknown", term: "Invalid" } }).summary.errors > 0);
 assert.equal(exports.preview(csv([row("International Languages", "German Summer.docx", "")]), refs).summary.errors, 0);
+for (const [modules, term] of [["8.1 & 8.2", "Autumn"], ["8.3 & 8.4", "Spring"], ["8.5 & 8.6", "Summer"]]) {
+  const source = `Context for Learning German ${modules}.docx`;
+  const input = row("International Languages", source, "");
+  input[3] = `GERMAN Y${modules}`;
+  const result = exports.preview(csv([input]), refs);
+  assert.equal(result.summary.errors, 0);
+  assert.equal(result.groups[0].subject, "German");
+  assert.equal(result.groups[0].term, term);
+  assert.equal(exports.preview(csv([input]), refs, { [source]: { term: "Spring" } }).groups[0].term, "Spring");
+}
+assert.equal(exports.preview(csv([row("German", "German 8.5.docx", "Autumn")]), refs).groups[0].term, "Autumn", "Explicit terms take priority over module numbers");
 for (const name of ["ST", "D & T", "Design Technology"]) assert.equal(exports.preview(csv([row(name, "Technology.docx")]), refs).groups[0].subjectId, "dt");
 assert.equal(exports.preview(csv([row("Mathematics", "Maths.docx")]), refs).groups[0].subjectId, "ma");
 console.log("Passed: French/German resolution, mixed batches, ambiguous-language safety, per-file corrections, explicit terms and existing subject aliases.");

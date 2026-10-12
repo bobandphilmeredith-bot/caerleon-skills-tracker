@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { bearerToken, getActorProfile, getSupabaseAdmin } from "@/app/api/admin/users/_helpers";
-import { explicitCflTerm, isInternationalLanguages, resolveCflSubject, type CflFileOverride } from "@/lib/cflMetadata";
+import { explicitCflTerm, isInternationalLanguages, resolveCflSubject, sequenceCflTerm, type CflFileOverride } from "@/lib/cflMetadata";
 
 export const dynamic = "force-dynamic";
 
@@ -102,7 +102,7 @@ function buildPreview(csv: string, refs: ReferenceData, fileOverrides: Record<st
       ? override.subject.trim() : resolveCflSubject(value(row, "subject"), sourceFile, value(row, "module_title"));
     const yearGroup = normaliseYearGroup(value(row, "year_group"));
     const term = typeof override?.term === "string" && override.term.trim()
-      ? override.term.trim() : normaliseTerm(value(row, "term")) || explicitCflTerm(sourceFile);
+      ? override.term.trim() : normaliseTerm(value(row, "term")) || explicitCflTerm(sourceFile) || sequenceCflTerm(value(row, "module_code"), sourceFile);
     const moduleCode = value(row, "module_code");
     const moduleTitle = value(row, "module_title");
     const curriculumIntent = value(row, "curriculum_intent");

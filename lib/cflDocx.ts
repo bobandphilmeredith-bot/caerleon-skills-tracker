@@ -1,6 +1,6 @@
 "use client";
 
-import { explicitCflTerm, isInternationalLanguages, resolveCflSubject } from "@/lib/cflMetadata";
+import { explicitCflTerm, isInternationalLanguages, resolveCflSubject, sequenceCflTerm } from "@/lib/cflMetadata";
 
 type CsvRow = Record<string, string>;
 
@@ -52,7 +52,7 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
     inferYearGroup(moduleTitle) ||
     inferYearGroup(paragraphs.join(" ")) ||
     inferYearGroup(file.name);
-  const term = explicitCflTerm(sequence) || explicitCflTerm(file.name) || (!sequence ? explicitCflTerm(paragraphs.join(" ")) : "");
+  const term = explicitCflTerm(sequence) || explicitCflTerm(file.name) || (!sequence ? explicitCflTerm(paragraphs.join(" ")) : "") || sequenceCflTerm(sequence, moduleCode, file.name);
   const curriculumIntent =
     valueAfterLabel(rows, ["Curriculum Intent"]) ||
     paragraphLabelValue(paragraphs, ["Curriculum Intent"]) ||

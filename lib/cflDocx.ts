@@ -1,5 +1,7 @@
 "use client";
 
+import { explicitCflTerm, isInternationalLanguages, resolveCflSubject } from "@/lib/cflMetadata";
+
 type CsvRow = Record<string, string>;
 
 export type CflDocxSummary = {
@@ -30,7 +32,7 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
   const paragraphs = extractParagraphs(xml);
   const heading = paragraphs.find((text) => /department\s+context\s+for\s+learning/i.test(text)) ?? "";
 
-  const subject =
+  const headingSubject =
     heading.match(/School\s+(.+?)\s+Department\s+Context\s+for\s+Learning/i)?.[1]?.trim() ??
     heading.match(/\b([A-Za-z][A-Za-z &/-]+?)\s+Department\s+Context\s+for\s+Learning/i)?.[1]?.trim() ??
     genericSubject(paragraphs, rows) ??
@@ -41,6 +43,7 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
     valueAfterLabel(rows, ["Module/ Enquiry Question", "Module / Enquiry Question", "Module/Enquiry Question", "Module", "Topic"]) ||
     paragraphLabelValue(paragraphs, ["Module", "Topic"]) ||
     genericTopicFromParagraphs(paragraphs);
+  const subject = resolveCflSubject(headingSubject, file.name, moduleTitle);
   const sequence =
     valueAfterLabel(rows, ["Position in sequence/Point of Progress", "Position in sequence / Point of Progress", "Position", "Term"]) ||
     paragraphLabelValue(paragraphs, ["Position", "Term"]);
@@ -49,7 +52,7 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
     inferYearGroup(moduleTitle) ||
     inferYearGroup(paragraphs.join(" ")) ||
     inferYearGroup(file.name);
-  const term = inferTerm(sequence || paragraphs.join(" "));
+  const term = explicitCflTerm(sequence) || explicitCflTerm(file.name) || (!sequence ? explicitCflTerm(paragraphs.join(" ")) : "");
   const curriculumIntent =
     valueAfterLabel(rows, ["Curriculum Intent"]) ||
     paragraphLabelValue(paragraphs, ["Curriculum Intent"]) ||
@@ -70,6 +73,7 @@ export async function convertCflDocxToCsv(file: File): Promise<{ csv: string; su
 
   const warnings: string[] = [];
   if (!subject) warnings.push("Subject could not be read from the document heading.");
+  if (isInternationalLanguages(subject)) warnings.push("Select French or German for this file before previewing.");
   if (!yearGroup) warnings.push("Year group could not be inferred from the module code or title.");
   if (!term) warnings.push("Term could not be inferred from the position-in-sequence field.");
   if (!moduleTitle) warnings.push("Module / enquiry question could not be read.");
@@ -407,14 +411,6 @@ function inferKeyStage(yearGroup: string) {
   const year = Number(yearGroup.match(/\d+/)?.[0]);
   if (year >= 7 && year <= 9) return "Key Stage 3";
   if (year >= 10 && year <= 11) return "Key Stage 4";
-  return "";
-}
-
-function inferTerm(value: string) {
-  const text = value.toLowerCase();
-  if (text.includes("autumn")) return "Autumn";
-  if (text.includes("spring")) return "Spring";
-  if (text.includes("summer")) return "Summer";
   return "";
 }
 

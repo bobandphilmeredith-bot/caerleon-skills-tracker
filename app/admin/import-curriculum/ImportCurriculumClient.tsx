@@ -8,6 +8,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { areaThemes } from "@/lib/theme";
 import { CflDocxSummary, convertCflDocxToCsv } from "@/lib/cflDocx";
 import { convertCflPdfToCsv, convertCflXlsxToCsv } from "@/lib/cflFlexibleFiles";
+import { useCurrentSchool } from "@/lib/currentSchool";
+import { resolveCflSubject, type CflFileOverride } from "@/lib/cflMetadata";
 
 type PreviewGroup = {
   key: string;
@@ -57,6 +59,7 @@ type ImportBatch = {
 
 export default function ImportCurriculumClient() {
   const { canManageSchool } = useAuth();
+  const { data } = useCurrentSchool();
   const [csv, setCsv] = useState("");
   const [fileName, setFileName] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -65,6 +68,14 @@ export default function ImportCurriculumClient() {
   const [loading, setLoading] = useState(false);
   const [fileSummaries, setFileSummaries] = useState<Array<CflDocxSummary & { fileName: string }>>([]);
   const [fileErrors, setFileErrors] = useState<Array<{ fileName: string; message: string }>>([]);
+  const [fileOverrides, setFileOverrides] = useState<Record<string, CflFileOverride>>({});
+  const subjectOptions = data.subjectConfigs.filter(subject => subject.active).map(subject => subject.name).sort();
+
+  function updateFileOverride(name: string, field: keyof CflFileOverride, value: string) {
+    setFileOverrides(current => ({ ...current, [name]: { ...current[name], [field]: value } }));
+    setPreview(null);
+    setMessage("");
+  }
 
   useEffect(() => {
     if (canManageSchool) void loadHistory();
@@ -82,6 +93,7 @@ export default function ImportCurriculumClient() {
     setMessage("");
     setFileSummaries([]);
     setFileErrors([]);
+    setFileOverrides({});
     setLoading(true);
 
     try {
@@ -162,7 +174,7 @@ export default function ImportCurriculumClient() {
     const response = await fetch("/api/admin/curriculum-import", {
       method: "POST",
       headers: { "Content-Type": "application/json", authorization: `Bearer ${token}` },
-      body: JSON.stringify({ action, csv, fileName, ...extra })
+      body: JSON.stringify({ action, csv, fileName, fileOverrides, ...extra })
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error ?? "Import request failed.");
@@ -247,7 +259,21 @@ export default function ImportCurriculumClient() {
             {fileSummaries.map((summary) => (
               <div key={summary.fileName} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
                 <p className="font-bold text-gray-900">{summary.fileName}</p>
-                <p className="mt-1 text-gray-600">{summary.subject || "Subject?"} · {summary.yearGroup || "Year?"} · {summary.term || "Term?"}</p>
+                <p className="mt-1 text-gray-600">{fileOverrides[summary.fileName]?.subject || resolveCflSubject(summary.subject, summary.fileName, summary.moduleTitle) || "Subject?"} · {summary.yearGroup || "Year?"} · {fileOverrides[summary.fileName]?.term || summary.term || "Term?"}</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <label className="text-xs font-semibold">Subject
+                    <select aria-label={`Subject for ${summary.fileName}`} disabled={loading} className="mt-1 block w-full rounded-md border border-gray-300 bg-white p-2 text-sm" value={fileOverrides[summary.fileName]?.subject ?? ""} onChange={event => updateFileOverride(summary.fileName, "subject", event.target.value)}>
+                      <option value="">{resolveCflSubject(summary.subject, summary.fileName, summary.moduleTitle) || "Select subject"} (detected)</option>
+                      {subjectOptions.map(subject => <option key={subject} value={subject}>{subject}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold">Term
+                    <select aria-label={`Term for ${summary.fileName}`} disabled={loading} className="mt-1 block w-full rounded-md border border-gray-300 bg-white p-2 text-sm" value={fileOverrides[summary.fileName]?.term ?? ""} onChange={event => updateFileOverride(summary.fileName, "term", event.target.value)}>
+                      <option value="">{summary.term ? `${summary.term} (detected)` : "Select term"}</option>
+                      {["Autumn", "Spring", "Summer"].map(term => <option key={term} value={term}>{term}</option>)}
+                    </select>
+                  </label>
+                </div>
                 <p className="mt-1 text-gray-600">{summary.skillsFound} skills · {summary.themesFound} cross-cutting themes</p>
                 {summary.warnings.length ? <p className="mt-1 font-semibold text-amber-800">{summary.warnings.length} warning{summary.warnings.length === 1 ? "" : "s"}</p> : <p className="mt-1 font-semibold text-green-700">Ready</p>}
               </div>

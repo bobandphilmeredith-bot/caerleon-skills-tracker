@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { bearerToken, getActorProfile, getSupabaseAdmin } from "@/app/api/admin/users/_helpers";
+import { explicitCflTerm, isInternationalLanguages, resolveCflSubject, type CflFileOverride } from "@/lib/cflMetadata";
 
 export const dynamic = "force-dynamic";
 
@@ -48,13 +49,13 @@ export async function POST(request: Request) {
   if ("error" in actor) return NextResponse.json({ error: actor.error }, { status: 401 });
   if (!canImport(actor.profile.role)) return NextResponse.json({ error: "Only school admins and platform admins can import curriculum mappings." }, { status: 403 });
 
-  const payload = (await request.json().catch(() => ({}))) as { csv?: string; fileName?: string; action?: string; batchId?: string };
+  const payload = (await request.json().catch(() => ({}))) as { csv?: string; fileName?: string; action?: string; batchId?: string; fileOverrides?: Record<string, CflFileOverride> };
   if (payload.action === "undo") return undoImport(admin, actor.profile.id, actor.profile.school_id, String(payload.batchId ?? ""));
   if (payload.action === "history") return listBatches(admin, actor.profile.school_id);
   if (!payload.csv?.trim()) return NextResponse.json({ error: "Upload a CSV before previewing." }, { status: 400 });
 
   const refs = await loadReferenceData(admin, actor.profile.school_id);
-  const preview = buildPreview(payload.csv, refs);
+  const preview = buildPreview(payload.csv, refs, payload.fileOverrides);
   if (payload.action !== "import") return NextResponse.json({ preview });
 
   const result = await runImport(admin, actor.profile.school_id, actor.profile.id, payload.fileName ?? "curriculum-import.csv", preview);
@@ -84,7 +85,7 @@ async function loadReferenceData(admin: AdminClient, schoolId: string) {
   };
 }
 
-function buildPreview(csv: string, refs: ReferenceData) {
+function buildPreview(csv: string, refs: ReferenceData, fileOverrides: Record<string, CflFileOverride> = {}) {
   const parsed = parseCsv(csv);
   const rows = parsed.rows;
   const headerSet = new Set(parsed.headers.map(normaliseHeader));
@@ -95,9 +96,13 @@ function buildPreview(csv: string, refs: ReferenceData) {
 
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
-    const subjectName = value(row, "subject");
+    const sourceFile = value(row, "source_file");
+    const override = sourceFile && fileOverrides && Object.hasOwn(fileOverrides, sourceFile) ? fileOverrides[sourceFile] : undefined;
+    const subjectName = typeof override?.subject === "string" && override.subject.trim()
+      ? override.subject.trim() : resolveCflSubject(value(row, "subject"), sourceFile, value(row, "module_title"));
     const yearGroup = normaliseYearGroup(value(row, "year_group"));
-    const term = normaliseTerm(value(row, "term"));
+    const term = typeof override?.term === "string" && override.term.trim()
+      ? override.term.trim() : normaliseTerm(value(row, "term")) || explicitCflTerm(sourceFile);
     const moduleCode = value(row, "module_code");
     const moduleTitle = value(row, "module_title");
     const curriculumIntent = value(row, "curriculum_intent");
@@ -124,8 +129,11 @@ function buildPreview(csv: string, refs: ReferenceData) {
       };
 
     group.rows.push(rowNumber);
-    if (!subject) group.errors.push(`Row ${rowNumber}: subject "${subjectName}" was not found.`);
-    for (const column of requiredColumns) if (!value(row, column)) group.errors.push(`Row ${rowNumber}: ${column} is required.`);
+    if (!subject) group.errors.push(isInternationalLanguages(subjectName)
+      ? `Row ${rowNumber}: select French or German for "${sourceFile || subjectName}"; the language is unclear.`
+      : `Row ${rowNumber}: subject "${subjectName}" was not found.`);
+    if (override?.term && !["Autumn", "Spring", "Summer"].includes(term)) group.errors.push(`Row ${rowNumber}: select a valid term.`);
+    for (const column of requiredColumns) if (!(column === "subject" ? subjectName : column === "term" ? term : value(row, column))) group.errors.push(`Row ${rowNumber}: ${column} is required.`);
     const existing = subject
       ? refs.existingMappings.find((mapping) => mapping.subject_id === subject.id && same(mapping.year_group, yearGroup) && same(mapping.term, term) && same(mapping.scheme_reference, moduleCode))
       : undefined;

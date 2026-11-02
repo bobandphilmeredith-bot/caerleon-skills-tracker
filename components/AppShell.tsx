@@ -44,6 +44,7 @@ const navGroups = [
     icon: "RV",
     items: [
       { href: "/reports/slt-improvement", label: "Leadership Review", icon: "LR", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
+      { href: "/reports/dcf", label: "DCF Management Report", icon: "DC", theme: themeForFramework("Digital Competence Framework"), roles: ["platform_admin", "school_admin"] as UserRole[] },
       { href: "/recent-mapping", label: "Recent Updates", icon: "RU", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] },
       { href: "/review-summary", label: "Review Summary", icon: "RS", theme: areaThemes.overview, roles: ["platform_admin", "school_admin"] as UserRole[] }
     ]

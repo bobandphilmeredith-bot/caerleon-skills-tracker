@@ -105,6 +105,11 @@ export function SubjectDashboard() {
         </label>
       </article>
 
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <p className="text-sm text-amber-950">Prepare {selectedSubject}'s mapped DCF tasks for discussion with Estyn.</p>
+        <Link className="focus-ring btn btn-secondary" href={`/reports/dcf-subject?subject=${encodeURIComponent(selectedSubject)}`}>Prepare subject DCF PDF</Link>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Mapped entries" value={subjectMappings.length} note="Curriculum mappings for this subject." />
         <SummaryCard label="Schemes referenced" value={schemeCount} note="Unique scheme or unit references." />

@@ -26,6 +26,7 @@ const navGroups = [
     items: [
       { href: "/subjects", label: "Subject View", icon: "SV", theme: areaThemes.overview },
       { href: "/subject-overview", label: "Subject Detail", icon: "SD", theme: areaThemes.overview },
+      { href: "/reports/dcf-subject", label: "Subject DCF Pack", icon: "DP", theme: themeForFramework("Digital Competence Framework") },
       { href: "/reports/subject-health", label: "Department Review", icon: "DR", theme: areaThemes.overview, roles: ["platform_admin", "school_admin", "teacher", "subject_lead"] as UserRole[] }
     ]
   },
@@ -367,7 +368,7 @@ function FlyoutLink({ item, pathname, brandSecondary, onNavigate }: { item: NavI
 }
 
 function NavLink({ item, pathname, brandPrimary, brandSecondary, primary = false }: { item: NavItem; pathname: string; brandPrimary: string; brandSecondary: string; primary?: boolean }) {
-  const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+  const active = isActivePath(item.href, pathname);
 
   return (
     <Link
@@ -404,5 +405,5 @@ function NavLink({ item, pathname, brandPrimary, brandSecondary, primary = false
 }
 
 function isActivePath(href: string, pathname: string) {
-  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+  return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
 }

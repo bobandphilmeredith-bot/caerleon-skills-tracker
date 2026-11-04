@@ -63,6 +63,7 @@ export function SubjectDetailPageClient({ subjectName }: { subjectName: string }
         <Link className="focus-ring btn btn-secondary" href="/subject-overview">
           Back to Subject Detail
         </Link>
+        <Link className="focus-ring btn btn-secondary" href={`/reports/dcf-subject?subject=${encodeURIComponent(subject)}`}>Prepare subject DCF PDF</Link>
         <span className="rounded-full border px-3 py-2 text-sm font-bold" style={{ borderColor: areaThemes.overview.border, backgroundColor: areaThemes.overview.soft, color: areaThemes.overview.text }}>
           AoLE: {subjectAoleMap[subject] ?? "Not set"}
         </span>

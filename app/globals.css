@@ -123,6 +123,41 @@ textarea {
 .activity-table .activity-evidence { margin: 0; padding: 0; list-style: none; }
 .activity-table .activity-evidence li + li { border-top: 1px solid #e5e7eb; margin-top: 0.75rem; padding-top: 0.75rem; }
 .activity-table .activity-evidence-note { display: block; margin-top: 0.375rem; color: #6b7280; font-size: 0.8125rem; white-space: pre-wrap; }
+.inspection-report { max-width: 1200px; margin-inline: auto; }
+.inspection-hero { border: 1px solid #eadde5; border-radius: 16px; background: linear-gradient(120deg, #fcf6fa, #fff 78%); padding: 1.5rem; }
+.inspection-eyebrow { color: #741b47; font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.inspection-heading { font-size: 1.125rem; font-weight: 700; color: #172033; }
+.inspection-caption { margin-top: .3rem; font-size: .8125rem; line-height: 1.6; color: #526074; }
+.inspection-panel { border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; }
+.inspection-department { display: block; border: 1px solid #e2e8f0; border-radius: 14px; padding: 1.5rem; transition: border-color 150ms, box-shadow 150ms; }
+.inspection-department:hover { border-color: #b47d99; box-shadow: 0 5px 20px #741b4710; }
+.inspection-reading-note { border-left: 3px solid #b5a5b0; padding: .5rem 0 .5rem 1rem; font-size: .8125rem; line-height: 1.7; color: #526074; }
+.inspection-select { display: block; margin-top: .4rem; padding: .6rem .75rem; border: 1px solid #cbd5e1; border-radius: 6px; background: white; font-size: .875rem; font-weight: 400; }
+.inspection-select:focus-visible { outline: 2px solid #741b47; outline-offset: 2px; }
+.inspection-table tbody tr:last-child > * { border-bottom: 0; }
+.inspection-table tbody tr:nth-child(even) { background: #f8fafc; }
+@media print {
+  body:has(.inspection-report) aside,
+  body:has(.inspection-report) main > div:first-child { display: none !important; }
+  body:has(.inspection-report) > div { display: block; }
+  body:has(.inspection-report) main { width: 100%; }
+  body:has(.inspection-report) main > div { max-width: none; padding: 0; }
+  .inspection-report { max-width: none; font-size: 10pt; }
+  .inspection-report > * + * { margin-top: 12pt; }
+  .inspection-hero { padding: 12pt; background: white; }
+  .inspection-hero h1 { font-size: 22pt; }
+  .inspection-panel { padding: 10pt; }
+  .inspection-heading { font-size: 12pt; break-after: avoid; }
+  .inspection-frameworks, .inspection-findings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .inspection-discussion { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .inspection-report .overflow-x-auto { overflow: visible; }
+  .inspection-report .review-table { min-width: 0; font-size: 9pt; }
+  .inspection-report .review-table th, .inspection-report .review-table td { padding: 6pt; }
+  .inspection-report thead { display: table-header-group; }
+  .inspection-report tr, .inspection-frameworks, .inspection-findings, .inspection-example { break-inside: avoid; }
+  .inspection-example { grid-template-columns: 60pt 1fr; }
+  .inspection-report .review-link { color: inherit; text-decoration: none; }
+}
 @media print {
   body:has(.provision-report) aside,
   body:has(.provision-report) main > div:first-child { display: none !important; }

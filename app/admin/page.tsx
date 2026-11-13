@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { AccessDenied } from "@/components/AccessDenied";
 import { PageHeader } from "@/components/PageHeader";
 import { progressionSteps } from "@/lib/progression";
@@ -684,6 +685,11 @@ export default function AdminPage() {
         description="Manage local structures for curriculum mapping. Subjects are the main organising unit; AoLE is optional reporting metadata."
         accent={areaThemes.overview.accent}
       />
+
+      <Link href="/admin/estyn" className="focus-ring flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[#e8cfe0] bg-[#f7edf3] p-5">
+        <div><h2 className="text-lg font-bold text-[#571435]">Estyn department summaries</h2><p className="mt-1 text-sm text-gray-600">Art, History, Chemistry, Business, ICT and English — year-group coverage, tasks, most and least recorded skills, and gaps.</p></div>
+        <span className="btn btn-primary">Open summaries →</span>
+      </Link>
 
       {notice ? (
         <div className="rounded-lg border border-[#e8cfe0] bg-[#f7edf3] p-4 text-sm font-semibold text-[#571435]">
